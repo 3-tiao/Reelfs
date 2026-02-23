@@ -1,0 +1,27 @@
+[package]
+name = "reelfs"
+version = "0.1.0"
+description = "NAS Local Movie Browser"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = ["shell-open", "dialog-all", "fs-all", "path-all"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.30", features = ["bundled"] }
+quick-xml = { version = "0.31", features = ["serialize"] }
+walkdir = "2.4"
+notify = "6.1"
+rayon = "1.8"
+image = "0.24"
+tokio = { version = "1", features = ["full"] }
+webp = "0.2"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
