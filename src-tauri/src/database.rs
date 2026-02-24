@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, params};
+use rusqlite::{Connection, Result, params, ToSql};
 use std::path::Path;
 use crate::models::{Movie, PlayHistory};
 use log::{info, debug, warn, error};
@@ -382,48 +382,53 @@ impl Database {
     pub fn get_movies_by_rating_range(&self, min_rating: Option<f64>, max_rating: Option<f64>) -> Result<Vec<Movie>> {
         debug!("[数据库] 按评级范围查询: min={:?}, max={:?}", min_rating, max_rating);
         
-        let (query, params) = match (min_rating, max_rating) {
-            (Some(min), Some(max)) => (
-                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+        let query: String;
+        let params_vec: Vec<Box<dyn ToSql>>;
+        
+        match (min_rating, max_rating) {
+            (Some(min), Some(max)) => {
+                query = "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                         poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
                         added_at, updated_at, last_accessed
                  FROM movies 
                  WHERE rating >= ?1 AND rating <= ?2
-                 ORDER BY rating DESC",
-                params![min, max]
-            ),
-            (Some(min), None) => (
-                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                 ORDER BY rating DESC".to_string();
+                params_vec = vec![Box::new(min), Box::new(max)];
+            },
+            (Some(min), None) => {
+                query = "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                         poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
                         added_at, updated_at, last_accessed
                  FROM movies 
                  WHERE rating >= ?1
-                 ORDER BY rating DESC",
-                params![min]
-            ),
-            (None, Some(max)) => (
-                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                 ORDER BY rating DESC".to_string();
+                params_vec = vec![Box::new(min)];
+            },
+            (None, Some(max)) => {
+                query = "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                         poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
                         added_at, updated_at, last_accessed
                  FROM movies 
                  WHERE rating <= ?1
-                 ORDER BY rating DESC",
-                params![max]
-            ),
-            (None, None) => (
-                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                 ORDER BY rating DESC".to_string();
+                params_vec = vec![Box::new(max)];
+            },
+            (None, None) => {
+                query = "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                         poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
                         added_at, updated_at, last_accessed
                  FROM movies 
                  WHERE rating IS NOT NULL
-                 ORDER BY rating DESC",
-                params![]
-            ),
+                 ORDER BY rating DESC".to_string();
+                params_vec = vec![];
+            },
         };
         
-        let mut stmt = self.conn.prepare(query)?;
+        let mut stmt = self.conn.prepare(&query)?;
         
-        let movies = stmt.query_map(params, |row| {
+        let params_refs: Vec<&dyn ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        
+        let movies = stmt.query_map(params_refs.as_slice(), |row| {
             Ok(Movie {
                 id: row.get(0)?,
                 file_path: row.get(1)?,
