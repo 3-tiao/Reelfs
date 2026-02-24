@@ -341,6 +341,19 @@ impl Database {
         Ok(())
     }
 
+    pub fn set_movie_rating(&self, movie_id: i64, rating: Option<f64>) -> Result<()> {
+        debug!("[数据库] 设置电影评级: movie_id={}, rating={:?}", movie_id, rating);
+        
+        self.conn.execute(
+            "UPDATE movies SET rating = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+            params![rating, movie_id],
+        )?;
+        
+        info!("[数据库] 电影评级设置成功: movie_id={}, rating={:?}", movie_id, rating);
+        
+        Ok(())
+    }
+
     pub fn get_total_count(&self) -> Result<i64> {
         debug!("[数据库] 获取电影总数");
         

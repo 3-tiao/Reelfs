@@ -266,6 +266,45 @@ async fn play_movie(
 }
 
 #[tauri::command]
+async fn show_in_file_manager(file_path: String) -> Result<(), String> {
+    info!("[文件管理器] 在文件管理器中显示: {}", file_path);
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        Command::new("open")
+            .arg("-R")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| {
+                error!("[文件管理器] 打开失败: {}", e);
+                format!("Failed to open in Finder: {}", e)
+            })?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        Command::new("xdg-open")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| {
+                error!("[文件管理器] 打开失败: {}", e);
+                format!("Failed to open in file manager: {}", e)
+            })?;
+    }
+    
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        return Err("Unsupported platform".to_string());
+    }
+    
+    info!("[文件管理器] 文件管理器打开成功");
+    
+    Ok(())
+}
+
+#[tauri::command]
 async fn update_play_progress(
     state: tauri::State<'_, AppState>,
     id: i64,
@@ -441,6 +480,26 @@ async fn update_thumbnail_path(
     Ok(())
 }
 
+#[tauri::command]
+async fn set_movie_rating(
+    state: tauri::State<'_, AppState>,
+    movie_id: i64,
+    rating: Option<f64>,
+) -> Result<(), String> {
+    info!("[API] set_movie_rating 调用: movie_id={}, rating={:?}", movie_id, rating);
+    
+    let db = state.db.lock().unwrap();
+    db.set_movie_rating(movie_id, rating)
+        .map_err(|e| {
+            error!("[API] 设置电影评级失败: {}", e);
+            format!("Failed to set movie rating: {}", e)
+        })?;
+    
+    info!("[API] 电影评级设置成功: movie_id={}, rating={:?}", movie_id, rating);
+    
+    Ok(())
+}
+
 fn get_config_path() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
     format!("{}/.reelfs/config.json", home)
@@ -517,6 +576,8 @@ fn main() {
             generate_thumbnail,
             clear_cache,
             update_thumbnail_path,
+            set_movie_rating,
+            show_in_file_manager,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
