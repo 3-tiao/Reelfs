@@ -19,7 +19,7 @@
       },
       "fs": {
         "all": true,
-        "scope": ["$HOME/**", "/Volumes/**", "/mnt/**", "$HOME/Documents/**", "$HOME/.reelfs/**", "$HOME/Documents/workspace/**"]
+        "scope": ["$HOME/**", "/Volumes/**", "/mnt/**", "$HOME/.reelfs/**"]
       },
       "dialog": {
         "all": true

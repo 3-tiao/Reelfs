@@ -74,11 +74,10 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
-        let project_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         
         Self {
             nas_paths: vec![],
-            cache_dir: format!("{}/cache", project_dir.display()),
+            cache_dir: format!("{}/.reelfs/cache", home),
             db_path: format!("{}/.reelfs/db/movies.db", home),
             scan_on_startup: false,
             auto_generate_thumbnails: true,
