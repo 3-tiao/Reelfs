@@ -270,25 +270,23 @@ fn get_video_info_mp4(path: &Path) -> Option<(i64, i32, i32)> {
     let reader = std::io::BufReader::new(f);
     let mp4 = Mp4Reader::read_header(reader, size).ok()?;
     
-    let mut duration = 0i64;
+    let duration = mp4.duration().as_secs() as i64;
+    
     let mut width = 0i32;
     let mut height = 0i32;
     
     for track in mp4.tracks().values() {
-        if track.track_type() == mp4::TrackType::Video {
-            let track_duration = track.duration();
-            let timescale = track.timescale();
-            duration = (track_duration as f64 / timescale as f64) as i64;
-            
-            if let Some(avc1) = track.avc1_config() {
-                width = avc1.width as i32;
-                height = avc1.height as i32;
-            }
+        if let Ok(mp4::TrackType::Video) = track.track_type() {
+            width = track.width() as i32;
+            height = track.height() as i32;
+            break;
         }
     }
     
     if duration > 0 && width > 0 && height > 0 {
         Some((duration, width, height))
+    } else if duration > 0 {
+        Some((duration, 0, 0))
     } else {
         None
     }

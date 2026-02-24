@@ -2,7 +2,7 @@ use notify::{Watcher, RecursiveMode, Event, EventKind, event::*};
 use std::sync::mpsc::channel;
 use std::path::Path;
 use std::time::Duration;
-use crate::indexer::{is_video_file, find_nfo_for_video, parse_nfo_file, extract_title_from_filename, get_file_size};
+use crate::indexer::{is_video_file, find_nfo_for_video, parse_nfo_file, extract_title_from_filename, get_file_size, get_video_info};
 use crate::database::Database;
 use log::{info, debug, warn, error};
 
@@ -92,7 +92,9 @@ fn handle_fs_event(db: &Database, event: Event) {
                     let poster = metadata.as_ref().and_then(|m| m.poster.as_deref());
                     let fanart = metadata.as_ref().and_then(|m| m.fanart.as_deref());
                     let file_size = get_file_size(&path);
-                    let duration_seconds = None;
+                    let (duration_seconds, width, height) = get_video_info(&path)
+                        .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
+                        .unwrap_or((None, None, None));
                     
                     let file_path = path.to_string_lossy().to_string();
                     
@@ -109,6 +111,8 @@ fn handle_fs_event(db: &Database, event: Event) {
                         fanart,
                         file_size,
                         duration_seconds,
+                        width,
+                        height,
                     ) {
                         error!("[文件监听] 新增电影失败: {} - {}", file_path, e);
                     } else {

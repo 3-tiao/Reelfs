@@ -342,6 +342,14 @@ export default function MovieDetail() {
                       </span>
                     </div>
                   )}
+                  {movie.width && movie.height && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-500 min-w-[60px]">Resolution:</span>
+                      <span className="text-gray-300 font-medium">
+                        {movie.width}×{movie.height}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3">
                     <span className="text-gray-500 min-w-[60px]">Added:</span>
                     <span className="text-gray-300 font-medium">
