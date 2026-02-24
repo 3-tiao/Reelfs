@@ -104,13 +104,13 @@ export default function MovieDetail() {
       <div className="relative z-10">
         <button
           onClick={() => navigate("/")}
-          className="m-6 flex items-center gap-2 px-4 py-2 bg-gray-800/60 hover:bg-gray-700/80 backdrop-blur-md rounded-xl transition-all duration-200 border border-gray-700/50"
+          className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-gray-800/80 hover:bg-gray-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-gray-700/50 shadow-lg z-50"
         >
           <ArrowLeft className="w-5 h-5" />
           Back
         </button>
 
-        <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="max-w-7xl mx-auto px-6 pt-20 pb-8">
           <div className="flex flex-col lg:flex-row gap-10">
             {/* Poster */}
             <div className="flex-shrink-0 mx-auto lg:mx-0">
