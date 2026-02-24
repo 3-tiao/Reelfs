@@ -3,6 +3,7 @@ use quick_xml::de::from_str;
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use walkdir::WalkDir;
 use log::{info, debug};
 
@@ -232,4 +233,94 @@ pub fn find_fanart_for_video(video_path: &Path) -> Option<String> {
     }
     
     None
+}
+
+pub fn get_video_info(path: &Path) -> Option<(i64, i32, i32)> {
+    info!("[视频信息] 尝试读取视频信息: {:?}", path);
+    
+    let extension = path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    
+    if extension == "mp4" || extension == "m4v" {
+        info!("[视频信息] 使用 mp4 crate 读取: {:?}", path);
+        if let Some(result) = get_video_info_mp4(path) {
+            info!("[视频信息] mp4 crate 读取成功: duration={}, width={}, height={}", result.0, result.1, result.2);
+            return Some(result);
+        }
+    }
+    
+    info!("[视频信息] 使用 ffprobe 读取: {:?}", path);
+    if let Some(result) = get_video_info_ffprobe(path) {
+        info!("[视频信息] ffprobe 读取成功: duration={}, width={}, height={}", result.0, result.1, result.2);
+        return Some(result);
+    }
+    
+    info!("[视频信息] 无法读取视频信息: {:?}", path);
+    None
+}
+
+fn get_video_info_mp4(path: &Path) -> Option<(i64, i32, i32)> {
+    use mp4::Mp4Reader;
+    use std::fs::File;
+    
+    let f = File::open(path).ok()?;
+    let size = f.metadata().ok()?.len();
+    let reader = std::io::BufReader::new(f);
+    let mp4 = Mp4Reader::read_header(reader, size).ok()?;
+    
+    let mut duration = 0i64;
+    let mut width = 0i32;
+    let mut height = 0i32;
+    
+    for track in mp4.tracks().values() {
+        if track.track_type() == mp4::TrackType::Video {
+            let track_duration = track.duration();
+            let timescale = track.timescale();
+            duration = (track_duration as f64 / timescale as f64) as i64;
+            
+            if let Some(avc1) = track.avc1_config() {
+                width = avc1.width as i32;
+                height = avc1.height as i32;
+            }
+        }
+    }
+    
+    if duration > 0 && width > 0 && height > 0 {
+        Some((duration, width, height))
+    } else {
+        None
+    }
+}
+
+fn get_video_info_ffprobe(path: &Path) -> Option<(i64, i32, i32)> {
+    let output = Command::new("ffprobe")
+        .arg("-v")
+        .arg("error")
+        .arg("-select_streams")
+        .arg("v:0")
+        .arg("-show_entries")
+        .arg("stream=duration,width,height")
+        .arg("-of")
+        .arg("csv=s=x:p=0")
+        .arg(path)
+        .output()
+        .ok()?;
+    
+    if !output.status.success() {
+        return None;
+    }
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parts: Vec<&str> = stdout.trim().split(',').collect();
+    
+    if parts.len() >= 3 {
+        let duration = parts[0].parse::<f64>().ok()? as i64;
+        let width = parts[1].parse::<i32>().ok()?;
+        let height = parts[2].parse::<i32>().ok()?;
+        Some((duration, width, height))
+    } else {
+        None
+    }
 }

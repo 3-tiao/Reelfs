@@ -135,7 +135,9 @@ async fn start_initial_scan(
                 let poster = metadata.as_ref().and_then(|m| m.poster.clone());
                 let fanart = metadata.as_ref().and_then(|m| m.fanart.clone());
                 let file_size = indexer::get_file_size(video_path);
-                let duration_seconds = None;
+                let (duration_seconds, width, height) = indexer::get_video_info(video_path)
+                    .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
+                    .unwrap_or((None, None, None));
                 
                 batch.push((
                     video_path.to_string_lossy().to_string(),
@@ -150,6 +152,8 @@ async fn start_initial_scan(
                     fanart,
                     file_size,
                     duration_seconds,
+                    width,
+                    height,
                 ));
                 
                 if batch.len() >= 100 || i == results.len() - 1 {

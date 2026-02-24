@@ -16,6 +16,8 @@ pub struct Movie {
     pub thumbnail_path: Option<String>,
     pub file_size: Option<i64>,
     pub duration_seconds: Option<i64>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
     pub added_at: String,
     pub updated_at: String,
     pub last_accessed: Option<String>,

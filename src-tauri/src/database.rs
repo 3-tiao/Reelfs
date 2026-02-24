@@ -45,6 +45,8 @@ impl Database {
                 thumbnail_path TEXT,
                 file_size INTEGER,
                 duration_seconds INTEGER,
+                width INTEGER,
+                height INTEGER,
                 added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 last_accessed DATETIME
@@ -96,6 +98,38 @@ impl Database {
         
         debug!("[数据库] 数据库表结构初始化完成");
         
+        self.migrate_database()?;
+        
+        Ok(())
+    }
+    
+    fn migrate_database(&self) -> Result<()> {
+        info!("[数据库] 检查并应用数据库迁移");
+        
+        let tx = self.conn.unchecked_transaction()?;
+        
+        let has_width = tx.prepare(
+            "SELECT 1 FROM pragma_table_info('movies') WHERE name = 'width'"
+        )?.exists([])?;
+        
+        let has_height = tx.prepare(
+            "SELECT 1 FROM pragma_table_info('movies') WHERE name = 'height'"
+        )?.exists([])?;
+        
+        if !has_width {
+            info!("[数据库] 添加 width 列");
+            tx.execute("ALTER TABLE movies ADD COLUMN width INTEGER", [])?;
+        }
+        
+        if !has_height {
+            info!("[数据库] 添加 height 列");
+            tx.execute("ALTER TABLE movies ADD COLUMN height INTEGER", [])?;
+        }
+        
+        tx.commit()?;
+        
+        info!("[数据库] 数据库迁移完成");
+        
         Ok(())
     }
 
@@ -103,13 +137,14 @@ impl Database {
                        plot: Option<&str>, rating: Option<f64>, genres: Option<&str>,
                        director: Option<&str>, actors: Option<&str>, 
                        poster_path: Option<&str>, fanart_path: Option<&str>,
-                       file_size: Option<i64>, duration_seconds: Option<i64>) -> Result<i64> {
+                       file_size: Option<i64>, duration_seconds: Option<i64>,
+                       width: Option<i32>, height: Option<i32>) -> Result<i64> {
         debug!("[数据库] 插入电影: title={}, file_path={}", title, file_path);
         
         self.conn.execute(
-            "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            params![file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds],
+            "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height],
         )?;
         
         let id = self.conn.last_insert_rowid();
@@ -118,7 +153,7 @@ impl Database {
         Ok(id)
     }
 
-    pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>)]) -> Result<usize> {
+    pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i32>, Option<i32>)]) -> Result<usize> {
         let start_time = std::time::Instant::now();
         debug!("[数据库] 开始批量插入/更新: {} 条记录", movies.len());
         
@@ -127,12 +162,12 @@ impl Database {
 
         for movie in movies {
             let result = tx.execute(
-                "INSERT OR REPLACE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT OR REPLACE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     &movie.0, &movie.1, movie.2, &movie.3, movie.4, 
                     &movie.5, &movie.6, &movie.7, &movie.8, &movie.9,
-                    movie.10, movie.11
+                    movie.10, movie.11, movie.12, movie.13
                 ],
             );
             if result.is_ok() {
@@ -154,7 +189,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
-                    added_at, updated_at, last_accessed
+                    width, height, added_at, updated_at, last_accessed
              FROM movies ORDER BY added_at DESC LIMIT ?1 OFFSET ?2"
         )?;
 
@@ -174,9 +209,11 @@ impl Database {
                 thumbnail_path: row.get(11)?,
                 file_size: row.get(12)?,
                 duration_seconds: row.get(13)?,
-                added_at: row.get(14)?,
-                updated_at: row.get(15)?,
-                last_accessed: row.get(16)?,
+                width: row.get(14)?,
+                height: row.get(15)?,
+                added_at: row.get(16)?,
+                updated_at: row.get(17)?,
+                last_accessed: row.get(18)?,
             })
         })?;
 
@@ -189,7 +226,7 @@ impl Database {
         let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
-                    added_at, updated_at, last_accessed
+                    width, height, added_at, updated_at, last_accessed
              FROM movies WHERE id = ?1",
             params![id],
             |row| {
@@ -208,9 +245,11 @@ impl Database {
                     thumbnail_path: row.get(11)?,
                     file_size: row.get(12)?,
                     duration_seconds: row.get(13)?,
-                    added_at: row.get(14)?,
-                    updated_at: row.get(15)?,
-                    last_accessed: row.get(16)?,
+                    width: row.get(14)?,
+                    height: row.get(15)?,
+                    added_at: row.get(16)?,
+                    updated_at: row.get(17)?,
+                    last_accessed: row.get(18)?,
                 })
             }
         );
@@ -231,7 +270,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors, 
                     m.poster_path, m.fanart_path, m.thumbnail_path, m.file_size, m.duration_seconds,
-                    m.added_at, m.updated_at, m.last_accessed
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed
              FROM movies m
              JOIN movie_fts ON movie_fts.rowid = m.id
              WHERE movie_fts MATCH ?1
@@ -254,9 +293,11 @@ impl Database {
                 thumbnail_path: row.get(11)?,
                 file_size: row.get(12)?,
                 duration_seconds: row.get(13)?,
-                added_at: row.get(14)?,
-                updated_at: row.get(15)?,
-                last_accessed: row.get(16)?,
+                width: row.get(14)?,
+                height: row.get(15)?,
+                added_at: row.get(16)?,
+                updated_at: row.get(17)?,
+                last_accessed: row.get(18)?,
             })
         })?;
 

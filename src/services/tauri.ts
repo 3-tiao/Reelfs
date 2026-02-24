@@ -16,6 +16,8 @@ export interface Movie {
   thumbnail_path?: string;
   file_size?: number;
   duration_seconds?: number;
+  width?: number;
+  height?: number;
   added_at: string;
   updated_at: string;
   last_accessed?: string;
