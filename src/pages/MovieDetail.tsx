@@ -155,21 +155,6 @@ export default function MovieDetail() {
                 )}
               </div>
 
-              {movie.rating !== undefined && movie.rating !== null ? (
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
-                    <span className="text-yellow-400 text-xl">⭐</span>
-                    <span className="text-xl font-bold text-yellow-400">{movie.rating.toFixed(1)}</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-700/30 border border-gray-600/30 rounded-xl">
-                    <span className="text-gray-500 text-xl">未评级</span>
-                  </div>
-                </div>
-              )}
-
               {movie.rating === undefined || movie.rating === null ? (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1">
