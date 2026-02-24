@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Film, FolderOpen } from "lucide-react";
-import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager } from "../services/tauri";
+import { ArrowLeft, Play, Film, FolderOpen, Star } from "lucide-react";
+import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating } from "../services/tauri";
 import { readBinaryFile } from "@tauri-apps/api/fs";
 
 export default function MovieDetail() {
@@ -12,6 +12,7 @@ export default function MovieDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [posterSrc, setPosterSrc] = useState<string | null>(null);
   const [fanartSrc, setFanartSrc] = useState<string | null>(null);
+  const [isRating, setIsRating] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -67,6 +68,20 @@ export default function MovieDetail() {
       } catch (error) {
         console.error("Failed to show in file manager:", error);
       }
+    }
+  };
+
+  const handleRating = async (rating: number | null) => {
+    if (!movie) return;
+    
+    setIsRating(true);
+    try {
+      await setMovieRating(movie.id, rating);
+      setMovie({ ...movie, rating: rating ?? undefined });
+    } catch (error) {
+      console.error("Failed to set rating:", error);
+    } finally {
+      setIsRating(false);
     }
   };
 
@@ -140,12 +155,94 @@ export default function MovieDetail() {
                 )}
               </div>
 
-              {movie.rating && (
+              {movie.rating !== undefined && movie.rating !== null ? (
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
                     <span className="text-yellow-400 text-xl">⭐</span>
                     <span className="text-xl font-bold text-yellow-400">{movie.rating.toFixed(1)}</span>
                   </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-700/30 border border-gray-600/30 rounded-xl">
+                    <span className="text-gray-500 text-xl">未评级</span>
+                  </div>
+                </div>
+              )}
+
+              {movie.rating === undefined || movie.rating === null ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 text-sm">用户评级：</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <button
+                        key={value}
+                        onClick={() => handleRating(value)}
+                        disabled={isRating}
+                        className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 ${
+                          isRating
+                            ? 'bg-gray-700 cursor-not-allowed'
+                            : 'bg-gray-800 hover:bg-yellow-600 hover:scale-110'
+                        }`}
+                      >
+                        <Star
+                          className={`w-5 h-5 ${
+                            isRating ? 'text-gray-500' : 'text-gray-400'
+                          }`}
+                          fill={isRating ? 'none' : 'currentColor'}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => handleRating(null)}
+                    disabled={isRating}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
+                      isRating
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-800 text-gray-400 hover:bg-red-600 hover:text-white'
+                    }`}
+                  >
+                    清除
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 text-sm">当前评级：</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <button
+                        key={value}
+                        onClick={() => handleRating(value)}
+                        disabled={isRating}
+                        className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 ${
+                          isRating
+                            ? 'bg-gray-700 cursor-not-allowed'
+                            : value <= Math.round(movie.rating!)
+                            ? 'bg-yellow-600 hover:bg-yellow-500 hover:scale-110'
+                            : 'bg-gray-800 hover:bg-yellow-600 hover:scale-110'
+                        }`}
+                      >
+                        <Star
+                          className={`w-5 h-5 ${
+                            isRating ? 'text-gray-500' : value <= Math.round(movie.rating!) ? 'text-white' : 'text-gray-400'
+                          }`}
+                          fill={isRating ? 'none' : value <= Math.round(movie.rating!) ? 'currentColor' : 'none'}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => handleRating(null)}
+                    disabled={isRating}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
+                      isRating
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-800 text-gray-400 hover:bg-red-600 hover:text-white'
+                    }`}
+                  >
+                    清除
+                  </button>
                 </div>
               )}
 

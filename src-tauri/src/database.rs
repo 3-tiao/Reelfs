@@ -61,6 +61,7 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_title ON movies(title);
             CREATE INDEX IF NOT EXISTS idx_year ON movies(year);
+            CREATE INDEX IF NOT EXISTS idx_rating ON movies(rating);
             CREATE INDEX IF NOT EXISTS idx_added_at ON movies(added_at DESC);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_file_path ON movies(file_path);
 
@@ -359,5 +360,95 @@ impl Database {
         info!("[数据库] 电影删除成功: {}", file_path);
         
         Ok(())
+    }
+
+    pub fn set_movie_rating(&self, movie_id: i64, rating: Option<f64>) -> Result<()> {
+        debug!("[数据库] 设置电影评级: movie_id={}, rating={:?}", movie_id, rating);
+        
+        let result = self.conn.execute(
+            "UPDATE movies SET rating = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+            params![rating, movie_id],
+        )?;
+        
+        if result > 0 {
+            info!("[数据库] 电影评级更新成功: movie_id={}, rating={:?}", movie_id, rating);
+        } else {
+            warn!("[数据库] 电影评级更新失败: movie_id={} 不存在", movie_id);
+        }
+        
+        Ok(())
+    }
+
+    pub fn get_movies_by_rating_range(&self, min_rating: Option<f64>, max_rating: Option<f64>) -> Result<Vec<Movie>> {
+        debug!("[数据库] 按评级范围查询: min={:?}, max={:?}", min_rating, max_rating);
+        
+        let (query, params) = match (min_rating, max_rating) {
+            (Some(min), Some(max)) => (
+                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                        poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                        added_at, updated_at, last_accessed
+                 FROM movies 
+                 WHERE rating >= ?1 AND rating <= ?2
+                 ORDER BY rating DESC",
+                params![min, max]
+            ),
+            (Some(min), None) => (
+                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                        poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                        added_at, updated_at, last_accessed
+                 FROM movies 
+                 WHERE rating >= ?1
+                 ORDER BY rating DESC",
+                params![min]
+            ),
+            (None, Some(max)) => (
+                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                        poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                        added_at, updated_at, last_accessed
+                 FROM movies 
+                 WHERE rating <= ?1
+                 ORDER BY rating DESC",
+                params![max]
+            ),
+            (None, None) => (
+                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                        poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                        added_at, updated_at, last_accessed
+                 FROM movies 
+                 WHERE rating IS NOT NULL
+                 ORDER BY rating DESC",
+                params![]
+            ),
+        };
+        
+        let mut stmt = self.conn.prepare(query)?;
+        
+        let movies = stmt.query_map(params, |row| {
+            Ok(Movie {
+                id: row.get(0)?,
+                file_path: row.get(1)?,
+                title: row.get(2)?,
+                year: row.get(3)?,
+                plot: row.get(4)?,
+                rating: row.get(5)?,
+                genres: row.get(6)?,
+                director: row.get(7)?,
+                actors: row.get(8)?,
+                poster_path: row.get(9)?,
+                fanart_path: row.get(10)?,
+                thumbnail_path: row.get(11)?,
+                file_size: row.get(12)?,
+                duration_seconds: row.get(13)?,
+                added_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                last_accessed: row.get(16)?,
+            })
+        })?;
+
+        let result: Result<Vec<Movie>, rusqlite::Error> = movies.collect();
+        
+        debug!("[数据库] 评级范围查询完成: {} 条结果", result.as_ref().map(|r| r.len()).unwrap_or(0));
+        
+        result
     }
 }

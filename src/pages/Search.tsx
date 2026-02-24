@@ -15,22 +15,18 @@ interface SearchState {
   lastQuery: string;
   isSearching: boolean;
   hasSearched: boolean;
-  results: any[];
-  resultCount: number;
   error: string | null;
   lastSearchTime: number;
 }
 
 export default function Search() {
   const navigate = useNavigate();
-  const { movies, isLoading, searchMovies, reset, fetchMovies } = useMovieStore();
+  const { movies, searchMovies, reset, fetchMovies } = useMovieStore();
   const [state, setState] = useState<SearchState>({
     query: '',
     lastQuery: '',
     isSearching: false,
     hasSearched: false,
-    results: [],
-    resultCount: 0,
     error: null,
     lastSearchTime: 0,
   });
@@ -47,8 +43,6 @@ export default function Search() {
           ...prev,
           isSearching: false,
           hasSearched: false,
-          results: [],
-          resultCount: 0,
           error: null,
         }));
         return;
@@ -69,25 +63,13 @@ export default function Search() {
       }));
 
       try {
-        const movies = await searchMovies(searchQuery);
-        logger.info('搜索完成，找到', movies.length, '个结果');
+        await searchMovies(searchQuery);
+        logger.info('搜索完成');
         
-        if (movies.length > 0) {
-          logger.debug('前3个搜索结果:', movies.slice(0, 3).map(m => ({
-            id: m.id,
-            title: m.title,
-            file_path: m.file_path
-          })));
-        }
-
-        searchManager.updateCache(searchQuery, movies);
-
         setState(prev => ({
           ...prev,
           isSearching: false,
           hasSearched: true,
-          results: movies,
-          resultCount: movies.length,
           error: null,
         }));
       } catch (error) {
@@ -128,8 +110,8 @@ export default function Search() {
             </div>
           </div>
         ) : state.query.trim() ? (
-          state.results.length > 0 ? (
-            <MovieGrid movies={state.results} />
+          movies.length > 0 ? (
+            <MovieGrid movies={movies} />
           ) : state.error ? (
             <div className="flex items-center justify-center h-96">
               <p className="text-red-400 text-lg">{state.error}</p>

@@ -21,7 +21,7 @@ class SearchManager {
     }
 
     if (!query.trim()) {
-      this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = window.setTimeout(() => {
         onSearch('');
       }, SEARCH_DEBOUNCE_MS);
       return;
@@ -34,10 +34,10 @@ class SearchManager {
       return;
     }
 
-    this.debounceTimer = setTimeout(() => {
+    this.debounceTimer = window.setTimeout(() => {
       logger.debug('执行搜索:', query);
       onSearch(query);
-    }, SEARCH_DEBOUNCE_MS) as unknown as number;
+    }, SEARCH_DEBOUNCE_MS);
   }
 
   updateCache(query: string, results: Movie[]): void {

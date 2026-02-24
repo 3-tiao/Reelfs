@@ -497,6 +497,26 @@ async fn show_in_file_manager(file_path: String) -> Result<(), String> {
     result
 }
 
+#[tauri::command]
+async fn set_movie_rating(
+    state: tauri::State<'_, AppState>,
+    movie_id: i64,
+    rating: Option<f64>,
+) -> Result<(), String> {
+    info!("[API] set_movie_rating 调用: movie_id={}, rating={:?}", movie_id, rating);
+    
+    let db = state.db.lock().unwrap();
+    db.set_movie_rating(movie_id, rating)
+        .map_err(|e| {
+            error!("[API] 设置电影评级失败: {}", e);
+            format!("Failed to set movie rating: {}", e)
+        })?;
+    
+    info!("[API] 电影评级设置成功: movie_id={}, rating={:?}", movie_id, rating);
+    
+    Ok(())
+}
+
 fn get_config_path() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
     format!("{}/.reelfs/config.json", home)
@@ -574,6 +594,7 @@ fn main() {
             clear_cache,
             update_thumbnail_path,
             show_in_file_manager,
+            set_movie_rating,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -120,3 +120,7 @@ export const onScanComplete = (callback: () => void) => {
 export const showInFileManager = async (filePath: string): Promise<void> => {
   return await invoke("show_in_file_manager", { filePath });
 };
+
+export const setMovieRating = async (movieId: number, rating: number | null): Promise<void> => {
+  return await invoke("set_movie_rating", { movieId, rating });
+};

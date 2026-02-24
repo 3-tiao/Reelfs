@@ -1,5 +1,4 @@
 import { readBinaryFile, writeBinaryFile, exists } from '@tauri-apps/api/fs';
-import { join } from '@tauri-apps/api/path';
 import { invoke } from '@tauri-apps/api/tauri';
 
 export async function generateThumbnail(
