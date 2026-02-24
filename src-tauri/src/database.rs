@@ -222,7 +222,7 @@ impl Database {
     }
 
     pub fn search_movies(&self, query: &str) -> Result<Vec<Movie>> {
-        debug!("[数据库] 全文搜索: query={}", query);
+        debug!("[数据库] 搜索: query={}", query);
         
         let start_time = std::time::Instant::now();
         
@@ -231,8 +231,7 @@ impl Database {
                     m.poster_path, m.fanart_path, m.thumbnail_path, m.file_size, m.duration_seconds,
                     m.added_at, m.updated_at, m.last_accessed
              FROM movies m
-             JOIN movie_fts ON movie_fts.rowid = m.id
-             WHERE movie_fts MATCH ?1
+             WHERE m.title LIKE '%' || ?1 || '%'
              ORDER BY m.added_at DESC"
         )?;
 
