@@ -4,8 +4,6 @@ import react from "@vitejs/plugin-react";
 export default defineConfig(async () => {
   const env = loadEnv("development", process.cwd());
 
-  console.log('[Vite] 加载环境变量:', env);
-
   return {
     plugins: [react()],
     clearScreen: false,

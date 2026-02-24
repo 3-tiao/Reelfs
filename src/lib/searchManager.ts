@@ -1,4 +1,7 @@
 import { Movie } from '../services/tauri';
+import { createLogger } from './logger';
+
+const logger = createLogger('SearchManager');
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_CACHE_TTL_MS = 5000;
@@ -27,14 +30,14 @@ class SearchManager {
     const cached = this.searchCache.get(query);
     const now = Date.now();
     if (cached && (now - cached.timestamp) < SEARCH_CACHE_TTL_MS) {
-      console.log('[SearchManager] 使用缓存结果:', query);
+      logger.debug('使用缓存结果:', query);
       return;
     }
 
     this.debounceTimer = setTimeout(() => {
-      console.log('[SearchManager] 执行搜索:', query);
+      logger.debug('执行搜索:', query);
       onSearch(query);
-    }, SEARCH_DEBOUNCE_MS);
+    }, SEARCH_DEBOUNCE_MS) as unknown as number;
   }
 
   updateCache(query: string, results: Movie[]): void {

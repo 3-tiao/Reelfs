@@ -19,7 +19,6 @@ class Logger {
   constructor(module: string, config?: Partial<LogConfig>) {
     this.module = module;
     const logLevel = this.getLogLevelFromEnv();
-    console.log('[Logger] 初始化日志系统:', { module, logLevel, env: import.meta.env.VITE_LOG_LEVEL });
     
     this.config = {
       level: logLevel,
