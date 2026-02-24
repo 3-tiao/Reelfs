@@ -17,6 +17,12 @@ impl Database {
         }
 
         let conn = Connection::open(db_path)?;
+        
+        debug!("[数据库] 设置为读写模式");
+        conn.execute("PRAGMA journal_mode=WAL", [])?;
+        conn.execute("PRAGMA synchronous=NORMAL", [])?;
+        conn.execute("PRAGMA busy_timeout=5000", [])?;
+        
         let db = Database { conn };
         db.init_schema()?;
         
