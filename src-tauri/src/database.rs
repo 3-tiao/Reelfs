@@ -120,14 +120,14 @@ impl Database {
 
     pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>)]) -> Result<usize> {
         let start_time = std::time::Instant::now();
-        debug!("[数据库] 开始批量插入: {} 条记录", movies.len());
+        debug!("[数据库] 开始批量插入/更新: {} 条记录", movies.len());
         
         let tx = self.conn.unchecked_transaction()?;
         let mut count = 0;
 
         for movie in movies {
             let result = tx.execute(
-                "INSERT OR IGNORE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds)
+                "INSERT OR REPLACE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     &movie.0, &movie.1, movie.2, &movie.3, movie.4, 
@@ -143,7 +143,7 @@ impl Database {
         tx.commit()?;
         
         let elapsed = start_time.elapsed();
-        info!("[数据库] 批量插入完成: {}/{} 条，耗时: {}ms", count, movies.len(), elapsed.as_millis());
+        info!("[数据库] 批量插入/更新完成: {}/{} 条，耗时: {}ms", count, movies.len(), elapsed.as_millis());
         
         Ok(count)
     }
