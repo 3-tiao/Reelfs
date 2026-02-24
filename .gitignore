@@ -31,3 +31,7 @@ src-tauri/target
 
 # Cache
 cache
+
+# Temporary files
+reelfs@*
+tauri
