@@ -5,19 +5,25 @@ import { useMovieStore } from "../stores/movieStore";
 import MovieGrid from "../components/MovieGrid";
 import ScanProgress from "../components/ScanProgress";
 import SearchBar from "../components/SearchBar";
+import { createLogger } from "../lib/logger";
+
+const logger = createLogger('HomePage');
 
 export default function Home() {
   const navigate = useNavigate();
   const { movies, isLoading, fetchMovies, searchMovies, reset } = useMovieStore();
 
   useEffect(() => {
+    logger.debug('页面初始化，开始加载电影列表');
     fetchMovies(0);
   }, []);
 
   const handleSearch = (query: string) => {
     if (query.trim()) {
+      logger.info('开始搜索:', query);
       searchMovies(query);
     } else {
+      logger.info('清空搜索，重新加载完整列表');
       reset();
       fetchMovies(0);
     }

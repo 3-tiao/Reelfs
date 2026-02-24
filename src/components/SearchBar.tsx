@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Search, X } from "lucide-react";
+import { createLogger } from "../lib/logger";
+
+const logger = createLogger('SearchBar');
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
@@ -9,18 +12,15 @@ interface SearchBarProps {
 export default function SearchBar({ onSearch, placeholder = "Search movies..." }: SearchBarProps) {
   const [query, setQuery] = useState("");
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (query.trim()) {
-        onSearch(query);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [query, onSearch]);
+  const handleChange = (value: string) => {
+    setQuery(value);
+    logger.debug('搜索框输入:', value);
+    onSearch(value);
+  };
 
   const handleClear = () => {
     setQuery("");
+    logger.debug('清空搜索框');
     onSearch("");
   };
 
@@ -32,7 +32,7 @@ export default function SearchBar({ onSearch, placeholder = "Search movies..." }
       <input
         type="text"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
         placeholder={placeholder}
         className="w-full bg-gray-800 text-white pl-10 pr-10 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
