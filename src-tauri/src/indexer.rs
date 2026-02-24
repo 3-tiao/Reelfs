@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use log::{info, debug, warn, error};
+use log::{info, debug};
 
 const VIDEO_EXTENSIONS: [&str; 8] = ["mkv", "mp4", "avi", "mov", "wmv", "flv", "webm", "m4v"];
 

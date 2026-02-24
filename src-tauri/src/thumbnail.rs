@@ -1,7 +1,7 @@
 use image::{ImageFormat, ImageResult, DynamicImage, GenericImageView};
 use std::path::Path;
 use std::fs;
-use log::{info, debug, warn, error};
+use log::{info, debug, error};
 
 const THUMBNAIL_WIDTH: u32 = 300;
 const THUMBNAIL_HEIGHT: u32 = 450;

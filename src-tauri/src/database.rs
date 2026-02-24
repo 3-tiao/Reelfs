@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::path::Path;
 use crate::models::{Movie, PlayHistory};
-use log::{info, debug, warn, error};
+use log::{info, debug, error};
 
 pub struct Database {
     conn: Connection,
