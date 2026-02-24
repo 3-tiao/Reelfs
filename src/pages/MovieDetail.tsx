@@ -155,6 +155,18 @@ export default function MovieDetail() {
                 )}
               </div>
 
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handlePlay}
+                  className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 rounded-xl font-semibold text-lg transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40"
+                >
+                  <Play className="w-6 h-6" fill="currentColor" />
+                  {history && history.last_position > 0
+                    ? `Continue Playing (${Math.floor(history.last_position / 60)}m)`
+                    : "Play"}
+                </button>
+              </div>
+              <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-3 font-medium">Rating</h3>
               {movie.rating === undefined || movie.rating === null ? (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1">
@@ -229,17 +241,12 @@ export default function MovieDetail() {
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={handlePlay}
-                  className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 rounded-xl font-semibold text-lg transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40"
-                >
-                  <Play className="w-6 h-6" fill="currentColor" />
-                  {history && history.last_position > 0
-                    ? `Continue Playing (${Math.floor(history.last_position / 60)}m)`
-                    : "Play"}
-                </button>
-              </div>
+              {movie.actors && (
+                <div>
+                  <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-3 font-medium">Cast</h3>
+                  <p className="text-white text-lg">{movie.actors}</p>
+                </div>
+              )}
 
               {movie.genres && (
                 <div>
@@ -269,13 +276,6 @@ export default function MovieDetail() {
                   <div>
                     <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2 font-medium">Director</h3>
                     <p className="text-white text-lg">{movie.director}</p>
-                  </div>
-                )}
-
-                {movie.actors && (
-                  <div>
-                    <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2 font-medium">Cast</h3>
-                    <p className="text-white text-lg">{movie.actors}</p>
                   </div>
                 )}
               </div>
