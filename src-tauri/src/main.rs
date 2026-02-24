@@ -27,9 +27,22 @@ async fn get_movies(
     offset: i32,
     limit: i32,
 ) -> Result<Vec<Movie>, String> {
+    info!("[API] get_movies 调用: offset={}, limit={}", offset, limit);
+    
     let db = state.db.lock().unwrap();
-    db.get_movies(offset, limit)
-        .map_err(|e| format!("Database error: {}", e))
+    let movies = db.get_movies(offset, limit)
+        .map_err(|e| {
+            error!("[API] get_movies 失败: {}", e);
+            format!("Database error: {}", e)
+        })?;
+    
+    info!("[API] get_movies 返回: {} 个电影", movies.len());
+    if !movies.is_empty() {
+        info!("[API] 第一个电影: id={}, title={}, thumbnail_path={:?}", 
+              movies[0].id, movies[0].title, movies[0].thumbnail_path);
+    }
+    
+    Ok(movies)
 }
 
 #[tauri::command]
@@ -404,6 +417,26 @@ async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn update_thumbnail_path(
+    state: tauri::State<'_, AppState>,
+    movie_id: i64,
+    thumbnail_path: String,
+) -> Result<(), String> {
+    info!("[缩略图生成] 更新缩略图路径: movie_id={}, path={}", movie_id, thumbnail_path);
+    
+    let db = state.db.lock().unwrap();
+    db.update_thumbnail_path(movie_id, &thumbnail_path)
+        .map_err(|e| {
+            error!("[缩略图生成] 更新缩略图路径失败: {}", e);
+            format!("Failed to update thumbnail path: {}", e)
+        })?;
+    
+    info!("[缩略图生成] 缩略图路径更新成功: movie_id={}", movie_id);
+    
+    Ok(())
+}
+
 fn get_config_path() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
     format!("{}/.reelfs/config.json", home)
@@ -479,6 +512,7 @@ fn main() {
             update_config,
             generate_thumbnail,
             clear_cache,
+            update_thumbnail_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

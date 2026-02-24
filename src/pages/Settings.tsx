@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, HardDrive } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, HardDrive, Image } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
-import { startInitialScan, clearCache, getStats, Stats } from "../services/tauri";
+import { startInitialScan, clearCache, getStats, Stats, getMovies } from "../services/tauri";
+import { batchGenerateThumbnails } from "../services/thumbnail";
 import { open } from "@tauri-apps/api/dialog";
 
 export default function Settings() {
@@ -12,6 +13,8 @@ export default function Settings() {
   const [cacheDir, setCacheDir] = useState<string>("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
+  const [thumbnailProgress, setThumbnailProgress] = useState({ current: 0, total: 0 });
 
   useEffect(() => {
     loadConfig();
@@ -108,6 +111,41 @@ export default function Settings() {
       } catch (error) {
         alert("Failed to clear cache: " + error);
       }
+    }
+  };
+
+  const handleBatchGenerateThumbnails = async () => {
+    if (!cacheDir) {
+      alert("Please configure cache directory first!");
+      return;
+    }
+
+    try {
+      setIsGeneratingThumbnails(true);
+      setThumbnailProgress({ current: 0, total: 0 });
+
+      const movies = await getMovies(0, 1000);
+      const moviesWithPosters = movies.filter(m => m.poster_path);
+
+      console.log('[缩略图生成] 找到', moviesWithPosters.length, '个有海报的电影');
+
+      await batchGenerateThumbnails(
+        moviesWithPosters.map(m => ({ id: m.id, poster_path: m.poster_path })),
+        cacheDir,
+        (current, total) => {
+          setThumbnailProgress({ current, total });
+        }
+      );
+
+      alert(`Thumbnail generation completed! ${moviesWithPosters.length} thumbnails generated.`);
+      loadStats();
+      
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to generate thumbnails:", error);
+      alert("Failed to generate thumbnails: " + error);
+    } finally {
+      setIsGeneratingThumbnails(false);
     }
   };
 
@@ -228,6 +266,16 @@ export default function Settings() {
               className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
             >
               {isScanning ? "Scanning..." : "Start Full Scan"}
+            </button>
+            <button
+              onClick={handleBatchGenerateThumbnails}
+              disabled={isGeneratingThumbnails || !cacheDir}
+              className="w-full px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
+            >
+              {isGeneratingThumbnails 
+                ? `Generating Thumbnails... (${thumbnailProgress.current}/${thumbnailProgress.total})`
+                : "Generate All Thumbnails"
+              }
             </button>
             <button
               onClick={handleClearCache}

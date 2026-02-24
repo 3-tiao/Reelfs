@@ -25,10 +25,16 @@ export const useMovieStore = create<MovieStore>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const movies = await getMovies(offset, 200);
-      console.log('Fetched movies:', movies.length, movies);
+      console.log('[MovieStore] 获取电影数据:', movies.length, '个电影');
+      console.log('[MovieStore] 前3个电影:', movies.slice(0, 3).map(m => ({
+        id: m.id,
+        title: m.title,
+        thumbnail_path: m.thumbnail_path,
+        poster_path: m.poster_path
+      })));
       set({ movies, isLoading: false });
     } catch (error) {
-      console.error('Failed to fetch movies:', error);
+      console.error('[MovieStore] 获取电影失败:', error);
       set({ error: String(error), isLoading: false });
     }
   },

@@ -97,6 +97,10 @@ export const generateThumbnail = async (movieId: number): Promise<string> => {
   return await invoke("generate_thumbnail", { movieId });
 };
 
+export const batchGenerateThumbnails = async (movieIds: number[]): Promise<void> => {
+  return await invoke("batch_generate_thumbnails", { movieIds });
+};
+
 export const clearCache = async (): Promise<void> => {
   return await invoke("clear_cache");
 };

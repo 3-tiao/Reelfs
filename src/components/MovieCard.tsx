@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film } from "lucide-react";
-import { convertFileSrc } from "@tauri-apps/api/tauri";
+import { readBinaryFile } from "@tauri-apps/api/fs";
 
 interface MovieCardProps {
   movie: Movie;
@@ -17,10 +17,9 @@ export default function MovieCard({ movie }: MovieCardProps) {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          if (movie.thumbnail_path) {
-            setImageSrc(convertFileSrc(movie.thumbnail_path));
-          } else if (movie.poster_path) {
-            setImageSrc(convertFileSrc(movie.poster_path));
+          const imagePath = movie.thumbnail_path || movie.poster_path;
+          if (imagePath) {
+            loadLocalImage(imagePath);
           }
           observer.disconnect();
         }
@@ -34,6 +33,31 @@ export default function MovieCard({ movie }: MovieCardProps) {
 
     return () => observer.disconnect();
   }, [movie.thumbnail_path, movie.poster_path]);
+
+  const loadLocalImage = async (path: string) => {
+    try {
+      console.log('[MovieCard] 开始加载图片:', path);
+      console.log('[MovieCard] 电影信息:', { id: movie.id, title: movie.title });
+      
+      const data = await readBinaryFile(path);
+      console.log('[MovieCard] 文件读取成功，大小:', data.length, 'bytes');
+      
+      const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+      console.log('[MovieCard] Blob URL 创建成功:', url);
+      
+      setImageSrc(url);
+      console.log('[MovieCard] 图片加载完成');
+    } catch (error) {
+      console.error('[MovieCard] 加载图片失败:', path, error);
+      console.error('[MovieCard] 错误详情:', {
+        path,
+        error: String(error),
+        movieId: movie.id,
+        movieTitle: movie.title
+      });
+    }
+  };
 
   return (
     <div
