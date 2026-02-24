@@ -91,6 +91,8 @@ fn handle_fs_event(db: &Database, event: Event) {
                     let actors = metadata.as_ref().and_then(|m| m.actors.as_deref());
                     let poster = metadata.as_ref().and_then(|m| m.poster.as_deref());
                     let fanart = metadata.as_ref().and_then(|m| m.fanart.as_deref());
+                    let file_size = get_file_size(&path);
+                    let duration_seconds = None;
                     
                     let file_path = path.to_string_lossy().to_string();
                     
@@ -105,6 +107,8 @@ fn handle_fs_event(db: &Database, event: Event) {
                         actors,
                         poster,
                         fanart,
+                        file_size,
+                        duration_seconds,
                     ) {
                         error!("[文件监听] 新增电影失败: {} - {}", file_path, e);
                     } else {

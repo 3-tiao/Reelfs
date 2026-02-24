@@ -109,13 +109,14 @@ impl Database {
     pub fn insert_movie(&self, file_path: &str, title: &str, year: Option<i32>, 
                        plot: Option<&str>, rating: Option<f64>, genres: Option<&str>,
                        director: Option<&str>, actors: Option<&str>, 
-                       poster_path: Option<&str>, fanart_path: Option<&str>) -> Result<i64> {
+                       poster_path: Option<&str>, fanart_path: Option<&str>,
+                       file_size: Option<i64>, duration_seconds: Option<i64>) -> Result<i64> {
         debug!("[数据库] 插入电影: title={}, file_path={}", title, file_path);
         
         self.conn.execute(
-            "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path],
+            "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds],
         )?;
         
         let id = self.conn.last_insert_rowid();
@@ -124,7 +125,7 @@ impl Database {
         Ok(id)
     }
 
-    pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)]) -> Result<usize> {
+    pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>)]) -> Result<usize> {
         let start_time = std::time::Instant::now();
         debug!("[数据库] 开始批量插入: {} 条记录", movies.len());
         
@@ -133,11 +134,12 @@ impl Database {
 
         for movie in movies {
             let result = tx.execute(
-                "INSERT OR IGNORE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT OR IGNORE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     &movie.0, &movie.1, movie.2, &movie.3, movie.4, 
-                    &movie.5, &movie.6, &movie.7, &movie.8, &movie.9
+                    &movie.5, &movie.6, &movie.7, &movie.8, &movie.9,
+                    movie.10, movie.11
                 ],
             );
             if result.is_ok() {
