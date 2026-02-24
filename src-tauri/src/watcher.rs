@@ -2,7 +2,7 @@ use notify::{Watcher, RecursiveMode, Event, EventKind, event::*};
 use std::sync::mpsc::channel;
 use std::path::Path;
 use std::time::Duration;
-use crate::indexer::{is_video_file, find_nfo_for_video, parse_nfo_file, extract_title_from_filename};
+use crate::indexer::{is_video_file, find_nfo_for_video, parse_nfo_file, extract_title_from_filename, get_file_size};
 use crate::database::Database;
 use log::{info, debug, warn, error};
 
