@@ -1,6 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::path::Path;
 use crate::models::{Movie, PlayHistory};
+use log::{info, debug, warn, error};
 
 pub struct Database {
     conn: Connection,
@@ -8,17 +9,25 @@ pub struct Database {
 
 impl Database {
     pub fn new(db_path: &str) -> Result<Self> {
+        info!("[数据库] 初始化数据库: {}", db_path);
+        
         if let Some(parent) = Path::new(db_path).parent() {
+            debug!("[数据库] 创建数据库目录: {:?}", parent);
             std::fs::create_dir_all(parent).ok();
         }
 
         let conn = Connection::open(db_path)?;
         let db = Database { conn };
         db.init_schema()?;
+        
+        info!("[数据库] 数据库初始化成功: {}", db_path);
+        
         Ok(db)
     }
 
     fn init_schema(&self) -> Result<()> {
+        debug!("[数据库] 初始化数据库表结构");
+        
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS movies (
@@ -84,6 +93,9 @@ impl Database {
             END;
             "
         )?;
+        
+        debug!("[数据库] 数据库表结构初始化完成");
+        
         Ok(())
     }
 
@@ -91,15 +103,24 @@ impl Database {
                        plot: Option<&str>, rating: Option<f64>, genres: Option<&str>,
                        director: Option<&str>, actors: Option<&str>, 
                        poster_path: Option<&str>, fanart_path: Option<&str>) -> Result<i64> {
+        debug!("[数据库] 插入电影: title={}, file_path={}", title, file_path);
+        
         self.conn.execute(
             "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        
+        let id = self.conn.last_insert_rowid();
+        info!("[数据库] 电影插入成功: id={}, title={}", id, title);
+        
+        Ok(id)
     }
 
     pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)]) -> Result<usize> {
+        let start_time = std::time::Instant::now();
+        debug!("[数据库] 开始批量插入: {} 条记录", movies.len());
+        
         let tx = self.conn.unchecked_transaction()?;
         let mut count = 0;
 
@@ -118,10 +139,16 @@ impl Database {
         }
 
         tx.commit()?;
+        
+        let elapsed = start_time.elapsed();
+        info!("[数据库] 批量插入完成: {}/{} 条，耗时: {}ms", count, movies.len(), elapsed.as_millis());
+        
         Ok(count)
     }
 
     pub fn get_movies(&self, offset: i32, limit: i32) -> Result<Vec<Movie>> {
+        debug!("[数据库] 获取电影列表: offset={}, limit={}", offset, limit);
+        
         let mut stmt = self.conn.prepare(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
@@ -155,7 +182,9 @@ impl Database {
     }
 
     pub fn get_movie_by_id(&self, id: i64) -> Result<Movie> {
-        self.conn.query_row(
+        debug!("[数据库] 获取电影详情: id={}", id);
+        
+        let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
                     added_at, updated_at, last_accessed
@@ -182,10 +211,21 @@ impl Database {
                     last_accessed: row.get(16)?,
                 })
             }
-        )
+        );
+        
+        match &movie {
+            Ok(m) => debug!("[数据库] 电影查询成功: id={}, title={}", m.id, m.title),
+            Err(e) => debug!("[数据库] 电影查询失败: {}", e),
+        }
+        
+        movie
     }
 
     pub fn search_movies(&self, query: &str) -> Result<Vec<Movie>> {
+        debug!("[数据库] 全文搜索: query={}", query);
+        
+        let start_time = std::time::Instant::now();
+        
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors, 
                     m.poster_path, m.fanart_path, m.thumbnail_path, m.file_size, m.duration_seconds,
@@ -218,18 +258,31 @@ impl Database {
             })
         })?;
 
-        movies.collect()
+        let result: Result<Vec<Movie>, rusqlite::Error> = movies.collect();
+        
+        let elapsed = start_time.elapsed();
+        debug!("[数据库] 搜索完成: {} 条结果，耗时: {}ms", 
+               result.as_ref().map(|r| r.len()).unwrap_or(0), elapsed.as_millis());
+        
+        result
     }
 
     pub fn update_thumbnail_path(&self, movie_id: i64, thumbnail_path: &str) -> Result<()> {
+        debug!("[数据库] 更新缩略图路径: movie_id={}, path={}", movie_id, thumbnail_path);
+        
         self.conn.execute(
             "UPDATE movies SET thumbnail_path = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
             params![thumbnail_path, movie_id],
         )?;
+        
+        info!("[数据库] 缩略图路径更新成功: movie_id={}", movie_id);
+        
         Ok(())
     }
 
     pub fn get_play_history(&self, movie_id: i64) -> Result<Option<PlayHistory>> {
+        debug!("[数据库] 获取播放历史: movie_id={}", movie_id);
+        
         let result = self.conn.query_row(
             "SELECT id, movie_id, last_position, last_played, play_count 
              FROM play_history WHERE movie_id = ?1",
@@ -246,13 +299,25 @@ impl Database {
         );
 
         match result {
-            Ok(history) => Ok(Some(history)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e),
+            Ok(history) => {
+                debug!("[数据库] 播放历史查询成功: movie_id={}, last_position={}s", 
+                       history.movie_id, history.last_position);
+                Ok(Some(history))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                debug!("[数据库] 无播放历史: movie_id={}", movie_id);
+                Ok(None)
+            }
+            Err(e) => {
+                error!("[数据库] 播放历史查询失败: {}", e);
+                Err(e)
+            }
         }
     }
 
     pub fn update_play_history(&self, movie_id: i64, position: f64) -> Result<()> {
+        debug!("[数据库] 更新播放历史: movie_id={}, position={}s", movie_id, position);
+        
         let existing = self.get_play_history(movie_id)?;
 
         if let Some(history) = existing {
@@ -261,22 +326,39 @@ impl Database {
                  WHERE movie_id = ?3",
                 params![position, history.play_count + 1, movie_id],
             )?;
+            debug!("[数据库] 播放历史更新成功: movie_id={}, play_count={}", 
+                   movie_id, history.play_count + 1);
         } else {
             self.conn.execute(
                 "INSERT INTO play_history (movie_id, last_position) VALUES (?1, ?2)",
                 params![movie_id, position],
             )?;
+            debug!("[数据库] 播放历史插入成功: movie_id={}", movie_id);
         }
 
         Ok(())
     }
 
     pub fn get_total_count(&self) -> Result<i64> {
-        self.conn.query_row("SELECT COUNT(*) FROM movies", [], |row| row.get(0))
+        debug!("[数据库] 获取电影总数");
+        
+        let count = self.conn.query_row("SELECT COUNT(*) FROM movies", [], |row| row.get(0));
+        
+        match &count {
+            Ok(c) => debug!("[数据库] 电影总数: {}", c),
+            Err(e) => debug!("[数据库] 获取总数失败: {}", e),
+        }
+        
+        count
     }
 
     pub fn delete_movie_by_path(&self, file_path: &str) -> Result<()> {
+        debug!("[数据库] 删除电影: file_path={}", file_path);
+        
         self.conn.execute("DELETE FROM movies WHERE file_path = ?1", params![file_path])?;
+        
+        info!("[数据库] 电影删除成功: {}", file_path);
+        
         Ok(())
     }
 }

@@ -18,6 +18,13 @@ export default function MovieGrid({ movies }: MovieGridProps) {
   const columnCount = Math.floor(dimensions.width / cardWidth);
   const rowCount = Math.ceil(movies.length / columnCount);
 
+  console.log('MovieGrid render:', { 
+    moviesCount: movies.length, 
+    columnCount, 
+    rowCount,
+    dimensions 
+  });
+
   useEffect(() => {
     const handleResize = () => {
       setDimensions({

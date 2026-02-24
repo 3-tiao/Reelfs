@@ -9,6 +9,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { config, loadConfig, saveConfig } = useSettingsStore();
   const [nasPaths, setNasPaths] = useState<string[]>([]);
+  const [cacheDir, setCacheDir] = useState<string>("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [isScanning, setIsScanning] = useState(false);
 
@@ -20,6 +21,7 @@ export default function Settings() {
   useEffect(() => {
     if (config) {
       setNasPaths(config.nas_paths);
+      setCacheDir(config.cache_dir);
     }
   }, [config]);
 
@@ -49,6 +51,21 @@ export default function Settings() {
     }
   };
 
+  const handleSelectCacheDir = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+      });
+
+      if (selected && typeof selected === "string") {
+        setCacheDir(selected);
+      }
+    } catch (error) {
+      console.error("Failed to select cache directory:", error);
+    }
+  };
+
   const handleRemovePath = (index: number) => {
     setNasPaths(nasPaths.filter((_, i) => i !== index));
   };
@@ -59,6 +76,7 @@ export default function Settings() {
         await saveConfig({
           ...config,
           nas_paths: nasPaths,
+          cache_dir: cacheDir,
         });
         alert("Settings saved successfully!");
       } catch (error) {
@@ -175,6 +193,26 @@ export default function Settings() {
             <Plus className="w-5 h-5" />
             Add Path
           </button>
+        </div>
+
+        {/* Cache Directory */}
+        <div className="bg-gray-900 rounded-lg p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <HardDrive className="w-5 h-5" />
+            Cache Directory
+          </h2>
+          <div className="space-y-3">
+            <div className="bg-gray-800 rounded-lg p-3">
+              <span className="text-sm font-mono truncate block">{cacheDir || "Not configured"}</span>
+            </div>
+            <button
+              onClick={handleSelectCacheDir}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+            >
+              <FolderOpen className="w-5 h-5" />
+              Select Cache Directory
+            </button>
+          </div>
         </div>
 
         {/* Actions */}

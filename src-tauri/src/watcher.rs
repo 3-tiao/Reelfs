@@ -4,11 +4,14 @@ use std::path::Path;
 use std::time::Duration;
 use crate::indexer::{is_video_file, find_nfo_for_video, parse_nfo_file, extract_title_from_filename};
 use crate::database::Database;
+use log::{info, debug, warn, error};
 
 pub fn start_watcher(
     paths: Vec<String>,
     db_path: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    info!("[文件监听] 监听器启动: {:?}", paths);
+    
     let (tx, rx) = channel();
     
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
@@ -20,14 +23,22 @@ pub fn start_watcher(
     for path in &paths {
         if Path::new(path).exists() {
             watcher.watch(Path::new(path), RecursiveMode::Recursive)?;
+            info!("[文件监听] 开始监听路径: {}", path);
+        } else {
+            warn!("[文件监听] 路径不存在，跳过: {}", path);
         }
     }
     
     std::thread::spawn(move || {
+        info!("[文件监听] 监听线程启动");
+        
         let db = match Database::new(&db_path) {
-            Ok(db) => db,
+            Ok(db) => {
+                info!("[文件监听] 数据库连接成功");
+                db
+            }
             Err(e) => {
-                eprintln!("Failed to open database in watcher: {}", e);
+                error!("[文件监听] 数据库连接失败: {}", e);
                 return;
             }
         };
@@ -38,7 +49,10 @@ pub fn start_watcher(
                     handle_fs_event(&db, event);
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    warn!("[文件监听] 监听通道断开");
+                    break;
+                }
             }
         }
     });
@@ -49,12 +63,19 @@ pub fn start_watcher(
 }
 
 fn handle_fs_event(db: &Database, event: Event) {
+    debug!("[文件监听] 检测到文件系统事件: {:?}", event.kind);
+    
     match event.kind {
         EventKind::Create(CreateKind::File) | EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
             for path in event.paths {
                 if is_video_file(&path) {
+                    debug!("[文件监听] 检测到新视频文件: {:?}", path);
+                    
                     let metadata = find_nfo_for_video(&path)
-                        .and_then(|nfo_path| parse_nfo_file(&nfo_path));
+                        .and_then(|nfo_path| {
+                            debug!("[文件监听] 找到NFO文件: {:?}", nfo_path);
+                            parse_nfo_file(&nfo_path)
+                        });
                     
                     let title = if let Some(ref meta) = metadata {
                         meta.title.clone()
@@ -85,9 +106,9 @@ fn handle_fs_event(db: &Database, event: Event) {
                         poster,
                         fanart,
                     ) {
-                        eprintln!("Failed to insert movie {}: {}", file_path, e);
+                        error!("[文件监听] 新增电影失败: {} - {}", file_path, e);
                     } else {
-                        println!("Added new movie: {}", title);
+                        info!("[文件监听] 新增电影: {}", title);
                     }
                 }
             }
@@ -95,15 +116,19 @@ fn handle_fs_event(db: &Database, event: Event) {
         EventKind::Remove(RemoveKind::File) => {
             for path in event.paths {
                 if is_video_file(&path) {
+                    debug!("[文件监听] 检测到视频文件删除: {:?}", path);
+                    
                     let file_path = path.to_string_lossy().to_string();
                     if let Err(e) = db.delete_movie_by_path(&file_path) {
-                        eprintln!("Failed to delete movie {}: {}", file_path, e);
+                        error!("[文件监听] 删除电影失败: {} - {}", file_path, e);
                     } else {
-                        println!("Removed movie: {}", file_path);
+                        info!("[文件监听] 删除电影: {}", file_path);
                     }
                 }
             }
         }
-        _ => {}
+        _ => {
+            debug!("[文件监听] 忽略事件: {:?}", event.kind);
+        }
     }
 }

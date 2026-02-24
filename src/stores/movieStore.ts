@@ -25,8 +25,10 @@ export const useMovieStore = create<MovieStore>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const movies = await getMovies(offset, 200);
+      console.log('Fetched movies:', movies.length, movies);
       set({ movies, isLoading: false });
     } catch (error) {
+      console.error('Failed to fetch movies:', error);
       set({ error: String(error), isLoading: false });
     }
   },

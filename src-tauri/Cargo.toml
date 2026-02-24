@@ -22,6 +22,9 @@ rayon = "1.8"
 image = "0.24"
 tokio = { version = "1", features = ["full"] }
 webp = "0.2"
+log = "0.4"
+env_logger = "0.11"
+chrono = { version = "0.4", features = ["serde"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
