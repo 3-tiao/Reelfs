@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, params, ToSql};
+use rusqlite::{Connection, Result, params, ToSql, OpenFlags};
 use std::path::Path;
 use crate::models::{Movie, PlayHistory};
 use log::{info, debug, warn, error};
@@ -16,7 +16,8 @@ impl Database {
             std::fs::create_dir_all(parent).ok();
         }
 
-        let conn = Connection::open(db_path)?;
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
+        let conn = Connection::open_with_flags(db_path, flags)?;
         
         debug!("[数据库] 设置为读写模式");
         conn.execute("PRAGMA journal_mode=WAL", [])?;
