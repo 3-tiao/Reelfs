@@ -14,6 +14,10 @@ impl Database {
         if let Some(parent) = Path::new(db_path).parent() {
             debug!("[数据库] 创建数据库目录: {:?}", parent);
             std::fs::create_dir_all(parent).ok();
+            
+            if let Ok(metadata) = std::fs::metadata(parent) {
+                debug!("[数据库] 目录权限: {:?}", metadata.permissions());
+            }
         }
 
         let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;

@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::fs;
 use std::path::Path;
 use log::{info, debug, warn, error};
+use tauri::api::path::app_data_dir;
 
 struct AppState {
     db: Arc<Mutex<Database>>,
@@ -517,9 +518,18 @@ async fn set_movie_rating(
     Ok(())
 }
 
+fn get_app_data_dir() -> String {
+    if let Some(app_dir) = app_data_dir(&tauri::Config::default()) {
+        app_dir.to_string_lossy().to_string()
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
+        format!("{}/.reelfs", home)
+    }
+}
+
 fn get_config_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
-    format!("{}/.reelfs/config.json", home)
+    let app_data = get_app_data_dir();
+    format!("{}/config.json", app_data)
 }
 
 fn load_config() -> AppConfig {
