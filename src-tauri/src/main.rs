@@ -437,6 +437,59 @@ async fn update_thumbnail_path(
     Ok(())
 }
 
+#[tauri::command]
+async fn show_in_file_manager(file_path: String) -> Result<(), String> {
+    info!("[文件管理器] 打开文件位置: {}", file_path);
+    
+    let path = Path::new(&file_path);
+    
+    if !path.exists() {
+        error!("[文件管理器] 文件不存在: {}", file_path);
+        return Err("File does not exist".to_string());
+    }
+    
+    let result = if cfg!(target_os = "macos") {
+        let output = std::process::Command::new("open")
+            .args(["-R", &file_path])
+            .output();
+        
+        match output {
+            Ok(_) => {
+                info!("[文件管理器] macOS Finder 打开成功");
+                Ok(())
+            }
+            Err(e) => {
+                error!("[文件管理器] macOS Finder 打开失败: {}", e);
+                Err(format!("Failed to open in Finder: {}", e))
+            }
+        }
+    } else if cfg!(target_os = "linux") {
+        let parent_dir = path.parent()
+            .ok_or_else(|| "Failed to get parent directory".to_string())?;
+        
+        let dir_str = parent_dir.to_string_lossy().to_string();
+        
+        let output = std::process::Command::new("xdg-open")
+            .arg(&dir_str)
+            .output();
+        
+        match output {
+            Ok(_) => {
+                info!("[文件管理器] Linux 文件管理器打开成功: {}", dir_str);
+                Ok(())
+            }
+            Err(e) => {
+                error!("[文件管理器] Linux 文件管理器打开失败: {}", e);
+                Err(format!("Failed to open in file manager: {}", e))
+            }
+        }
+    } else {
+        Err("Unsupported platform".to_string())
+    };
+    
+    result
+}
+
 fn get_config_path() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
     format!("{}/.reelfs/config.json", home)
@@ -513,6 +566,7 @@ fn main() {
             generate_thumbnail,
             clear_cache,
             update_thumbnail_path,
+            show_in_file_manager,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

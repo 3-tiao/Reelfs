@@ -116,3 +116,7 @@ export const onScanComplete = (callback: () => void) => {
     callback();
   });
 };
+
+export const showInFileManager = async (filePath: string): Promise<void> => {
+  return await invoke("show_in_file_manager", { filePath });
+};
