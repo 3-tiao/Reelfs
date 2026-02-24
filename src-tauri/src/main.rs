@@ -63,9 +63,16 @@ async fn search_movies(
     state: tauri::State<'_, AppState>,
     query: String,
 ) -> Result<Vec<Movie>, String> {
+    info!("[API] search_movies 调用: query={}", query);
     let db = state.db.lock().unwrap();
-    db.search_movies(&query)
-        .map_err(|e| format!("Database error: {}", e))
+    let result = db.search_movies(&query)
+        .map_err(|e| format!("Database error: {}", e))?;
+    info!("[API] search_movies 返回: {} 个电影", result.len());
+    if !result.is_empty() {
+        info!("[API] 第一个搜索结果: id={}, title={}, file_path={}", 
+               result[0].id, result[0].title, result[0].file_path);
+    }
+    Ok(result)
 }
 
 #[tauri::command]
