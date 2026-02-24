@@ -78,7 +78,7 @@ impl Default for AppConfig {
         Self {
             nas_paths: vec![],
             cache_dir: format!("{}/.reelfs/cache", home),
-            db_path: format!("{}/.reelfs/db/movies.db", home),
+            db_path: "./data/movies.db".to_string(),
             scan_on_startup: false,
             auto_generate_thumbnails: true,
             theme: "dark".to_string(),
