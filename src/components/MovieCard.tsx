@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
-import { Film } from "lucide-react";
+import { Film, RefreshCw } from "lucide-react";
 import { readBinaryFile } from "@tauri-apps/api/fs";
+import { generateThumbnail } from "../services/thumbnail";
+import { join } from "@tauri-apps/api/path";
 
 interface MovieCardProps {
   movie: Movie;
@@ -11,16 +13,14 @@ interface MovieCardProps {
 export default function MovieCard({ movie }: MovieCardProps) {
   const navigate = useNavigate();
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          const imagePath = movie.thumbnail_path || movie.poster_path;
-          if (imagePath) {
-            loadLocalImage(imagePath);
-          }
+          loadOrGenerateThumbnail();
           observer.disconnect();
         }
       },
@@ -32,7 +32,37 @@ export default function MovieCard({ movie }: MovieCardProps) {
     }
 
     return () => observer.disconnect();
-  }, [movie.thumbnail_path, movie.poster_path]);
+  }, [movie]);
+
+  const loadOrGenerateThumbnail = async () => {
+    if (movie.thumbnail_path) {
+      loadLocalImage(movie.thumbnail_path);
+    } else if (movie.poster_path) {
+      await generateAndLoadThumbnail();
+    }
+  };
+
+  const generateAndLoadThumbnail = async () => {
+    if (!movie.poster_path) {
+      console.error('[MovieCard] 没有海报路径，无法生成缩略图');
+      return;
+    }
+    
+    try {
+      setIsGenerating(true);
+      console.log('[MovieCard] 开始生成缩略图:', { id: movie.id, title: movie.title });
+      
+      const thumbnailPath = `/Users/user/.reelfs/cache/thumbnails/${movie.id}.jpg`;
+      await generateThumbnail(movie.poster_path, thumbnailPath, movie.id);
+      
+      loadLocalImage(thumbnailPath);
+    } catch (error) {
+      console.error('[MovieCard] 生成缩略图失败:', error);
+      loadLocalImage(movie.poster_path);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const loadLocalImage = async (path: string) => {
     try {
@@ -73,6 +103,13 @@ export default function MovieCard({ movie }: MovieCardProps) {
             className="w-full h-full object-cover"
             loading="lazy"
           />
+        ) : isGenerating ? (
+          <div className="w-full h-full flex items-center justify-center bg-gray-800">
+            <div className="text-center">
+              <RefreshCw className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-2" />
+              <p className="text-gray-400 text-sm">Generating...</p>
+            </div>
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Film className="w-16 h-16 text-gray-600" />
