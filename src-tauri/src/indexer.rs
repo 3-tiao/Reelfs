@@ -106,7 +106,7 @@ pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
         title: nfo.title.unwrap_or_else(|| "Unknown".to_string()),
         year: nfo.year,
         plot: nfo.plot,
-        rating: nfo.rating,
+        rating: None,
         genres,
         director: nfo.director,
         actors,
