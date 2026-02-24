@@ -244,6 +244,7 @@ cp ~/.reelfs/db/movies.db ~/backup/movies_backup.db
 - **开发文档**: [DEVELOPMENT.md](DEVELOPMENT.md)
 - **性能优化**: [PERFORMANCE.md](PERFORMANCE.md)
 - **项目总结**: [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)
+- **设计方案**: [DESIGN.md](DESIGN.md)
 
 ---
 

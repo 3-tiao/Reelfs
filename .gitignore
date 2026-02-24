@@ -28,3 +28,6 @@ src-tauri/target
 
 # App data
 .reelfs
+
+# Cache
+cache
