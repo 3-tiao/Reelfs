@@ -172,7 +172,6 @@ export default function MovieDetail() {
 
               {movie.rating === undefined || movie.rating === null ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-400 text-sm">用户评级：</span>
                   <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map((value) => (
                       <button
@@ -208,7 +207,6 @@ export default function MovieDetail() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-400 text-sm">当前评级：</span>
                   <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map((value) => (
                       <button
