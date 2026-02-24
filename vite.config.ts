@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig(async () => {
   const env = loadEnv("development", process.cwd());
 
+  console.log('[Vite] 加载环境变量:', env);
+
   return {
     plugins: [react()],
     clearScreen: false,
@@ -15,10 +17,7 @@ export default defineConfig(async () => {
       },
     },
     define: {
-      ...Object.keys(env).reduce((acc, key) => {
-        acc[`import.meta.env.${key}`] = JSON.stringify(env[key]);
-        return acc;
-      }, {} as Record<string, string>),
+      'import.meta.env.VITE_LOG_LEVEL': JSON.stringify(env.VITE_LOG_LEVEL || 'DEBUG'),
     },
   };
 });

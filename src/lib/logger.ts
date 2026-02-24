@@ -18,8 +18,11 @@ class Logger {
 
   constructor(module: string, config?: Partial<LogConfig>) {
     this.module = module;
+    const logLevel = this.getLogLevelFromEnv();
+    console.log('[Logger] 初始化日志系统:', { module, logLevel, env: import.meta.env.VITE_LOG_LEVEL });
+    
     this.config = {
-      level: this.getLogLevelFromEnv(),
+      level: logLevel,
       enableTimestamp: true,
       enableModule: true,
       enableColor: true,
@@ -29,7 +32,12 @@ class Logger {
 
   private getLogLevelFromEnv(): LogLevel {
     const env = import.meta.env.VITE_LOG_LEVEL || 'INFO';
-    return LogLevel[env as keyof typeof LogLevel] || LogLevel.INFO;
+    const level = LogLevel[env as keyof typeof LogLevel];
+    if (level === undefined) {
+      console.warn('[Logger] 未知的日志级别:', env, '，使用默认值 INFO');
+      return LogLevel.INFO;
+    }
+    return level;
   }
 
   private shouldLog(level: LogLevel): boolean {
