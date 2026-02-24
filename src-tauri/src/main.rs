@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex};
 use std::fs;
 use std::path::Path;
 use log::{info, debug, warn, error};
-use tauri::api::path::app_data_dir;
 
 struct AppState {
     db: Arc<Mutex<Database>>,
@@ -64,16 +63,9 @@ async fn search_movies(
     state: tauri::State<'_, AppState>,
     query: String,
 ) -> Result<Vec<Movie>, String> {
-    info!("[API] search_movies 调用: query={}", query);
     let db = state.db.lock().unwrap();
-    let result = db.search_movies(&query)
-        .map_err(|e| format!("Database error: {}", e))?;
-    info!("[API] search_movies 返回: {} 个电影", result.len());
-    if !result.is_empty() {
-        info!("[API] 第一个搜索结果: id={}, title={}, file_path={}", 
-               result[0].id, result[0].title, result[0].file_path);
-    }
-    Ok(result)
+    db.search_movies(&query)
+        .map_err(|e| format!("Database error: {}", e))
 }
 
 #[tauri::command]
@@ -449,91 +441,9 @@ async fn update_thumbnail_path(
     Ok(())
 }
 
-#[tauri::command]
-async fn show_in_file_manager(file_path: String) -> Result<(), String> {
-    info!("[文件管理器] 打开文件位置: {}", file_path);
-    
-    let path = Path::new(&file_path);
-    
-    if !path.exists() {
-        error!("[文件管理器] 文件不存在: {}", file_path);
-        return Err("File does not exist".to_string());
-    }
-    
-    let result = if cfg!(target_os = "macos") {
-        let output = std::process::Command::new("open")
-            .args(["-R", &file_path])
-            .output();
-        
-        match output {
-            Ok(_) => {
-                info!("[文件管理器] macOS Finder 打开成功");
-                Ok(())
-            }
-            Err(e) => {
-                error!("[文件管理器] macOS Finder 打开失败: {}", e);
-                Err(format!("Failed to open in Finder: {}", e))
-            }
-        }
-    } else if cfg!(target_os = "linux") {
-        let parent_dir = path.parent()
-            .ok_or_else(|| "Failed to get parent directory".to_string())?;
-        
-        let dir_str = parent_dir.to_string_lossy().to_string();
-        
-        let output = std::process::Command::new("xdg-open")
-            .arg(&dir_str)
-            .output();
-        
-        match output {
-            Ok(_) => {
-                info!("[文件管理器] Linux 文件管理器打开成功: {}", dir_str);
-                Ok(())
-            }
-            Err(e) => {
-                error!("[文件管理器] Linux 文件管理器打开失败: {}", e);
-                Err(format!("Failed to open in file manager: {}", e))
-            }
-        }
-    } else {
-        Err("Unsupported platform".to_string())
-    };
-    
-    result
-}
-
-#[tauri::command]
-async fn set_movie_rating(
-    state: tauri::State<'_, AppState>,
-    movie_id: i64,
-    rating: Option<f64>,
-) -> Result<(), String> {
-    info!("[API] set_movie_rating 调用: movie_id={}, rating={:?}", movie_id, rating);
-    
-    let db = state.db.lock().unwrap();
-    db.set_movie_rating(movie_id, rating)
-        .map_err(|e| {
-            error!("[API] 设置电影评级失败: {}", e);
-            format!("Failed to set movie rating: {}", e)
-        })?;
-    
-    info!("[API] 电影评级设置成功: movie_id={}, rating={:?}", movie_id, rating);
-    
-    Ok(())
-}
-
-fn get_app_data_dir() -> String {
-    if let Some(app_dir) = app_data_dir(&tauri::Config::default()) {
-        app_dir.to_string_lossy().to_string()
-    } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
-        format!("{}/.reelfs", home)
-    }
-}
-
 fn get_config_path() -> String {
-    let app_data = get_app_data_dir();
-    format!("{}/config.json", app_data)
+    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
+    format!("{}/.reelfs/config.json", home)
 }
 
 fn load_config() -> AppConfig {
@@ -607,8 +517,6 @@ fn main() {
             generate_thumbnail,
             clear_cache,
             update_thumbnail_path,
-            show_in_file_manager,
-            set_movie_rating,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

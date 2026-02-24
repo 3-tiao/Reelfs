@@ -271,13 +271,6 @@ export default function MovieDetail() {
                 </div>
               )}
 
-              {movie.actors && (
-                <div>
-                  <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-3 font-medium">Cast</h3>
-                  <p className="text-white text-lg">{movie.actors}</p>
-                </div>
-              )}
-
               {movie.genres && (
                 <div>
                   <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-3 font-medium">Genres</h3>
@@ -306,6 +299,13 @@ export default function MovieDetail() {
                   <div>
                     <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2 font-medium">Director</h3>
                     <p className="text-white text-lg">{movie.director}</p>
+                  </div>
+                )}
+
+                {movie.actors && (
+                  <div>
+                    <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2 font-medium">Cast</h3>
+                    <p className="text-white text-lg">{movie.actors}</p>
                   </div>
                 )}
               </div>
