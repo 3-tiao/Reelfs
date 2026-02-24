@@ -4,6 +4,36 @@ import { ArrowLeft, Play, Film, FolderOpen, Star } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating } from "../services/tauri";
 import { readBinaryFile } from "@tauri-apps/api/fs";
 
+const formatDuration = (seconds: number): string => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else {
+    return `${minutes}m`;
+  }
+};
+
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return "Today";
+  } else if (diffDays === 1) {
+    return "Yesterday";
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  } else if (diffDays < 30) {
+    return `${Math.floor(diffDays / 7)} weeks ago`;
+  } else {
+    return date.toLocaleDateString();
+  }
+};
+
 export default function MovieDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -301,6 +331,28 @@ export default function MovieDetail() {
                       <span className="text-gray-500 min-w-[60px]">Size:</span>
                       <span className="text-gray-300 font-medium">
                         {(movie.file_size / 1024 / 1024 / 1024).toFixed(2)} GB
+                      </span>
+                    </div>
+                  )}
+                  {movie.duration_seconds && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-500 min-w-[60px]">Duration:</span>
+                      <span className="text-gray-300 font-medium">
+                        {formatDuration(movie.duration_seconds)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-500 min-w-[60px]">Added:</span>
+                    <span className="text-gray-300 font-medium">
+                      {formatDate(movie.added_at)}
+                    </span>
+                  </div>
+                  {movie.last_accessed && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-500 min-w-[60px]">Last Accessed:</span>
+                      <span className="text-gray-300 font-medium">
+                        {formatDate(movie.last_accessed)}
                       </span>
                     </div>
                   )}
