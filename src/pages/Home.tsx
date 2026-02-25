@@ -8,7 +8,7 @@ import FilterSortBar from "../components/FilterSortBar";
 
 export default function Home() {
   const navigate = useNavigate();
-  const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered } = useMovieStore();
+  const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered, clearFilters } = useMovieStore();
 
   useEffect(() => {
     fetchMovies(0);
@@ -18,6 +18,7 @@ export default function Home() {
     if (query.trim()) {
       searchMovies(query);
     } else {
+      clearFilters();
       reset();
       fetchMovies(0);
     }
