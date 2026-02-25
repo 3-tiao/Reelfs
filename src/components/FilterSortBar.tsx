@@ -93,6 +93,11 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
     { value: 'last_accessed', label: '播放次数', icon: User },
   ];
 
+  const getSortLabel = () => {
+    const option = sortOptionsList.find(opt => opt.value === sortOptions.sortBy);
+    return option ? option.label : '排序';
+  };
+
   return (
     <div className="flex items-center gap-2 mb-4">
       <div className="relative" ref={sortMenuRef}>
@@ -101,6 +106,7 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
           className="p-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
         >
           <ArrowUpDown className="w-4 h-4" />
+          <span className="text-sm ml-2">{getSortLabel()}</span>
           {sortOptions.sortOrder === 'ASC' ? (
             <ChevronUp className="w-4 h-4 text-gray-400" />
           ) : (
