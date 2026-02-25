@@ -374,6 +374,67 @@ async fn set_movie_rating(
     Ok(())
 }
 
+#[tauri::command]
+async fn get_movies_filtered(
+    state: tauri::State<'_, AppState>,
+    offset: i32,
+    limit: i32,
+    min_year: Option<i32>,
+    max_year: Option<i32>,
+    min_rating: Option<f64>,
+    max_rating: Option<f64>,
+    actors: Option<String>,
+    genres: Option<String>,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
+) -> Result<Vec<Movie>, String> {
+    info!("[API] get_movies_filtered 调用: offset={}, limit={}, filters={:?}, sort={:?} {:?}",
+           offset, limit, (min_year, max_year, min_rating, max_rating, &actors, &genres), sort_by, sort_order);
+    
+    let db = state.db.lock().unwrap();
+    let movies = db.get_movies_with_filters(offset, limit, min_year, max_year, min_rating, max_rating, actors, genres, sort_by, sort_order)
+        .map_err(|e| {
+            error!("[API] get_movies_filtered 失败: {}", e);
+            format!("Database error: {}", e)
+        })?;
+    
+    info!("[API] get_movies_filtered 返回: {} 个电影", movies.len());
+    
+    Ok(movies)
+}
+
+#[tauri::command]
+async fn get_unique_genres(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    info!("[API] get_unique_genres 调用");
+    
+    let db = state.db.lock().unwrap();
+    let genres = db.get_unique_genres()
+        .map_err(|e| {
+            error!("[API] get_unique_genres 失败: {}", e);
+            format!("Database error: {}", e)
+        })?;
+    
+    info!("[API] get_unique_genres 返回: {} 个类型", genres.len());
+    
+    Ok(genres)
+}
+
+#[tauri::command]
+async fn get_unique_actors(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    info!("[API] get_unique_actors 调用");
+    
+    let db = state.db.lock().unwrap();
+    let actors = db.get_unique_actors()
+        .map_err(|e| {
+            error!("[API] get_unique_actors 失败: {}", e);
+            format!("Database error: {}", e)
+        })?;
+    
+    info!("[API] get_unique_actors 返回: {} 个演员", actors.len());
+    
+    Ok(actors)
+}
+
 fn get_config_path() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
     format!("{}/.reelfs/config.json", home)
@@ -455,6 +516,9 @@ fn main() {
             set_movie_rating,
             show_in_file_manager,
             delete_invalid_records,
+            get_movies_filtered,
+            get_unique_genres,
+            get_unique_actors,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

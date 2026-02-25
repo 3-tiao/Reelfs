@@ -65,6 +65,20 @@ export interface AppConfig {
   default_player: string;
 }
 
+export interface Filters {
+  minYear?: number;
+  maxYear?: number;
+  minRating?: number;
+  maxRating?: number;
+  actors?: string;
+  genres?: string;
+}
+
+export interface SortOptions {
+  sortBy: 'title' | 'year' | 'rating' | 'added_at' | 'last_accessed';
+  sortOrder: 'ASC' | 'DESC';
+}
+
 export const getMovies = async (offset: number, limit: number): Promise<Movie[]> => {
   return await invoke("get_movies", { offset, limit });
 };
@@ -139,4 +153,32 @@ export const setMovieRating = async (movieId: number, rating: number | null): Pr
 
 export const clearThumbnails = async (): Promise<void> => {
   return await invoke("clear_thumbnails");
+};
+
+export const getMoviesFiltered = async (
+  offset: number,
+  limit: number,
+  filters?: Filters,
+  sortOptions?: SortOptions
+): Promise<Movie[]> => {
+  return await invoke("get_movies_filtered", {
+    offset,
+    limit,
+    minYear: filters?.minYear,
+    maxYear: filters?.maxYear,
+    minRating: filters?.minRating,
+    maxRating: filters?.maxRating,
+    actors: filters?.actors,
+    genres: filters?.genres,
+    sortBy: sortOptions?.sortBy,
+    sortOrder: sortOptions?.sortOrder,
+  });
+};
+
+export const getUniqueGenres = async (): Promise<string[]> => {
+  return await invoke("get_unique_genres");
+};
+
+export const getUniqueActors = async (): Promise<string[]> => {
+  return await invoke("get_unique_actors");
 };

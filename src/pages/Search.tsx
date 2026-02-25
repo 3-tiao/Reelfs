@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import MovieGrid from "../components/MovieGrid";
+import FilterBar from "../components/FilterBar";
 import { useMovieStore } from "../stores/movieStore";
 
 export default function Search() {
   const navigate = useNavigate();
-  const { movies, isLoading, searchMovies } = useMovieStore();
+  const { movies, isLoading, searchMovies, isUsingFilters, fetchMoviesFiltered } = useMovieStore();
   const [hasSearched, setHasSearched] = useState(false);
 
   const handleSearch = (query: string) => {
@@ -15,6 +16,10 @@ export default function Search() {
       searchMovies(query);
       setHasSearched(true);
     }
+  };
+
+  const handleFilterChange = () => {
+    fetchMoviesFiltered(0, 200);
   };
 
   return (
@@ -35,6 +40,18 @@ export default function Search() {
       </header>
 
       <main className="p-4">
+        {hasSearched && (
+          <>
+            <FilterBar onFilterChange={handleFilterChange} />
+            
+            {isUsingFilters && (
+              <div className="mb-4 text-gray-400 text-sm">
+                筛选结果: {movies.length} 个电影
+              </div>
+            )}
+          </>
+        )}
+        
         {isLoading ? (
           <div className="flex items-center justify-center h-96">
             <div className="text-center">

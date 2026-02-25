@@ -64,6 +64,8 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_title ON movies(title);
             CREATE INDEX IF NOT EXISTS idx_year ON movies(year);
             CREATE INDEX IF NOT EXISTS idx_added_at ON movies(added_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_rating ON movies(rating);
+            CREATE INDEX IF NOT EXISTS idx_last_accessed ON movies(last_accessed DESC);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_file_path ON movies(file_path);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS movie_fts USING fts5(
@@ -563,5 +565,181 @@ impl Database {
         info!("[数据库] 清理缩略图完成: {} 个文件", cleared_count);
         
         Ok(())
+    }
+
+    pub fn get_movies_with_filters(
+        &self,
+        offset: i32,
+        limit: i32,
+        min_year: Option<i32>,
+        max_year: Option<i32>,
+        min_rating: Option<f64>,
+        max_rating: Option<f64>,
+        actors: Option<String>,
+        genres: Option<String>,
+        sort_by: Option<String>,
+        sort_order: Option<String>,
+    ) -> Result<Vec<Movie>> {
+        debug!("[数据库] 获取筛选电影列表: offset={}, limit={}, filters={:?}, sort={:?} {:?}",
+               offset, limit, (min_year, max_year, min_rating, max_rating, &actors, &genres), sort_by, sort_order);
+
+        let mut where_clauses = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(min_y) = min_year {
+            where_clauses.push("year >= ?".to_string());
+            params.push(Box::new(min_y));
+        }
+
+        if let Some(max_y) = max_year {
+            where_clauses.push("year <= ?".to_string());
+            params.push(Box::new(max_y));
+        }
+
+        if let Some(min_r) = min_rating {
+            where_clauses.push("rating >= ?".to_string());
+            params.push(Box::new(min_r));
+        }
+
+        if let Some(max_r) = max_rating {
+            where_clauses.push("rating <= ?".to_string());
+            params.push(Box::new(max_r));
+        }
+
+        if let Some(ref actors_str) = actors {
+            if !actors_str.is_empty() {
+                where_clauses.push("actors LIKE ?".to_string());
+                params.push(Box::new(format!("%{}%", actors_str)));
+            }
+        }
+
+        if let Some(ref genres_str) = genres {
+            if !genres_str.is_empty() {
+                where_clauses.push("genres LIKE ?".to_string());
+                params.push(Box::new(format!("%{}%", genres_str)));
+            }
+        }
+
+        let where_clause = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+
+        let sort_column = sort_by.unwrap_or_else(|| "added_at".to_string());
+        let sort_dir = sort_order.unwrap_or_else(|| "DESC".to_string());
+
+        let query = format!(
+            "SELECT id, file_path, title, year, plot, rating, genres, director, actors,
+                    poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
+             FROM movies
+             {}
+             ORDER BY {} {}
+             LIMIT ? OFFSET ?",
+            where_clause, sort_column, sort_dir
+        );
+
+        params.push(Box::new(limit));
+        params.push(Box::new(offset));
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let mut param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+        let movies = stmt.query_map(param_refs.as_slice(), |row| {
+            Ok(Movie {
+                id: row.get(0)?,
+                file_path: row.get(1)?,
+                title: row.get(2)?,
+                year: row.get(3)?,
+                plot: row.get(4)?,
+                rating: row.get(5)?,
+                genres: row.get(6)?,
+                director: row.get(7)?,
+                actors: row.get(8)?,
+                poster_path: row.get(9)?,
+                fanart_path: row.get(10)?,
+                thumbnail_path: row.get(11)?,
+                file_size: row.get(12)?,
+                duration_seconds: row.get(13)?,
+                width: row.get(14)?,
+                height: row.get(15)?,
+                added_at: row.get(16)?,
+                updated_at: row.get(17)?,
+                last_accessed: row.get(18)?,
+                last_checked_at: row.get(19)?,
+                scan_state: row.get(20)?,
+            })
+        })?;
+
+        let result: Result<Vec<Movie>, rusqlite::Error> = movies.collect();
+        
+        match &result {
+            Ok(movies) => debug!("[数据库] 筛选电影查询成功: {} 条结果", movies.len()),
+            Err(e) => debug!("[数据库] 筛选电影查询失败: {}", e),
+        }
+        
+        result
+    }
+
+    pub fn get_unique_genres(&self) -> Result<Vec<String>> {
+        debug!("[数据库] 获取所有类型");
+
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT genres FROM movies WHERE genres IS NOT NULL AND genres != ''"
+        )?;
+
+        let genres_iter = stmt.query_map([], |row| {
+            let genres_str: String = row.get(0)?;
+            Ok(genres_str)
+        })?;
+
+        let mut all_genres = Vec::new();
+        for genre_result in genres_iter {
+            if let Ok(genres_str) = genre_result {
+                for genre in genres_str.split(',') {
+                    let genre = genre.trim();
+                    if !genre.is_empty() && !all_genres.contains(&genre.to_string()) {
+                        all_genres.push(genre.to_string());
+                    }
+                }
+            }
+        }
+
+        all_genres.sort();
+        debug!("[数据库] 获取类型成功: {} 个类型", all_genres.len());
+
+        Ok(all_genres)
+    }
+
+    pub fn get_unique_actors(&self) -> Result<Vec<String>> {
+        debug!("[数据库] 获取所有演员");
+
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT actors FROM movies WHERE actors IS NOT NULL AND actors != ''"
+        )?;
+
+        let actors_iter = stmt.query_map([], |row| {
+            let actors_str: String = row.get(0)?;
+            Ok(actors_str)
+        })?;
+
+        let mut all_actors = Vec::new();
+        for actor_result in actors_iter {
+            if let Ok(actors_str) = actor_result {
+                for actor in actors_str.split(',') {
+                    let actor = actor.trim();
+                    if !actor.is_empty() && !all_actors.contains(&actor.to_string()) {
+                        all_actors.push(actor.to_string());
+                    }
+                }
+            }
+        }
+
+        all_actors.sort();
+        debug!("[数据库] 获取演员成功: {} 个演员", all_actors.len());
+
+        Ok(all_actors)
     }
 }

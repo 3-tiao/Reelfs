@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Movie, getMovies, searchMovies, playMovie } from "../services/tauri";
+import { Movie, getMovies, searchMovies, playMovie, Filters, SortOptions, getMoviesFiltered, getUniqueGenres, getUniqueActors } from "../services/tauri";
 
 interface MovieStore {
   movies: Movie[];
@@ -7,11 +7,22 @@ interface MovieStore {
   totalCount: number;
   isLoading: boolean;
   error: string | null;
+  filters: Filters;
+  sortOptions: SortOptions;
+  availableGenres: string[];
+  availableActors: string[];
+  isUsingFilters: boolean;
 
   fetchMovies: (offset: number) => Promise<void>;
   searchMovies: (query: string) => Promise<void>;
   playMovie: (id: number) => Promise<void>;
   reset: () => void;
+  setFilters: (filters: Filters) => void;
+  setSortOptions: (sortOptions: SortOptions) => void;
+  fetchMoviesFiltered: (offset: number, limit: number) => Promise<void>;
+  clearFilters: () => void;
+  fetchAvailableGenres: () => Promise<void>;
+  fetchAvailableActors: () => Promise<void>;
 }
 
 export const useMovieStore = create<MovieStore>((set) => ({
@@ -20,6 +31,11 @@ export const useMovieStore = create<MovieStore>((set) => ({
   totalCount: 0,
   isLoading: false,
   error: null,
+  filters: {},
+  sortOptions: { sortBy: 'added_at', sortOrder: 'DESC' },
+  availableGenres: [],
+  availableActors: [],
+  isUsingFilters: false,
 
   fetchMovies: async (offset: number) => {
     set({ isLoading: true, error: null });
@@ -59,5 +75,48 @@ export const useMovieStore = create<MovieStore>((set) => ({
 
   reset: () => {
     set({ movies: [], currentPage: 0, totalCount: 0, isLoading: false, error: null });
+  },
+
+  setFilters: (filters: Filters) => {
+    set({ filters, isUsingFilters: true });
+  },
+
+  setSortOptions: (sortOptions: SortOptions) => {
+    set({ sortOptions });
+  },
+
+  fetchMoviesFiltered: async (offset: number, limit: number) => {
+    const state = useMovieStore.getState();
+    set({ isLoading: true, error: null });
+    try {
+      const movies = await getMoviesFiltered(offset, limit, state.filters, state.sortOptions);
+      console.log('[MovieStore] 获取筛选电影数据:', movies.length, '个电影');
+      set({ movies, isLoading: false });
+    } catch (error) {
+      console.error('[MovieStore] 获取筛选电影失败:', error);
+      set({ error: String(error), isLoading: false });
+    }
+  },
+
+  clearFilters: () => {
+    set({ filters: {}, isUsingFilters: false });
+  },
+
+  fetchAvailableGenres: async () => {
+    try {
+      const genres = await getUniqueGenres();
+      set({ availableGenres: genres });
+    } catch (error) {
+      console.error('[MovieStore] 获取类型列表失败:', error);
+    }
+  },
+
+  fetchAvailableActors: async () => {
+    try {
+      const actors = await getUniqueActors();
+      set({ availableActors: actors });
+    } catch (error) {
+      console.error('[MovieStore] 获取演员列表失败:', error);
+    }
   },
 }));

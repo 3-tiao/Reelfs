@@ -4,10 +4,11 @@ import { Settings as SettingsIcon, Film } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import MovieGrid from "../components/MovieGrid";
 import SearchBar from "../components/SearchBar";
+import FilterBar from "../components/FilterBar";
 
 export default function Home() {
   const navigate = useNavigate();
-  const { movies, isLoading, fetchMovies, searchMovies, reset } = useMovieStore();
+  const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered } = useMovieStore();
 
   useEffect(() => {
     fetchMovies(0);
@@ -20,6 +21,10 @@ export default function Home() {
       reset();
       fetchMovies(0);
     }
+  };
+
+  const handleFilterChange = () => {
+    fetchMoviesFiltered(0, 200);
   };
 
   return (
@@ -45,6 +50,14 @@ export default function Home() {
       </header>
 
       <main className="p-4">
+        <FilterBar onFilterChange={handleFilterChange} />
+        
+        {isUsingFilters && (
+          <div className="mb-4 text-gray-400 text-sm">
+            筛选结果: {movies.length} 个电影
+          </div>
+        )}
+        
         {isLoading ? (
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
