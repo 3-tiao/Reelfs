@@ -339,21 +339,22 @@ impl Database {
     }
 
     pub fn search_movies(&self, query: &str) -> Result<Vec<Movie>> {
-        debug!("[数据库] 全文搜索: query={}", query);
+        debug!("[数据库] 搜索: query={}", query);
         
         let start_time = std::time::Instant::now();
+        
+        let pattern = format!("%{}%", query);
         
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors, 
                     m.poster_path, m.fanart_path, m.thumbnail_path, m.file_size, m.duration_seconds,
                     m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state
              FROM movies m
-             JOIN movie_fts ON movie_fts.rowid = m.id
-             WHERE movie_fts MATCH ?1
+             WHERE m.title LIKE ?1 OR m.file_path LIKE ?1 OR m.actors LIKE ?1 OR m.director LIKE ?1
              ORDER BY m.added_at DESC"
         )?;
 
-        let movies = stmt.query_map(params![query], |row| {
+        let movies = stmt.query_map(params![pattern], |row| {
             Ok(Movie {
                 id: row.get(0)?,
                 file_path: row.get(1)?,

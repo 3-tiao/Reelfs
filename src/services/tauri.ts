@@ -88,8 +88,7 @@ export const getMovieDetail = async (id: number): Promise<[Movie, PlayHistory | 
 };
 
 export const searchMovies = async (query: string): Promise<Movie[]> => {
-  const ftsQuery = `*${query}*`;
-  return await invoke("search_movies", { query: ftsQuery });
+  return await invoke("search_movies", { query });
 };
 
 export const startInitialScan = async (scanMode: "incremental" | "full" = "incremental", deleteInvalid: boolean = false): Promise<string> => {
