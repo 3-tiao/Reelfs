@@ -25,13 +25,13 @@ export default function SearchBar({ onSearch, placeholder = "Search movies..." }
   };
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full flex items-center h-10">
       <input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-gray-800 text-white pl-10 pr-10 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-700"
+        className="w-full h-full bg-gray-800 text-white pl-10 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-700"
       />
       {query && (
         <button

@@ -41,7 +41,7 @@ export default function Home() {
               onClick={() => navigate("/settings")}
               className="p-2.5 hover:bg-gray-800 rounded-lg transition-colors"
             >
-              <SettingsIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+              <SettingsIcon className="w-4 h-4 text-gray-400 hover:text-white" />
             </button>
           </div>
         </div>

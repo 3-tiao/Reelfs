@@ -99,7 +99,7 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
   };
 
   return (
-    <div className="flex items-center gap-2 mb-4">
+    <div className="flex items-center gap-2">
       <div className="relative" ref={sortMenuRef}>
         <button
           onClick={() => setSortMenuOpen(!sortMenuOpen)}
