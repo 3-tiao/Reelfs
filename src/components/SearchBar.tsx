@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 
 interface SearchBarProps {
@@ -8,8 +8,15 @@ interface SearchBarProps {
 
 export default function SearchBar({ onSearch, placeholder = "Search movies..." }: SearchBarProps) {
   const [query, setQuery] = useState("");
+  const lastSearchRef = useRef("");
 
   useEffect(() => {
+    if (query === lastSearchRef.current) {
+      return;
+    }
+
+    lastSearchRef.current = query;
+    
     const timer = setTimeout(() => {
       onSearch(query);
     }, 300);
@@ -19,7 +26,6 @@ export default function SearchBar({ onSearch, placeholder = "Search movies..." }
 
   const handleClear = () => {
     setQuery("");
-    onSearch("");
   };
 
   return (
