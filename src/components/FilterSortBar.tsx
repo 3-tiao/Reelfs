@@ -103,7 +103,7 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
       <div className="relative" ref={sortMenuRef}>
         <button
           onClick={() => setSortMenuOpen(!sortMenuOpen)}
-          className="p-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
+          className="flex items-center p-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
         >
           <ArrowUpDown className="w-4 h-4" />
           <span className="text-sm ml-2">{getSortLabel()}</span>
@@ -157,7 +157,7 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
       <div className="relative" ref={filterMenuRef}>
         <button
           onClick={() => setFilterMenuOpen(!filterMenuOpen)}
-          className={`p-2 rounded-lg transition-colors border ${
+          className={`flex items-center p-2 rounded-lg transition-colors border ${
             hasActiveFilters() 
               ? 'bg-blue-600 text-white border-blue-500 hover:bg-blue-700' 
               : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
