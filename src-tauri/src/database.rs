@@ -116,6 +116,14 @@ impl Database {
             "SELECT 1 FROM pragma_table_info('movies') WHERE name = 'height'"
         )?.exists([])?;
         
+        let has_last_checked_at = tx.prepare(
+            "SELECT 1 FROM pragma_table_info('movies') WHERE name = 'last_checked_at'"
+        )?.exists([])?;
+        
+        let has_scan_state = tx.prepare(
+            "SELECT 1 FROM pragma_table_info('movies') WHERE name = 'scan_state'"
+        )?.exists([])?;
+        
         if !has_width {
             info!("[数据库] 添加 width 列");
             tx.execute("ALTER TABLE movies ADD COLUMN width INTEGER", [])?;
@@ -124,6 +132,16 @@ impl Database {
         if !has_height {
             info!("[数据库] 添加 height 列");
             tx.execute("ALTER TABLE movies ADD COLUMN height INTEGER", [])?;
+        }
+        
+        if !has_last_checked_at {
+            info!("[数据库] 添加 last_checked_at 列");
+            tx.execute("ALTER TABLE movies ADD COLUMN last_checked_at DATETIME", [])?;
+        }
+        
+        if !has_scan_state {
+            info!("[数据库] 添加 scan_state 列");
+            tx.execute("ALTER TABLE movies ADD COLUMN scan_state TEXT", [])?;
         }
         
         tx.commit()?;
@@ -142,9 +160,9 @@ impl Database {
         debug!("[数据库] 插入电影: title={}, file_path={}", title, file_path);
         
         self.conn.execute(
-            "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height],
+            "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height, last_checked_at, scan_state)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            params![file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height, "checked", "checked"],
         )?;
         
         let id = self.conn.last_insert_rowid();
@@ -159,22 +177,22 @@ impl Database {
         
         let tx = self.conn.unchecked_transaction()?;
         let mut count = 0;
-
+        
         for movie in movies {
             let result = tx.execute(
-                "INSERT OR REPLACE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                "INSERT OR REPLACE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height, last_checked_at, scan_state)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 params![
                     &movie.0, &movie.1, movie.2, &movie.3, movie.4, 
                     &movie.5, &movie.6, &movie.7, &movie.8, &movie.9,
-                    movie.10, movie.11, movie.12, movie.13
+                    movie.10, movie.11, movie.12, movie.13, "checked", "checked"
                 ],
             );
             if result.is_ok() {
                 count += 1;
             }
         }
-
+        
         tx.commit()?;
         
         let elapsed = start_time.elapsed();
@@ -189,7 +207,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
              FROM movies ORDER BY added_at DESC LIMIT ?1 OFFSET ?2"
         )?;
 
@@ -214,6 +232,8 @@ impl Database {
                 added_at: row.get(16)?,
                 updated_at: row.get(17)?,
                 last_accessed: row.get(18)?,
+                last_checked_at: row.get(19)?,
+                scan_state: row.get(20)?,
             })
         })?;
 
@@ -226,7 +246,7 @@ impl Database {
         let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
              FROM movies WHERE id = ?1",
             params![id],
             |row| {
@@ -250,6 +270,8 @@ impl Database {
                     added_at: row.get(16)?,
                     updated_at: row.get(17)?,
                     last_accessed: row.get(18)?,
+                    last_checked_at: row.get(19)?,
+                    scan_state: row.get(20)?,
                 })
             }
         );
@@ -262,6 +284,58 @@ impl Database {
         movie
     }
 
+    pub fn get_movie_by_path(&self, file_path: &str) -> Result<Option<Movie>> {
+        debug!("[数据库] 根据路径获取电影: file_path={}", file_path);
+        
+        let movie = self.conn.query_row(
+            "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                    poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
+             FROM movies WHERE file_path = ?1",
+            params![file_path],
+            |row| {
+                Ok(Movie {
+                    id: row.get(0)?,
+                    file_path: row.get(1)?,
+                    title: row.get(2)?,
+                    year: row.get(3)?,
+                    plot: row.get(4)?,
+                    rating: row.get(5)?,
+                    genres: row.get(6)?,
+                    director: row.get(7)?,
+                    actors: row.get(8)?,
+                    poster_path: row.get(9)?,
+                    fanart_path: row.get(10)?,
+                    thumbnail_path: row.get(11)?,
+                    file_size: row.get(12)?,
+                    duration_seconds: row.get(13)?,
+                    width: row.get(14)?,
+                    height: row.get(15)?,
+                    added_at: row.get(16)?,
+                    updated_at: row.get(17)?,
+                    last_accessed: row.get(18)?,
+                    last_checked_at: row.get(19)?,
+                    scan_state: row.get(20)?,
+                })
+            }
+        );
+        
+        match movie {
+            Ok(m) => {
+                debug!("[数据库] 电影查询成功: id={}, title={}", m.id, m.title);
+                Ok(Some(m))
+            },
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                debug!("[数据库] 电影不存在: {}", file_path);
+                Ok(None)
+            },
+            Err(e) => {
+                debug!("[数据库] 电影查询失败: {}", e);
+                Err(e)
+            }
+        }
+    }
+
     pub fn search_movies(&self, query: &str) -> Result<Vec<Movie>> {
         debug!("[数据库] 全文搜索: query={}", query);
         
@@ -270,7 +344,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors, 
                     m.poster_path, m.fanart_path, m.thumbnail_path, m.file_size, m.duration_seconds,
-                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state
              FROM movies m
              JOIN movie_fts ON movie_fts.rowid = m.id
              WHERE movie_fts MATCH ?1
@@ -298,6 +372,8 @@ impl Database {
                 added_at: row.get(16)?,
                 updated_at: row.get(17)?,
                 last_accessed: row.get(18)?,
+                last_checked_at: row.get(19)?,
+                scan_state: row.get(20)?,
             })
         })?;
 
@@ -414,6 +490,77 @@ impl Database {
         self.conn.execute("DELETE FROM movies WHERE file_path = ?1", params![file_path])?;
         
         info!("[数据库] 电影删除成功: {}", file_path);
+        
+        Ok(())
+    }
+
+    pub fn delete_invalid_records(&self) -> Result<usize> {
+        info!("[数据库] 开始删除失效记录");
+        
+        let mut stmt = self.conn.prepare("SELECT id, file_path FROM movies")?;
+        let mut rows = stmt.query([])?;
+        let mut invalid_count = 0;
+        
+        while let Ok(Some(row)) = rows.next() {
+            let id: i64 = row.get(0)?;
+            let file_path: String = row.get(1)?;
+            
+            let path = std::path::Path::new(&file_path);
+            if !path.exists() {
+                debug!("[数据库] 删除失效记录: id={}, file_path={}", id, file_path);
+                self.conn.execute("DELETE FROM movies WHERE id = ?1", params![id])?;
+                invalid_count += 1;
+            }
+        }
+        
+        drop(rows);
+        drop(stmt);
+        
+        info!("[数据库] 删除失效记录完成: {} 条", invalid_count);
+        
+        Ok(invalid_count)
+    }
+
+    pub fn clear_thumbnails(&self) -> Result<()> {
+        info!("[数据库] 开始清理缩略图");
+        
+        let mut stmt = self.conn.prepare("SELECT id, thumbnail_path FROM movies WHERE thumbnail_path IS NOT NULL")?;
+        let mut movies = Vec::new();
+        
+        let mut rows = stmt.query([])?;
+        while let Ok(Some(row)) = rows.next() {
+            let id: i64 = row.get(0)?;
+            let thumbnail_path: String = row.get(1)?;
+            movies.push((id, thumbnail_path));
+        }
+        
+        drop(rows);
+        drop(stmt);
+        
+        let mut cleared_count = 0;
+        
+        for (movie_id, thumbnail_path) in movies {
+            let thumbnail_file = std::path::Path::new(&thumbnail_path);
+            
+            if thumbnail_file.exists() {
+                debug!("[数据库] 删除缩略图文件: {:?}", thumbnail_path);
+                
+                if let Err(e) = std::fs::remove_file(&thumbnail_file) {
+                    error!("[数据库] 删除缩略图文件失败: {:?}, error: {}", thumbnail_path, e);
+                } else {
+                    debug!("[数据库] 缩略图文件删除成功: {:?}", thumbnail_path);
+                }
+            }
+            
+            self.conn.execute(
+                "UPDATE movies SET thumbnail_path = NULL WHERE id = ?1",
+                params![movie_id],
+            )?;
+            
+            cleared_count += 1;
+        }
+        
+        info!("[数据库] 清理缩略图完成: {} 个文件", cleared_count);
         
         Ok(())
     }

@@ -21,6 +21,8 @@ pub struct Movie {
     pub added_at: String,
     pub updated_at: String,
     pub last_accessed: Option<String>,
+    pub last_checked_at: Option<String>,
+    pub scan_state: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,8 +48,17 @@ pub struct PlayHistory {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ImportStage {
+    Scanning,
+    Importing,
+    GeneratingThumbnails,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanStatus {
     pub is_scanning: bool,
+    pub stage: ImportStage,
+    pub stage_message: String,
     pub total_files: usize,
     pub scanned_files: usize,
     pub current_file: Option<String>,

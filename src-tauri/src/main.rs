@@ -3,6 +3,7 @@
 
 mod database;
 mod indexer;
+mod import_manager;
 mod models;
 mod player;
 mod thumbnail;
@@ -72,164 +73,17 @@ async fn search_movies(
 async fn start_initial_scan(
     state: tauri::State<'_, AppState>,
     window: tauri::Window,
+    scan_mode: String,
+    delete_invalid: bool,
 ) -> Result<String, String> {
-    info!("[目录扫描] 开始全量扫描");
+    info!("[导入管理器] 开始扫描: mode={}, delete_invalid={}", scan_mode, delete_invalid);
     
     let config = state.config.lock().unwrap().clone();
     let db = Arc::clone(&state.db);
     let scan_status = Arc::clone(&state.scan_status);
-    let cache_dir = config.cache_dir.clone();
     
-    if config.nas_paths.is_empty() {
-        error!("[目录扫描] 扫描失败: 未配置NAS路径");
-        return Err("No NAS paths configured".to_string());
-    }
-    
-    let is_scanning = scan_status.lock().unwrap().is_scanning;
-    if is_scanning {
-        warn!("[目录扫描] 扫描已在进行中");
-        return Err("Scan already in progress".to_string());
-    }
-    
-    let scan_start_time = std::time::Instant::now();
-    let total_paths = config.nas_paths.len();
-    info!("[目录扫描] 准备扫描 {} 个路径", total_paths);
-    
-    std::thread::spawn(move || {
-        {
-            let mut status = scan_status.lock().unwrap();
-            status.is_scanning = true;
-            status.total_files = 0;
-            status.scanned_files = 0;
-        }
-        
-        let mut total_files = 0;
-        
-        for (path_index, nas_path) in config.nas_paths.iter().enumerate() {
-            info!("[目录扫描] 扫描路径 ({}/{}): {}", path_index + 1, total_paths, nas_path);
-            
-            let results = indexer::scan_directory(nas_path);
-            
-            {
-                let mut status = scan_status.lock().unwrap();
-                status.total_files += results.len();
-            }
-            
-            total_files += results.len();
-            
-            let mut batch = Vec::new();
-            
-            for (i, (video_path, metadata)) in results.iter().enumerate() {
-                let title = if let Some(meta) = metadata {
-                    meta.title.clone()
-                } else {
-                    indexer::extract_title_from_filename(video_path)
-                };
-                
-                let year = metadata.as_ref().and_then(|m| m.year);
-                let plot = metadata.as_ref().and_then(|m| m.plot.clone());
-                let rating = metadata.as_ref().and_then(|m| m.rating);
-                let genres = metadata.as_ref().and_then(|m| m.genres.clone());
-                let director = metadata.as_ref().and_then(|m| m.director.clone());
-                let actors = metadata.as_ref().and_then(|m| m.actors.clone());
-                let poster = metadata.as_ref().and_then(|m| m.poster.clone());
-                let fanart = metadata.as_ref().and_then(|m| m.fanart.clone());
-                let file_size = indexer::get_file_size(video_path);
-                let (duration_seconds, width, height) = indexer::get_video_info(video_path)
-                    .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
-                    .unwrap_or((None, None, None));
-                
-                batch.push((
-                    video_path.to_string_lossy().to_string(),
-                    title,
-                    year,
-                    plot,
-                    rating,
-                    genres,
-                    director,
-                    actors,
-                    poster,
-                    fanart,
-                    file_size,
-                    duration_seconds,
-                    width,
-                    height,
-                ));
-                
-                if batch.len() >= 100 || i == results.len() - 1 {
-                    let db = db.lock().unwrap();
-                    if let Err(e) = db.batch_insert_movies(&batch) {
-                        error!("[目录扫描] 批量插入失败: {}", e);
-                    } else {
-                        debug!("[目录扫描] 批量插入成功: {} 条记录", batch.len());
-                    }
-                    batch.clear();
-                }
-                
-                {
-                    let mut status = scan_status.lock().unwrap();
-                    status.scanned_files += 1;
-                    status.current_file = Some(video_path.to_string_lossy().to_string());
-                }
-                
-                let _ = window.emit("scan-progress", scan_status.lock().unwrap().clone());
-            }
-        }
-        
-        {
-            let mut status = scan_status.lock().unwrap();
-            status.is_scanning = false;
-            status.current_file = None;
-        }
-        
-        let elapsed = scan_start_time.elapsed();
-        info!("[目录扫描] 扫描完成: {} 个文件，耗时: {}ms", total_files, elapsed.as_millis());
-        
-        // 自动生成缩略图
-        info!("[缩略图生成] 开始自动生成缩略图");
-        let thumbnail_start_time = std::time::Instant::now();
-        
-        let movies_with_posters: Vec<(i64, String, String)> = {
-            let db = db.lock().unwrap();
-            let all_movies = db.get_movies(0, 1000);
-            drop(db);
-            
-            all_movies.unwrap_or_default()
-                .into_iter()
-                .filter(|m| m.poster_path.is_some() && m.thumbnail_path.is_none())
-                .map(|m| (m.id, m.title, m.poster_path.unwrap()))
-                .collect()
-        };
-        
-        let mut thumbnail_count = 0;
-        
-        for (movie_id, title, poster) in &movies_with_posters {
-            let thumbnail_path = thumbnail::get_thumbnail_path(&cache_dir, *movie_id);
-            
-            debug!("[缩略图生成] 处理电影: id={}, title={}, poster={}", 
-                   movie_id, title, poster);
-            
-            match thumbnail::generate_thumbnail(poster, &thumbnail_path) {
-                Ok(_) => {
-                    let db = db.lock().unwrap();
-                    let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
-                    thumbnail_count += 1;
-                    debug!("[缩略图生成] 成功: id={}", movie_id);
-                }
-                Err(e) => {
-                    error!("[缩略图生成] 失败: id={}, error={}", movie_id, e);
-                }
-            }
-        }
-        
-        let thumbnail_elapsed = thumbnail_start_time.elapsed();
-        info!("[缩略图生成] 自动生成完成: {}/{} 个缩略图，耗时: {}ms", 
-               thumbnail_count, movies_with_posters.len(), thumbnail_elapsed.as_millis());
-        
-        let _ = window.emit("scan-complete", ());
-    });
-    
-    Ok("Scan started".to_string())
+    let manager = import_manager::ImportManager::new(db, config, scan_status, window, scan_mode, delete_invalid);
+    manager.start_import().map(|_| "Import started".to_string())
 }
 
 #[tauri::command]
@@ -465,6 +319,22 @@ async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn delete_invalid_records(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    info!("[设置] 开始删除失效记录");
+    
+    let db = state.db.lock().unwrap();
+    let count = db.delete_invalid_records()
+        .map_err(|e| {
+            error!("[设置] 删除失效记录失败: {}", e);
+            format!("Failed to delete invalid records: {}", e)
+        })?;
+    
+    info!("[设置] 删除失效记录完成: {} 条", count);
+    
+    Ok(())
+}
+
+#[tauri::command]
 async fn update_thumbnail_path(
     state: tauri::State<'_, AppState>,
     movie_id: i64,
@@ -561,6 +431,8 @@ fn main() {
             config: Arc::new(Mutex::new(config)),
             scan_status: Arc::new(Mutex::new(ScanStatus {
                 is_scanning: false,
+                stage: models::ImportStage::Scanning,
+                stage_message: String::new(),
                 total_files: 0,
                 scanned_files: 0,
                 current_file: None,
@@ -582,6 +454,7 @@ fn main() {
             update_thumbnail_path,
             set_movie_rating,
             show_in_file_manager,
+            delete_invalid_records,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, HardDrive } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, HardDrive, Settings as SettingsIcon } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
 import { startInitialScan, clearCache, getStats, Stats } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
+import ScanProgress from "../components/ScanProgress";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -11,7 +12,8 @@ export default function Settings() {
   const [nasPaths, setNasPaths] = useState<string[]>([]);
   const [cacheDir, setCacheDir] = useState<string>("");
   const [stats, setStats] = useState<Stats | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
+  const [scanMode, setScanMode] = useState<"incremental" | "full">("incremental");
+  const [deleteInvalid, setDeleteInvalid] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -44,11 +46,24 @@ export default function Settings() {
       if (selected && typeof selected === "string") {
         if (!nasPaths.includes(selected)) {
           setNasPaths([...nasPaths, selected]);
+          await saveConfig({
+            ...config,
+            nas_paths: [...nasPaths, selected],
+          });
         }
       }
     } catch (error) {
       console.error("Failed to select directory:", error);
     }
+  };
+
+  const handleRemovePath = async (index: number) => {
+    const newPaths = nasPaths.filter((_, i) => i !== index);
+    setNasPaths(newPaths);
+    await saveConfig({
+      ...config,
+      nas_paths: newPaths,
+    });
   };
 
   const handleSelectCacheDir = async () => {
@@ -60,14 +75,14 @@ export default function Settings() {
 
       if (selected && typeof selected === "string") {
         setCacheDir(selected);
+        await saveConfig({
+          ...config,
+          cache_dir: selected,
+        });
       }
     } catch (error) {
       console.error("Failed to select cache directory:", error);
     }
-  };
-
-  const handleRemovePath = (index: number) => {
-    setNasPaths(nasPaths.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
@@ -87,15 +102,14 @@ export default function Settings() {
 
   const handleScan = async () => {
     try {
-      setIsScanning(true);
-      await startInitialScan();
+      await startInitialScan(scanMode, deleteInvalid);
+      setDeleteInvalid(false);
       setTimeout(() => {
-        setIsScanning(false);
         loadStats();
       }, 1000);
     } catch (error) {
-      setIsScanning(false);
       alert("Failed to start scan: " + error);
+      setDeleteInvalid(false);
     }
   };
 
@@ -136,115 +150,172 @@ export default function Settings() {
       <main className="max-w-4xl mx-auto px-6 py-8">
         <h1 className="text-3xl font-bold mb-8">Settings</h1>
 
-        {/* Statistics */}
-        {stats && (
-          <div className="bg-gray-900 rounded-lg p-6 mb-8">
+        <div className="space-y-8">
+          <section className="bg-gray-900 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+              <SettingsIcon className="w-5 h-5" />
+              Scan Configuration
+            </h2>
+            
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-300">Path Configuration</h3>
+                <div className="flex gap-3 mb-4">
+                  <button
+                    onClick={handleAddPath}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Add Path
+                  </button>
+                  <div className="flex-1">
+                    <span className="text-gray-400 text-sm">Add or remove NAS paths</span>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {nasPaths.length === 0 ? (
+                    <p className="text-gray-400 text-sm">No paths configured</p>
+                  ) : (
+                    nasPaths.map((path, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between bg-gray-800 rounded-lg p-3"
+                      >
+                        <span className="text-sm font-mono truncate flex-1">{path}</span>
+                        <button
+                          onClick={() => handleRemovePath(index)}
+                          className="ml-3 p-2 text-red-400 hover:bg-gray-700 rounded transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex gap-3 mb-4">
+                  <button
+                    onClick={handleSelectCacheDir}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                  >
+                    <FolderOpen className="w-5 h-5" />
+                    Select Cache Directory
+                  </button>
+                  <div className="flex-1">
+                    <span className="text-sm font-mono truncate block">{cacheDir || "Not configured"}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-300">Scan Mode</h3>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <label 
+                    className={`relative flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-all border-2 ${
+                      scanMode === "incremental" 
+                        ? "bg-blue-600/20 border-blue-500 text-blue-400" 
+                        : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="scanMode"
+                      value="incremental"
+                      checked={scanMode === "incremental"}
+                      onChange={() => setScanMode("incremental")}
+                      className="sr-only"
+                    />
+                    <div className="text-center">
+                      <p className="font-semibold text-sm">增量扫描</p>
+                      <p className="text-xs opacity-75 mt-1">推荐</p>
+                    </div>
+                    {scanMode === "incremental" && (
+                      <div className="absolute top-2 right-2 w-2 h-2 bg-blue-400 rounded-full"></div>
+                    )}
+                  </label>
+                  <label 
+                    className={`relative flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-all border-2 ${
+                      scanMode === "full" 
+                        ? "bg-green-600/20 border-green-500 text-green-400" 
+                        : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="scanMode"
+                      value="full"
+                      checked={scanMode === "full"}
+                      onChange={() => setScanMode("full")}
+                      className="sr-only"
+                    />
+                    <div className="text-center">
+                      <p className="font-semibold text-sm">完全重新校验</p>
+                      <p className="text-xs opacity-75 mt-1">耗时较长</p>
+                    </div>
+                    {scanMode === "full" && (
+                      <div className="absolute top-2 right-2 w-2 h-2 bg-green-400 rounded-full"></div>
+                    )}
+                  </label>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-3 text-sm text-gray-400">
+                  {scanMode === "incremental" 
+                    ? "仅扫描新增或修改的文件，快速高效" 
+                    : "重新校验所有文件，确保数据完整性"}
+                </div>
+                <label className="flex items-center gap-3 bg-gray-800 rounded-lg p-3 cursor-pointer hover:bg-gray-700 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={deleteInvalid}
+                    onChange={(e) => setDeleteInvalid(e.target.checked)}
+                    className="w-5 h-5 rounded"
+                  />
+                  <div className="flex-1">
+                    <span className="text-white font-medium">删除已不存在的文件记录</span>
+                  </div>
+                </label>
+              </div>
+              
+              <ScanProgress inline={true} />
+              
+              <button
+                onClick={handleScan}
+                disabled={nasPaths.length === 0}
+                className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
+              >
+                开始扫描
+              </button>
+            </div>
+          </section>
+
+          <section className="bg-gray-900 rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
               <Database className="w-5 h-5" />
-              Statistics
+              System Information
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-gray-800 rounded-lg p-4">
                 <p className="text-gray-400 text-sm mb-1">Total Movies</p>
-                <p className="text-2xl font-bold">{stats.total_movies}</p>
+                <p className="text-2xl font-bold">{stats?.total_movies || 0}</p>
               </div>
               <div className="bg-gray-800 rounded-lg p-4">
                 <p className="text-gray-400 text-sm mb-1">Database Size</p>
-                <p className="text-2xl font-bold">{formatBytes(stats.db_size)}</p>
+                <p className="text-2xl font-bold">{stats ? formatBytes(stats.db_size) : "0 B"}</p>
               </div>
               <div className="bg-gray-800 rounded-lg p-4">
                 <p className="text-gray-400 text-sm mb-1">Cache Size</p>
-                <p className="text-2xl font-bold">{formatBytes(stats.cache_size)}</p>
+                <p className="text-2xl font-bold">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
               </div>
             </div>
-          </div>
-        )}
+          </section>
 
-        {/* NAS Paths */}
-        <div className="bg-gray-900 rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <FolderOpen className="w-5 h-5" />
-            NAS Paths
-          </h2>
-          <div className="space-y-3 mb-4">
-            {nasPaths.length === 0 ? (
-              <p className="text-gray-400 text-sm">No paths configured</p>
-            ) : (
-              nasPaths.map((path, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between bg-gray-800 rounded-lg p-3"
-                >
-                  <span className="text-sm font-mono truncate flex-1">{path}</span>
-                  <button
-                    onClick={() => handleRemovePath(index)}
-                    className="ml-3 p-2 text-red-400 hover:bg-gray-700 rounded transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-          <button
-            onClick={handleAddPath}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Add Path
-          </button>
-        </div>
-
-        {/* Cache Directory */}
-        <div className="bg-gray-900 rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <HardDrive className="w-5 h-5" />
-            Cache Directory
-          </h2>
-          <div className="space-y-3">
-            <div className="bg-gray-800 rounded-lg p-3">
-              <span className="text-sm font-mono truncate block">{cacheDir || "Not configured"}</span>
-            </div>
+          <section className="bg-gray-900 rounded-lg p-6">
             <button
-              onClick={handleSelectCacheDir}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+              onClick={handleSave}
+              className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold text-lg transition-colors"
             >
-              <FolderOpen className="w-5 h-5" />
-              Select Cache Directory
+              Save Settings
             </button>
-          </div>
+          </section>
         </div>
-
-        {/* Actions */}
-        <div className="bg-gray-900 rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <HardDrive className="w-5 h-5" />
-            Actions
-          </h2>
-          <div className="space-y-3">
-            <button
-              onClick={handleScan}
-              disabled={isScanning || nasPaths.length === 0}
-              className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
-            >
-              {isScanning ? "Scanning..." : "Start Full Scan"}
-            </button>
-            <button
-              onClick={handleClearCache}
-              className="w-full px-6 py-3 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold transition-colors"
-            >
-              Clear Thumbnail Cache
-            </button>
-          </div>
-        </div>
-
-        {/* Save Button */}
-        <button
-          onClick={handleSave}
-          className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold text-lg transition-colors"
-        >
-          Save Settings
-        </button>
       </main>
     </div>
   );

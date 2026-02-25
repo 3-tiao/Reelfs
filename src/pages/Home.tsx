@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon, Film } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import MovieGrid from "../components/MovieGrid";
-import ScanProgress from "../components/ScanProgress";
 import SearchBar from "../components/SearchBar";
 
 export default function Home() {
@@ -57,8 +56,6 @@ export default function Home() {
           <MovieGrid movies={movies} />
         )}
       </main>
-
-      <ScanProgress />
     </div>
   );
 }

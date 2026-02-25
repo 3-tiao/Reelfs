@@ -21,6 +21,8 @@ export interface Movie {
   added_at: string;
   updated_at: string;
   last_accessed?: string;
+  last_checked_at?: string;
+  scan_state?: string;
 }
 
 export interface PlayHistory {
@@ -31,8 +33,16 @@ export interface PlayHistory {
   play_count: number;
 }
 
+export enum ImportStage {
+  Scanning = "Scanning",
+  Importing = "Importing",
+  GeneratingThumbnails = "GeneratingThumbnails",
+}
+
 export interface ScanStatus {
   is_scanning: boolean;
+  stage: ImportStage;
+  stage_message: string;
   total_files: number;
   scanned_files: number;
   current_file?: string;
@@ -67,8 +77,8 @@ export const searchMovies = async (query: string): Promise<Movie[]> => {
   return await invoke("search_movies", { query });
 };
 
-export const startInitialScan = async (): Promise<string> => {
-  return await invoke("start_initial_scan");
+export const startInitialScan = async (scanMode: "incremental" | "full" = "incremental", deleteInvalid: boolean = false): Promise<string> => {
+  return await invoke("start_initial_scan", { scanMode, deleteInvalid });
 };
 
 export const getScanStatus = async (): Promise<ScanStatus> => {
@@ -125,4 +135,8 @@ export const showInFileManager = async (filePath: string): Promise<void> => {
 
 export const setMovieRating = async (movieId: number, rating: number | null): Promise<void> => {
   return await invoke("set_movie_rating", { movieId, rating });
+};
+
+export const clearThumbnails = async (): Promise<void> => {
+  return await invoke("clear_thumbnails");
 };
