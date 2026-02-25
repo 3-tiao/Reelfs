@@ -327,6 +327,11 @@ async fn regenerate_all_thumbnails(
         
         debug!("[缩略图生成] 处理缩略图: id={}, title={}", movie_id, title);
         
+        if !std::path::Path::new(&poster).exists() {
+            warn!("[缩略图生成] 跳过不存在的海报: id={}, poster={}", movie_id, poster);
+            continue;
+        }
+        
         match thumbnail::generate_thumbnail(poster, &thumbnail_path) {
             Ok(_) => {
                 let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
