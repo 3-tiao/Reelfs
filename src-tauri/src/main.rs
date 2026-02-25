@@ -320,6 +320,11 @@ async fn regenerate_all_thumbnails(
         .collect();
     
     let total_thumbnails = movies_with_posters.len();
+    info!("[缩略图生成] 找到 {} 个需要生成缩略图的电影", total_thumbnails);
+    
+    for (movie_id, title, poster) in &movies_with_posters {
+        info!("[缩略图生成] 检查电影: id={}, title={}, poster={}", movie_id, title, poster);
+    }
     let mut thumbnail_count = 0;
     
     for (movie_id, title, poster) in &movies_with_posters {
