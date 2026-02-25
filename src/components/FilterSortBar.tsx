@@ -98,7 +98,7 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
       <div className="relative" ref={sortMenuRef}>
         <button
           onClick={() => setSortMenuOpen(!sortMenuOpen)}
-          className="p-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
+          className="p-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
         >
           <ArrowUpDown className="w-4 h-4" />
           {sortOptions.sortOrder === 'ASC' ? (
