@@ -123,6 +123,10 @@ export const generateThumbnail = async (movieId: number): Promise<string> => {
   return await invoke("generate_thumbnail", { movieId });
 };
 
+export const regenerateAllThumbnails = async (): Promise<string> => {
+  return await invoke("regenerate_all_thumbnails");
+};
+
 export const batchGenerateThumbnails = async (movieIds: number[]): Promise<void> => {
   return await invoke("batch_generate_thumbnails", { movieIds });
 };

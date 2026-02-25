@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
-import { startInitialScan, getStats, Stats } from "../services/tauri";
+import { startInitialScan, getStats, Stats, regenerateAllThumbnails } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
 import ScanProgress from "../components/ScanProgress";
 
@@ -133,6 +133,18 @@ export default function Settings() {
     } catch (error) {
       alert("Failed to start scan: " + error);
       setDeleteInvalid(false);
+    }
+  };
+
+  const handleRegenerateThumbnails = async () => {
+    try {
+      const result = await regenerateAllThumbnails();
+      alert(result);
+      setTimeout(() => {
+        loadStats();
+      }, 1000);
+    } catch (error) {
+      alert("Failed to regenerate thumbnails: " + error);
     }
   };
 
@@ -316,6 +328,13 @@ export default function Settings() {
                 <p className="text-2xl font-bold">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
               </div>
             </div>
+            <button
+              onClick={handleRegenerateThumbnails}
+              className="w-full mt-4 px-6 py-3 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold text-lg transition-colors"
+            >
+              <RefreshCw className="w-5 h-5 mr-2" />
+              重新生成缩略图
+            </button>
           </section>
 
           <section className="bg-gray-900 rounded-lg p-6">

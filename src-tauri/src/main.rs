@@ -303,6 +303,60 @@ async fn generate_thumbnail(
 }
 
 #[tauri::command]
+async fn regenerate_all_thumbnails(
+    state: tauri::State<'_, AppState>,
+    window: tauri::Window,
+) -> Result<String, String> {
+    info!("[缩略图生成] 开始重新生成所有缩略图");
+    
+    let db = state.db.lock().unwrap();
+    let config = state.config.lock().unwrap();
+    
+    let movies_with_posters: Vec<(i64, String, String)> = db.get_movies(0, 1000)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|m| m.poster_path.is_some() && m.thumbnail_path.is_none())
+        .map(|m| (m.id, m.title, m.poster_path.unwrap()))
+        .collect();
+    
+    let total_thumbnails = movies_with_posters.len();
+    let mut thumbnail_count = 0;
+    
+    for (movie_id, title, poster) in &movies_with_posters {
+        let thumbnail_path = thumbnail::get_thumbnail_path(&config.cache_dir, *movie_id);
+        
+        debug!("[缩略图生成] 处理缩略图: id={}, title={}", movie_id, title);
+        
+        match thumbnail::generate_thumbnail(poster, &thumbnail_path) {
+            Ok(_) => {
+                let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
+                thumbnail_count += 1;
+                debug!("[缩略图生成] 缩略图成功: id={}", movie_id);
+                
+                {
+                    let status = ScanStatus {
+                        is_scanning: true,
+                        stage: models::ImportStage::GeneratingThumbnails,
+                        stage_message: format!("重新生成缩略图: {}/{}", thumbnail_count, total_thumbnails),
+                        total_files: total_thumbnails,
+                        scanned_files: thumbnail_count,
+                        current_file: Some(format!("生成缩略图: {}", title)),
+                    };
+                    let _ = window.emit("scan-progress", status);
+                }
+            }
+            Err(e) => {
+                error!("[缩略图生成] 缩略图失败: id={}, error={}", movie_id, e);
+            }
+        }
+    }
+    
+    info!("[缩略图生成] 重新生成缩略图完成: {}/{} 个", thumbnail_count, total_thumbnails);
+    
+    Ok(format!("重新生成缩略图完成: {}/{} 个", thumbnail_count, total_thumbnails))
+}
+
+#[tauri::command]
 async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
     info!("[设置] 开始清理缓存");
     
@@ -511,6 +565,7 @@ fn main() {
             get_config,
             update_config,
             generate_thumbnail,
+            regenerate_all_thumbnails,
             clear_cache,
             update_thumbnail_path,
             set_movie_rating,
