@@ -4,7 +4,7 @@ import { Settings as SettingsIcon, Film } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import MovieGrid from "../components/MovieGrid";
 import SearchBar from "../components/SearchBar";
-import FilterBar from "../components/FilterBar";
+import FilterSortBar from "../components/FilterSortBar";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -50,7 +50,7 @@ export default function Home() {
       </header>
 
       <main className="p-4">
-        <FilterBar onFilterChange={handleFilterChange} />
+        <FilterSortBar onFilterChange={handleFilterChange} />
         
         {isUsingFilters && (
           <div className="mb-4 text-gray-400 text-sm">

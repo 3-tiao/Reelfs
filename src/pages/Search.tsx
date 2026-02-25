@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import MovieGrid from "../components/MovieGrid";
-import FilterBar from "../components/FilterBar";
+import FilterSortBar from "../components/FilterSortBar";
 import { useMovieStore } from "../stores/movieStore";
 
 export default function Search() {
@@ -42,7 +42,7 @@ export default function Search() {
       <main className="p-4">
         {hasSearched && (
           <>
-            <FilterBar onFilterChange={handleFilterChange} />
+            <FilterSortBar onFilterChange={handleFilterChange} />
             
             {isUsingFilters && (
               <div className="mb-4 text-gray-400 text-sm">
