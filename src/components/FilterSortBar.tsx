@@ -93,20 +93,14 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
     { value: 'last_accessed', label: '播放次数', icon: User },
   ];
 
-  const getSortLabel = () => {
-    const option = sortOptionsList.find(opt => opt.value === sortOptions.sortBy);
-    return option ? option.label : '排序';
-  };
-
   return (
     <div className="flex items-center gap-2 mb-4">
       <div className="relative" ref={sortMenuRef}>
         <button
           onClick={() => setSortMenuOpen(!sortMenuOpen)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
+          className="p-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
         >
           <ArrowUpDown className="w-4 h-4" />
-          <span className="text-sm">{getSortLabel()}</span>
           {sortOptions.sortOrder === 'ASC' ? (
             <ChevronUp className="w-4 h-4 text-gray-400" />
           ) : (
@@ -157,14 +151,13 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
       <div className="relative" ref={filterMenuRef}>
         <button
           onClick={() => setFilterMenuOpen(!filterMenuOpen)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors border ${
+          className={`p-2 rounded-lg transition-colors border ${
             hasActiveFilters() 
               ? 'bg-blue-600 text-white border-blue-500 hover:bg-blue-700' 
               : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
           }`}
         >
           <Filter className="w-4 h-4" />
-          <span className="text-sm">筛选</span>
           {hasActiveFilters() && (
             <div className="w-2 h-2 bg-white rounded-full" />
           )}
