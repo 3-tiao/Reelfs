@@ -31,27 +31,30 @@ export default function Home() {
     <div className="min-h-screen bg-gray-950">
       <header className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
         <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Film className="w-8 h-8 text-blue-500" />
               <h1 className="text-2xl font-bold text-white">Reelfs</h1>
             </div>
-            <button
-              onClick={() => navigate("/settings")}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              <SettingsIcon className="w-6 h-6 text-gray-400 hover:text-white" />
-            </button>
-          </div>
-          <div className="flex justify-center">
-            <SearchBar onSearch={handleSearch} />
+            
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <SearchBar onSearch={handleSearch} />
+                <FilterSortBar onFilterChange={handleFilterChange} />
+              </div>
+              
+              <button
+                onClick={() => navigate("/settings")}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <SettingsIcon className="w-6 h-6 text-gray-400 hover:text-white" />
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="p-4">
-        <FilterSortBar onFilterChange={handleFilterChange} />
-        
         {isUsingFilters && (
           <div className="mb-4 text-gray-400 text-sm">
             筛选结果: {movies.length} 个电影
