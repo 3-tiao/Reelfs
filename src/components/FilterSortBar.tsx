@@ -157,7 +157,7 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
       <div className="relative" ref={filterMenuRef}>
         <button
           onClick={() => setFilterMenuOpen(!filterMenuOpen)}
-          className={`flex items-center p-2 rounded-lg transition-colors border ${
+          className={`flex items-center p-2.5 rounded-lg transition-colors border ${
             hasActiveFilters() 
               ? 'bg-blue-600 text-white border-blue-500 hover:bg-blue-700' 
               : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
