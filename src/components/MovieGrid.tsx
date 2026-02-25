@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { FixedSizeGrid as Grid } from "react-window";
 import MovieCard from "./MovieCard";
 import { Movie } from "../services/tauri";
@@ -15,15 +15,15 @@ export default function MovieGrid({ movies }: MovieGridProps) {
 
   const cardWidth = 200;
   const cardHeight = 320;
-  const columnCount = Math.floor(dimensions.width / cardWidth);
-  const rowCount = Math.ceil(movies.length / columnCount);
+  const gap = 16;
 
-  console.log('MovieGrid render:', { 
-    moviesCount: movies.length, 
-    columnCount, 
-    rowCount,
-    dimensions 
-  });
+  const columnCount = useMemo(() => {
+    return Math.floor((dimensions.width - gap) / (cardWidth + gap));
+  }, [dimensions.width, gap]);
+
+  const rowCount = useMemo(() => {
+    return Math.ceil(movies.length / columnCount);
+  }, [movies.length, columnCount]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -45,12 +45,12 @@ export default function MovieGrid({ movies }: MovieGridProps) {
       if (!movie) return null;
 
       return (
-        <div style={{ ...style, padding: "8px" }}>
+        <div style={{ ...style, padding: `${gap / 2}px` }}>
           <MovieCard movie={movie} />
         </div>
       );
     },
-    [movies, columnCount]
+    [movies, columnCount, gap]
   );
 
   if (movies.length === 0) {
@@ -64,12 +64,13 @@ export default function MovieGrid({ movies }: MovieGridProps) {
   return (
     <Grid
       columnCount={columnCount}
-      columnWidth={cardWidth}
+      columnWidth={cardWidth + gap}
       height={dimensions.height}
       rowCount={rowCount}
-      rowHeight={cardHeight}
+      rowHeight={cardHeight + gap}
       width={dimensions.width}
       overscanRowCount={2}
+      overscanColumnsCount={2}
     >
       {Cell}
     </Grid>

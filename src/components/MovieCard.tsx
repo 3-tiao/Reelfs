@@ -4,7 +4,6 @@ import { Movie } from "../services/tauri";
 import { Film, RefreshCw } from "lucide-react";
 import { readBinaryFile } from "@tauri-apps/api/fs";
 import { generateThumbnail } from "../services/thumbnail";
-import { join } from "@tauri-apps/api/path";
 
 interface MovieCardProps {
   movie: Movie;

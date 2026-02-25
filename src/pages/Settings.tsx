@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, HardDrive, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
-import { startInitialScan, clearCache, getStats, Stats } from "../services/tauri";
+import { startInitialScan, getStats, Stats } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
 import ScanProgress from "../components/ScanProgress";
 
@@ -49,6 +49,12 @@ export default function Settings() {
           await saveConfig({
             ...config,
             nas_paths: [...nasPaths, selected],
+            db_path: config?.db_path || "",
+            cache_dir: config?.cache_dir || "",
+            scan_on_startup: config?.scan_on_startup || false,
+            auto_generate_thumbnails: config?.auto_generate_thumbnails || false,
+            theme: config?.theme || "dark",
+            default_player: config?.default_player || "system",
           });
         }
       }
@@ -63,6 +69,12 @@ export default function Settings() {
     await saveConfig({
       ...config,
       nas_paths: newPaths,
+      db_path: config?.db_path || "",
+      cache_dir: config?.cache_dir || "",
+      scan_on_startup: config?.scan_on_startup || false,
+      auto_generate_thumbnails: config?.auto_generate_thumbnails || false,
+      theme: config?.theme || "dark",
+      default_player: config?.default_player || "system",
     });
   };
 
@@ -78,6 +90,12 @@ export default function Settings() {
         await saveConfig({
           ...config,
           cache_dir: selected,
+          db_path: config?.db_path || "",
+          nas_paths: config?.nas_paths || [],
+          scan_on_startup: config?.scan_on_startup || false,
+          auto_generate_thumbnails: config?.auto_generate_thumbnails || false,
+          theme: config?.theme || "dark",
+          default_player: config?.default_player || "system",
         });
       }
     } catch (error) {
@@ -92,6 +110,11 @@ export default function Settings() {
           ...config,
           nas_paths: nasPaths,
           cache_dir: cacheDir,
+          db_path: config?.db_path || "",
+          scan_on_startup: config?.scan_on_startup || false,
+          auto_generate_thumbnails: config?.auto_generate_thumbnails || false,
+          theme: config?.theme || "dark",
+          default_player: config?.default_player || "system",
         });
         alert("Settings saved successfully!");
       } catch (error) {
@@ -110,18 +133,6 @@ export default function Settings() {
     } catch (error) {
       alert("Failed to start scan: " + error);
       setDeleteInvalid(false);
-    }
-  };
-
-  const handleClearCache = async () => {
-    if (confirm("Are you sure you want to clear all cached thumbnails?")) {
-      try {
-        await clearCache();
-        loadStats();
-        alert("Cache cleared successfully!");
-      } catch (error) {
-        alert("Failed to clear cache: " + error);
-      }
     }
   };
 
