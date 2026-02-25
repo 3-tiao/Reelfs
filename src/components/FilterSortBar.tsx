@@ -105,12 +105,12 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
           onClick={() => setSortMenuOpen(!sortMenuOpen)}
           className="flex items-center p-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
         >
-          <ArrowUpDown className="w-4 h-4" />
-          <span className="text-sm ml-2">{getSortLabel()}</span>
+          <ArrowUpDown className="w-4 h-4 flex-shrink-0" />
+          <span className="text-sm ml-2 whitespace-nowrap">{getSortLabel()}</span>
           {sortOptions.sortOrder === 'ASC' ? (
-            <ChevronUp className="w-4 h-4 text-gray-400" />
+            <ChevronUp className="w-4 h-4 flex-shrink-0 text-gray-400" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-gray-400" />
+            <ChevronDown className="w-4 h-4 flex-shrink-0 text-gray-400" />
           )}
         </button>
 
@@ -128,8 +128,8 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
                       sortOptions.sortBy === option.value ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
-                    <span className="text-sm">{option.label}</span>
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-sm whitespace-nowrap">{option.label}</span>
                   </button>
                 );
               })}
@@ -140,13 +140,13 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
                 onClick={handleSortOrderToggle}
                 className="w-full flex items-center justify-between px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
               >
-                <span className="text-sm">
+                <span className="text-sm whitespace-nowrap">
                   {sortOptions.sortOrder === 'ASC' ? '升序' : '降序'}
                 </span>
                 {sortOptions.sortOrder === 'ASC' ? (
-                  <ChevronUp className="w-4 h-4" />
+                  <ChevronUp className="w-4 h-4 flex-shrink-0" />
                 ) : (
-                  <ChevronDown className="w-4 h-4" />
+                  <ChevronDown className="w-4 h-4 flex-shrink-0" />
                 )}
               </button>
             </div>
@@ -163,9 +163,9 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
               : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
           }`}
         >
-          <Filter className="w-4 h-4" />
+          <Filter className="w-4 h-4 flex-shrink-0" />
           {hasActiveFilters() && (
-            <div className="w-2 h-2 bg-white rounded-full" />
+            <div className="w-2 h-2 bg-white rounded-full flex-shrink-0" />
           )}
         </button>
 
