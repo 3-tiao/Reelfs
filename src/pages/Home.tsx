@@ -9,7 +9,19 @@ import ScrollProgress from "../components/ScrollProgress";
 
 export default function Home() {
   const navigate = useNavigate();
-  const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered, clearFilters } = useMovieStore();
+  const { 
+    movies, 
+    isLoading, 
+    isLoadingMore,
+    hasMore,
+    fetchMovies, 
+    loadMore,
+    searchMovies, 
+    reset, 
+    isUsingFilters, 
+    fetchMoviesFiltered, 
+    clearFilters 
+  } = useMovieStore();
   const movieGridRef = useRef<MovieGridRef>(null);
   const [scrollInfo, setScrollInfo] = useState({ thumbHeight: 0, thumbPosition: 0 });
   
@@ -72,7 +84,24 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <MovieGrid ref={movieGridRef} movies={movies} onScroll={setScrollInfo} />
+          <>
+            <MovieGrid 
+              ref={movieGridRef} 
+              movies={movies} 
+              onScroll={setScrollInfo}
+              onLoadMore={loadMore}
+            />
+            {isLoadingMore && (
+              <div className="flex items-center justify-center py-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              </div>
+            )}
+            {!hasMore && movies.length > 0 && (
+              <div className="text-center py-4 text-gray-400 text-sm">
+                已加载全部 {movies.length} 个电影
+              </div>
+            )}
+          </>
         )}
       </main>
       

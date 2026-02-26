@@ -6,13 +6,14 @@ import { Movie } from "../services/tauri";
 interface MovieGridProps {
   movies: Movie[];
   onScroll?: (info: { thumbHeight: number; thumbPosition: number }) => void;
+  onLoadMore?: () => void;
 }
 
 export interface MovieGridRef {
   scrollToPercentage: (percentage: number) => void;
 }
 
-export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll }, ref) {
+export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll, onLoadMore }, ref) {
   const gridRef = useRef<any>(null);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
@@ -70,8 +71,18 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
         
         onScroll({ thumbHeight, thumbPosition });
       }
+      
+      if (onLoadMore) {
+        const totalHeight = rowCount * (cardHeight + gap);
+        const clientHeight = dimensions.height;
+        const scrollHeight = totalHeight - clientHeight;
+        
+        if (scrollHeight > 0 && scrollTop >= scrollHeight * 0.8) {
+          onLoadMore();
+        }
+      }
     },
-    [rowCount, cardHeight, gap, dimensions.height, onScroll]
+    [rowCount, cardHeight, gap, dimensions.height, onScroll, onLoadMore]
   );
 
   const Cell = useCallback(

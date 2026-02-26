@@ -6,6 +6,8 @@ interface MovieStore {
   currentPage: number;
   totalCount: number;
   isLoading: boolean;
+  isLoadingMore: boolean;
+  hasMore: boolean;
   error: string | null;
   filters: Filters;
   sortOptions: SortOptions;
@@ -14,6 +16,7 @@ interface MovieStore {
   isUsingFilters: boolean;
 
   fetchMovies: (offset: number) => Promise<void>;
+  loadMore: () => Promise<void>;
   searchMovies: (query: string) => Promise<void>;
   playMovie: (id: number) => Promise<void>;
   reset: () => void;
@@ -25,11 +28,13 @@ interface MovieStore {
   fetchAvailableActors: () => Promise<void>;
 }
 
-export const useMovieStore = create<MovieStore>((set) => ({
+export const useMovieStore = create<MovieStore>((set, get) => ({
   movies: [],
   currentPage: 0,
   totalCount: 0,
   isLoading: false,
+  isLoadingMore: false,
+  hasMore: true,
   error: null,
   filters: {},
   sortOptions: { sortBy: 'added_at', sortOrder: 'DESC' },
@@ -47,10 +52,37 @@ export const useMovieStore = create<MovieStore>((set) => ({
         title: m.title,
         thumbnail_path: m.thumbnail_path
       })));
-      set({ movies, isLoading: false });
+      set({ 
+        movies, 
+        isLoading: false, 
+        hasMore: movies.length === 200,
+        currentPage: Math.floor(offset / 200)
+      });
     } catch (error) {
       console.error('[MovieStore] 获取电影失败:', error);
       set({ error: String(error), isLoading: false });
+    }
+  },
+
+  loadMore: async () => {
+    const state = get();
+    if (state.isLoadingMore || !state.hasMore) return;
+    
+    set({ isLoadingMore: true });
+    try {
+      const offset = (state.currentPage + 1) * 200;
+      const newMovies = await getMovies(offset, 200);
+      console.log('[MovieStore] 加载更多电影:', newMovies.length, '个电影');
+      
+      set({ 
+        movies: [...state.movies, ...newMovies],
+        isLoadingMore: false,
+        hasMore: newMovies.length === 200,
+        currentPage: state.currentPage + 1
+      });
+    } catch (error) {
+      console.error('[MovieStore] 加载更多电影失败:', error);
+      set({ isLoadingMore: false });
     }
   },
 
