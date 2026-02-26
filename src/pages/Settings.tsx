@@ -300,7 +300,7 @@ export default function Settings() {
               <button
                 onClick={handleRegenerateThumbnails}
                 disabled={!stats || stats.total_movies === 0}
-                className="w-full px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
+                className="w-full flex items-center justify-center px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
               >
                 <RefreshCw className="w-5 h-5 mr-2" />
                 重新生成缩略图
@@ -309,7 +309,7 @@ export default function Settings() {
               <button
                 onClick={handleScan}
                 disabled={!stats || stats.total_movies === 0}
-                className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
+                className="w-full flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
               >
                 开始扫描
               </button>
