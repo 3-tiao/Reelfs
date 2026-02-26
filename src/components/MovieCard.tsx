@@ -36,13 +36,15 @@ export default function MovieCard({ movie }: MovieCardProps) {
   const loadOrGenerateThumbnail = async () => {
     if (movie.thumbnail_path) {
       loadLocalImage(movie.thumbnail_path);
-    } else if (movie.poster_path) {
+    } else {
       await generateAndLoadThumbnail();
     }
   };
 
   const generateAndLoadThumbnail = async () => {
-    if (!movie.poster_path) {
+    const posterPath = getPosterPath(movie.file_path);
+    
+    if (!posterPath) {
       console.error('[MovieCard] 没有海报路径，无法生成缩略图');
       return;
     }
@@ -52,15 +54,27 @@ export default function MovieCard({ movie }: MovieCardProps) {
       console.log('[MovieCard] 开始生成缩略图:', { id: movie.id, title: movie.title });
       
       const thumbnailPath = `/Users/user/.reelfs/cache/thumbnails/${movie.id}.jpg`;
-      await generateThumbnail(movie.poster_path, thumbnailPath, movie.id);
+      await generateThumbnail(posterPath, thumbnailPath, movie.id);
       
       loadLocalImage(thumbnailPath);
     } catch (error) {
       console.error('[MovieCard] 生成缩略图失败:', error);
-      loadLocalImage(movie.poster_path);
+      loadLocalImage(posterPath);
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const getPosterPath = (videoPath: string): string | null => {
+    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
+    const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg'];
+    
+    for (const name of posterNames) {
+      const posterPath = `${dir}/${name}`;
+      return posterPath;
+    }
+    
+    return null;
   };
 
   const loadLocalImage = async (path: string) => {

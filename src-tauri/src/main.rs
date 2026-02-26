@@ -274,13 +274,16 @@ async fn generate_thumbnail(
         }
     }
     
-    if let Some(poster) = &movie.poster_path {
+    let video_path = Path::new(&movie.file_path);
+    let poster = indexer::get_poster_path(video_path);
+    
+    if let Some(poster) = poster {
         let thumbnail_path = thumbnail::get_thumbnail_path(&config.cache_dir, movie_id);
         
         debug!("[缩略图生成] 源文件: {}", poster);
         debug!("[缩略图生成] 目标文件: {}", thumbnail_path);
         
-        thumbnail::generate_thumbnail(poster, &thumbnail_path)
+        thumbnail::generate_thumbnail(&poster, &thumbnail_path)
             .map_err(|e| {
                 error!("[缩略图生成] 生成缩略图失败: {}", e);
                 format!("Failed to generate thumbnail: {}", e)
@@ -312,51 +315,48 @@ async fn regenerate_all_thumbnails(
     let db = state.db.lock().unwrap();
     let config = state.config.lock().unwrap();
     
-    let movies_with_posters: Vec<(i64, String, String)> = db.get_movies(0, 1000)
+    let movies_without_thumbnails: Vec<(i64, String, String)> = db.get_movies(0, 1000)
         .unwrap_or_default()
         .into_iter()
-        .filter(|m| m.poster_path.is_some() && m.thumbnail_path.is_none())
-        .map(|m| (m.id, m.title, m.poster_path.unwrap()))
+        .filter(|m| m.thumbnail_path.is_none())
+        .map(|m| (m.id, m.title, m.file_path))
         .collect();
     
-    let total_thumbnails = movies_with_posters.len();
+    let total_thumbnails = movies_without_thumbnails.len();
     info!("[缩略图生成] 找到 {} 个需要生成缩略图的电影", total_thumbnails);
     
-    for (movie_id, title, poster) in &movies_with_posters {
-        info!("[缩略图生成] 检查电影: id={}, title={}, poster={}", movie_id, title, poster);
-    }
     let mut thumbnail_count = 0;
     
-    for (movie_id, title, poster) in &movies_with_posters {
-        let thumbnail_path = thumbnail::get_thumbnail_path(&config.cache_dir, *movie_id);
+    for (movie_id, title, file_path) in &movies_without_thumbnails {
+        let video_path = Path::new(file_path);
+        let poster = indexer::get_poster_path(video_path);
         
-        debug!("[缩略图生成] 处理缩略图: id={}, title={}", movie_id, title);
-        
-        if !std::path::Path::new(&poster).exists() {
-            warn!("[缩略图生成] 跳过不存在的海报: id={}, poster={}", movie_id, poster);
-            continue;
-        }
-        
-        match thumbnail::generate_thumbnail(poster, &thumbnail_path) {
-            Ok(_) => {
-                let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
-                thumbnail_count += 1;
-                debug!("[缩略图生成] 缩略图成功: id={}", movie_id);
-                
-                {
-                    let status = ScanStatus {
-                        is_scanning: true,
-                        stage: models::ImportStage::GeneratingThumbnails,
-                        stage_message: format!("重新生成缩略图: {}/{}", thumbnail_count, total_thumbnails),
-                        total_files: total_thumbnails,
-                        scanned_files: thumbnail_count,
-                        current_file: Some(format!("生成缩略图: {}", title)),
-                    };
-                    let _ = window.emit("scan-progress", status);
+        if let Some(poster) = poster {
+            let thumbnail_path = thumbnail::get_thumbnail_path(&config.cache_dir, *movie_id);
+            
+            debug!("[缩略图生成] 处理缩略图: id={}, title={}", movie_id, title);
+            
+            match thumbnail::generate_thumbnail(&poster, &thumbnail_path) {
+                Ok(_) => {
+                    let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
+                    thumbnail_count += 1;
+                    debug!("[缩略图生成] 缩略图成功: id={}", movie_id);
+                    
+                    {
+                        let status = ScanStatus {
+                            is_scanning: true,
+                            stage: models::ImportStage::GeneratingThumbnails,
+                            stage_message: format!("重新生成缩略图: {}/{}", thumbnail_count, total_thumbnails),
+                            total_files: total_thumbnails,
+                            scanned_files: thumbnail_count,
+                            current_file: Some(format!("生成缩略图: {}", title)),
+                        };
+                        let _ = window.emit("scan-progress", status);
+                    }
                 }
-            }
-            Err(e) => {
-                error!("[缩略图生成] 缩略图失败: id={}, error={}", movie_id, e);
+                Err(e) => {
+                    error!("[缩略图生成] 缩略图失败: id={}, error={}", movie_id, e);
+                }
             }
         }
     }

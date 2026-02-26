@@ -45,8 +45,7 @@ export const useMovieStore = create<MovieStore>((set) => ({
       console.log('[MovieStore] 前3个电影:', movies.slice(0, 3).map(m => ({
         id: m.id,
         title: m.title,
-        thumbnail_path: m.thumbnail_path,
-        poster_path: m.poster_path
+        thumbnail_path: m.thumbnail_path
       })));
       set({ movies, isLoading: false });
     } catch (error) {

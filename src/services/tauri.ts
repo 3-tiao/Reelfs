@@ -11,8 +11,6 @@ export interface Movie {
   genres?: string;
   director?: string;
   actors?: string;
-  poster_path?: string;
-  fanart_path?: string;
   thumbnail_path?: string;
   file_size?: number;
   duration_seconds?: number;

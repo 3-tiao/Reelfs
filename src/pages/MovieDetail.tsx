@@ -56,17 +56,43 @@ export default function MovieDetail() {
       setMovie(movieData);
       setHistory(historyData);
 
-      if (movieData.poster_path) {
-        await loadImage(movieData.poster_path, setPosterSrc);
+      const posterPath = getPosterPath(movieData.file_path);
+      if (posterPath) {
+        await loadImage(posterPath, setPosterSrc);
       }
-      if (movieData.fanart_path) {
-        await loadImage(movieData.fanart_path, setFanartSrc);
+      const fanartPath = getFanartPath(movieData.file_path);
+      if (fanartPath) {
+        await loadImage(fanartPath, setFanartSrc);
       }
     } catch (error) {
       console.error("Failed to load movie details:", error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getPosterPath = (videoPath: string): string | null => {
+    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
+    const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg'];
+    
+    for (const name of posterNames) {
+      const posterPath = `${dir}/${name}`;
+      return posterPath;
+    }
+    
+    return null;
+  };
+
+  const getFanartPath = (videoPath: string): string | null => {
+    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
+    const fanartNames = ['fanart.jpg', 'fanart.png', 'backdrop.jpg', 'background.jpg'];
+    
+    for (const name of fanartNames) {
+      const fanartPath = `${dir}/${name}`;
+      return fanartPath;
+    }
+    
+    return null;
   };
 
   const loadImage = async (path: string, setter: (src: string | null) => void) => {

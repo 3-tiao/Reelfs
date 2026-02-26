@@ -11,8 +11,6 @@ pub struct Movie {
     pub genres: Option<String>,
     pub director: Option<String>,
     pub actors: Option<String>,
-    pub poster_path: Option<String>,
-    pub fanart_path: Option<String>,
     pub thumbnail_path: Option<String>,
     pub file_size: Option<i64>,
     pub duration_seconds: Option<i64>,
@@ -34,8 +32,6 @@ pub struct MovieMetadata {
     pub genres: Option<String>,
     pub director: Option<String>,
     pub actors: Option<String>,
-    pub poster: Option<String>,
-    pub fanart: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

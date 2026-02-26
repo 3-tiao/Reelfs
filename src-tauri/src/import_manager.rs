@@ -146,8 +146,6 @@ impl ImportManager {
                 let genres = metadata.as_ref().and_then(|m| m.genres.clone());
                 let director = metadata.as_ref().and_then(|m| m.director.clone());
                 let actors = metadata.as_ref().and_then(|m| m.actors.clone());
-                let poster = metadata.as_ref().and_then(|m| m.poster.clone());
-                let fanart = metadata.as_ref().and_then(|m| m.fanart.clone());
                 let file_size = indexer::get_file_size(video_path);
                 let (duration_seconds, width, height) = indexer::get_video_info(video_path)
                     .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
@@ -162,8 +160,6 @@ impl ImportManager {
                     genres,
                     director,
                     actors,
-                    poster,
-                    fanart,
                     file_size,
                     duration_seconds,
                     width,
@@ -177,7 +173,7 @@ impl ImportManager {
                     } else {
                         debug!("[导入管理器] 批量插入成功: {} 条记录", batch.len());
                         
-                        for (file_path, _, _, _, _, _, _, _, _, _, _, _, _, _) in &batch {
+                        for (file_path, _, _, _, _, _, _, _, _, _, _, _) in &batch {
                             if let Ok(Some(movie)) = db.get_movie_by_path(file_path) {
                                 new_file_ids.push(movie.id);
                             }
@@ -215,7 +211,7 @@ impl ImportManager {
         info!("[导入管理器] 开始生成缩略图");
         let thumbnail_start_time = std::time::Instant::now();
 
-        let movies_with_posters: Vec<(i64, String, String)> = {
+        let movies_without_thumbnails: Vec<(i64, String, String)> = {
             let db = self.db.lock().unwrap();
             
             if self.scan_mode == "incremental" && !new_file_ids.is_empty() {
@@ -223,8 +219,8 @@ impl ImportManager {
                 new_file_ids.iter()
                     .filter_map(|&id| {
                         if let Ok(movie) = db.get_movie_by_id(id) {
-                            if movie.poster_path.is_some() && movie.thumbnail_path.is_none() {
-                                Some((movie.id, movie.title, movie.poster_path.unwrap()))
+                            if movie.thumbnail_path.is_none() {
+                                Some((movie.id, movie.title, movie.file_path))
                             } else {
                                 None
                             }
@@ -240,8 +236,8 @@ impl ImportManager {
 
                 all_movies.unwrap_or_default()
                     .into_iter()
-                    .filter(|m| m.poster_path.is_some() && m.thumbnail_path.is_none())
-                    .map(|m| (m.id, m.title, m.poster_path.unwrap()))
+                    .filter(|m| m.thumbnail_path.is_none())
+                    .map(|m| (m.id, m.title, m.file_path))
                     .collect()
             } else {
                 info!("[导入管理器] 增量扫描模式，没有新文件需要生成缩略图");
@@ -249,31 +245,36 @@ impl ImportManager {
             }
         };
 
-        let total_thumbnails = movies_with_posters.len();
+        let total_thumbnails = movies_without_thumbnails.len();
         let mut thumbnail_count = 0;
 
-        for (movie_id, title, poster) in &movies_with_posters {
-            let thumbnail_path = thumbnail::get_thumbnail_path(cache_dir, *movie_id);
+        for (movie_id, title, file_path) in &movies_without_thumbnails {
+            let video_path = std::path::Path::new(file_path);
+            let poster = crate::indexer::get_poster_path(video_path);
+            
+            if let Some(poster) = poster {
+                let thumbnail_path = thumbnail::get_thumbnail_path(cache_dir, *movie_id);
 
-            debug!("[导入管理器] 处理缩略图: id={}, title={}", movie_id, title);
+                debug!("[导入管理器] 处理缩略图: id={}, title={}", movie_id, title);
 
-            match thumbnail::generate_thumbnail(poster, &thumbnail_path) {
-                Ok(_) => {
-                    let db = self.db.lock().unwrap();
-                    let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
-                    thumbnail_count += 1;
-                    debug!("[导入管理器] 缩略图成功: id={}", movie_id);
+                match thumbnail::generate_thumbnail(&poster, &thumbnail_path) {
+                    Ok(_) => {
+                        let db = self.db.lock().unwrap();
+                        let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
+                        thumbnail_count += 1;
+                        debug!("[导入管理器] 缩略图成功: id={}", movie_id);
 
-                    {
-                        let mut status = self.scan_status.lock().unwrap();
-                        status.scanned_files = thumbnail_count;
-                        status.current_file = Some(format!("生成缩略图: {}", title));
+                        {
+                            let mut status = self.scan_status.lock().unwrap();
+                            status.scanned_files = thumbnail_count;
+                            status.current_file = Some(format!("生成缩略图: {}", title));
+                        }
+
+                        let _ = self.window.emit("scan-progress", self.scan_status.lock().unwrap().clone());
                     }
-
-                    let _ = self.window.emit("scan-progress", self.scan_status.lock().unwrap().clone());
-                }
-                Err(e) => {
-                    error!("[导入管理器] 缩略图失败: id={}, error={}", movie_id, e);
+                    Err(e) => {
+                        error!("[导入管理器] 缩略图失败: id={}, error={}", movie_id, e);
+                    }
                 }
             }
         }

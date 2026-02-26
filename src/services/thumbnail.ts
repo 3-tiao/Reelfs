@@ -69,7 +69,7 @@ export async function generateThumbnail(
 }
 
 export async function batchGenerateThumbnails(
-  movies: Array<{ id: number; poster_path?: string }>,
+  movies: Array<{ id: number; file_path: string }>,
   cacheDir: string,
   onProgress?: (current: number, total: number) => void
 ): Promise<void> {
@@ -81,22 +81,36 @@ export async function batchGenerateThumbnails(
   for (let i = 0; i < movies.length; i++) {
     const movie = movies[i];
     
-    if (movie.poster_path) {
+    const posterPath = getPosterPath(movie.file_path);
+    
+    if (posterPath) {
       const thumbnailPath = `${cacheDir}/thumbnails/${movie.id}.jpg`;
       
       try {
-        await generateThumbnail(movie.poster_path, thumbnailPath, movie.id);
+        await generateThumbnail(posterPath, thumbnailPath, movie.id);
         successCount++;
       } catch (error) {
         console.error('[缩略图生成] 失败: id=', movie.id, 'error=', error);
         failCount++;
       }
     }
-
+    
     if (onProgress) {
       onProgress(i + 1, movies.length);
     }
   }
 
   console.log('[缩略图生成] 批量生成完成:', successCount, '/', movies.length, '成功，', failCount, '失败');
+}
+
+function getPosterPath(videoPath: string): string | null {
+  const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
+  const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg'];
+  
+  for (const name of posterNames) {
+    const posterPath = `${dir}/${name}`;
+    return posterPath;
+  }
+  
+  return null;
 }

@@ -40,8 +40,6 @@ impl Database {
                 genres TEXT,
                 director TEXT,
                 actors TEXT,
-                poster_path TEXT,
-                fanart_path TEXT,
                 thumbnail_path TEXT,
                 file_size INTEGER,
                 duration_seconds INTEGER,
@@ -155,16 +153,15 @@ impl Database {
 
     pub fn insert_movie(&self, file_path: &str, title: &str, year: Option<i32>, 
                        plot: Option<&str>, rating: Option<f64>, genres: Option<&str>,
-                       director: Option<&str>, actors: Option<&str>, 
-                       poster_path: Option<&str>, fanart_path: Option<&str>,
+                       director: Option<&str>, actors: Option<&str>,
                        file_size: Option<i64>, duration_seconds: Option<i64>,
                        width: Option<i32>, height: Option<i32>) -> Result<i64> {
         debug!("[数据库] 插入电影: title={}, file_path={}", title, file_path);
         
         self.conn.execute(
-            "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height, last_checked_at, scan_state)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
-            params![file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height, "checked", "checked"],
+            "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height, last_checked_at, scan_state)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![file_path, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height, "checked", "checked"],
         )?;
         
         let id = self.conn.last_insert_rowid();
@@ -173,7 +170,7 @@ impl Database {
         Ok(id)
     }
 
-    pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i32>, Option<i32>)]) -> Result<usize> {
+    pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i32>, Option<i32>)]) -> Result<usize> {
         let start_time = std::time::Instant::now();
         debug!("[数据库] 开始批量插入/更新: {} 条记录", movies.len());
         
@@ -182,12 +179,12 @@ impl Database {
         
         for movie in movies {
             let result = tx.execute(
-                "INSERT OR REPLACE INTO movies (file_path, title, year, plot, rating, genres, director, actors, poster_path, fanart_path, file_size, duration_seconds, width, height, last_checked_at, scan_state)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                "INSERT OR REPLACE INTO movies (file_path, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height, last_checked_at, scan_state)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     &movie.0, &movie.1, movie.2, &movie.3, movie.4, 
-                    &movie.5, &movie.6, &movie.7, &movie.8, &movie.9,
-                    movie.10, movie.11, movie.12, movie.13, "checked", "checked"
+                    &movie.5, &movie.6, &movie.7,
+                    movie.8, movie.9, movie.10, movie.11, "checked", "checked"
                 ],
             );
             if result.is_ok() {
@@ -208,7 +205,7 @@ impl Database {
         
         let mut stmt = self.conn.prepare(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
-                    poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                    thumbnail_path, file_size, duration_seconds,
                     width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
              FROM movies ORDER BY added_at DESC LIMIT ?1 OFFSET ?2"
         )?;
@@ -224,18 +221,16 @@ impl Database {
                 genres: row.get(6)?,
                 director: row.get(7)?,
                 actors: row.get(8)?,
-                poster_path: row.get(9)?,
-                fanart_path: row.get(10)?,
-                thumbnail_path: row.get(11)?,
-                file_size: row.get(12)?,
-                duration_seconds: row.get(13)?,
-                width: row.get(14)?,
-                height: row.get(15)?,
-                added_at: row.get(16)?,
-                updated_at: row.get(17)?,
-                last_accessed: row.get(18)?,
-                last_checked_at: row.get(19)?,
-                scan_state: row.get(20)?,
+                thumbnail_path: row.get(9)?,
+                file_size: row.get(10)?,
+                duration_seconds: row.get(11)?,
+                width: row.get(12)?,
+                height: row.get(13)?,
+                added_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                last_accessed: row.get(16)?,
+                last_checked_at: row.get(17)?,
+                scan_state: row.get(18)?,
             })
         })?;
 
@@ -247,7 +242,7 @@ impl Database {
         
         let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
-                    poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                    thumbnail_path, file_size, duration_seconds,
                     width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
              FROM movies WHERE id = ?1",
             params![id],
@@ -262,18 +257,16 @@ impl Database {
                     genres: row.get(6)?,
                     director: row.get(7)?,
                     actors: row.get(8)?,
-                    poster_path: row.get(9)?,
-                    fanart_path: row.get(10)?,
-                    thumbnail_path: row.get(11)?,
-                    file_size: row.get(12)?,
-                    duration_seconds: row.get(13)?,
-                    width: row.get(14)?,
-                    height: row.get(15)?,
-                    added_at: row.get(16)?,
-                    updated_at: row.get(17)?,
-                    last_accessed: row.get(18)?,
-                    last_checked_at: row.get(19)?,
-                    scan_state: row.get(20)?,
+                    thumbnail_path: row.get(9)?,
+                    file_size: row.get(10)?,
+                    duration_seconds: row.get(11)?,
+                    width: row.get(12)?,
+                    height: row.get(13)?,
+                    added_at: row.get(14)?,
+                    updated_at: row.get(15)?,
+                    last_accessed: row.get(16)?,
+                    last_checked_at: row.get(17)?,
+                    scan_state: row.get(18)?,
                 })
             }
         );
@@ -291,7 +284,7 @@ impl Database {
         
         let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
-                    poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                    thumbnail_path, file_size, duration_seconds,
                     width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
              FROM movies WHERE file_path = ?1",
             params![file_path],
@@ -306,18 +299,16 @@ impl Database {
                     genres: row.get(6)?,
                     director: row.get(7)?,
                     actors: row.get(8)?,
-                    poster_path: row.get(9)?,
-                    fanart_path: row.get(10)?,
-                    thumbnail_path: row.get(11)?,
-                    file_size: row.get(12)?,
-                    duration_seconds: row.get(13)?,
-                    width: row.get(14)?,
-                    height: row.get(15)?,
-                    added_at: row.get(16)?,
-                    updated_at: row.get(17)?,
-                    last_accessed: row.get(18)?,
-                    last_checked_at: row.get(19)?,
-                    scan_state: row.get(20)?,
+                    thumbnail_path: row.get(9)?,
+                    file_size: row.get(10)?,
+                    duration_seconds: row.get(11)?,
+                    width: row.get(12)?,
+                    height: row.get(13)?,
+                    added_at: row.get(14)?,
+                    updated_at: row.get(15)?,
+                    last_accessed: row.get(16)?,
+                    last_checked_at: row.get(17)?,
+                    scan_state: row.get(18)?,
                 })
             }
         );
@@ -347,7 +338,7 @@ impl Database {
         
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors, 
-                    m.poster_path, m.fanart_path, m.thumbnail_path, m.file_size, m.duration_seconds,
+                    m.thumbnail_path, m.file_size, m.duration_seconds,
                     m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state
              FROM movies m
              WHERE m.title LIKE ?1 OR m.file_path LIKE ?1 OR m.actors LIKE ?1 OR m.director LIKE ?1
@@ -365,18 +356,16 @@ impl Database {
                 genres: row.get(6)?,
                 director: row.get(7)?,
                 actors: row.get(8)?,
-                poster_path: row.get(9)?,
-                fanart_path: row.get(10)?,
-                thumbnail_path: row.get(11)?,
-                file_size: row.get(12)?,
-                duration_seconds: row.get(13)?,
-                width: row.get(14)?,
-                height: row.get(15)?,
-                added_at: row.get(16)?,
-                updated_at: row.get(17)?,
-                last_accessed: row.get(18)?,
-                last_checked_at: row.get(19)?,
-                scan_state: row.get(20)?,
+                thumbnail_path: row.get(9)?,
+                file_size: row.get(10)?,
+                duration_seconds: row.get(11)?,
+                width: row.get(12)?,
+                height: row.get(13)?,
+                added_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                last_accessed: row.get(16)?,
+                last_checked_at: row.get(17)?,
+                scan_state: row.get(18)?,
             })
         })?;
 
@@ -632,7 +621,7 @@ impl Database {
 
         let query = format!(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors,
-                    poster_path, fanart_path, thumbnail_path, file_size, duration_seconds,
+                    thumbnail_path, file_size, duration_seconds,
                     width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
              FROM movies
              {}
@@ -646,7 +635,7 @@ impl Database {
 
         let mut stmt = self.conn.prepare(&query)?;
 
-        let mut param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
         let movies = stmt.query_map(param_refs.as_slice(), |row| {
             Ok(Movie {
@@ -659,18 +648,16 @@ impl Database {
                 genres: row.get(6)?,
                 director: row.get(7)?,
                 actors: row.get(8)?,
-                poster_path: row.get(9)?,
-                fanart_path: row.get(10)?,
-                thumbnail_path: row.get(11)?,
-                file_size: row.get(12)?,
-                duration_seconds: row.get(13)?,
-                width: row.get(14)?,
-                height: row.get(15)?,
-                added_at: row.get(16)?,
-                updated_at: row.get(17)?,
-                last_accessed: row.get(18)?,
-                last_checked_at: row.get(19)?,
-                scan_state: row.get(20)?,
+                thumbnail_path: row.get(9)?,
+                file_size: row.get(10)?,
+                duration_seconds: row.get(11)?,
+                width: row.get(12)?,
+                height: row.get(13)?,
+                added_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                last_accessed: row.get(16)?,
+                last_checked_at: row.get(17)?,
+                scan_state: row.get(18)?,
             })
         })?;
 

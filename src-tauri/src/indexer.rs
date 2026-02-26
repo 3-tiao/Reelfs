@@ -9,6 +9,36 @@ use log::{info, debug};
 
 const VIDEO_EXTENSIONS: [&str; 8] = ["mkv", "mp4", "avi", "mov", "wmv", "flv", "webm", "m4v"];
 
+pub fn get_poster_path(video_path: &Path) -> Option<String> {
+    let parent = video_path.parent()?;
+    
+    let poster_names = vec!["poster.jpg", "poster.png", "folder.jpg", "cover.jpg"];
+    
+    for name in poster_names {
+        let poster_path = parent.join(name);
+        if poster_path.exists() {
+            return Some(poster_path.to_string_lossy().to_string());
+        }
+    }
+    
+    None
+}
+
+pub fn get_fanart_path(video_path: &Path) -> Option<String> {
+    let parent = video_path.parent()?;
+    
+    let fanart_names = vec!["fanart.jpg", "fanart.png", "backdrop.jpg", "background.jpg"];
+    
+    for name in fanart_names {
+        let fanart_path = parent.join(name);
+        if fanart_path.exists() {
+            return Some(fanart_path.to_string_lossy().to_string());
+        }
+    }
+    
+    None
+}
+
 #[derive(Debug, Deserialize)]
 struct NfoMovie {
     title: Option<String>,
@@ -18,25 +48,11 @@ struct NfoMovie {
     genre: Option<Vec<String>>,
     director: Option<String>,
     actor: Option<Vec<NfoActor>>,
-    thumb: Option<Vec<NfoThumb>>,
-    fanart: Option<NfoFanart>,
 }
 
 #[derive(Debug, Deserialize)]
 struct NfoActor {
     name: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct NfoThumb {
-    #[serde(rename = "$value")]
-    value: Option<String>,
-    aspect: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct NfoFanart {
-    thumb: Option<Vec<NfoThumb>>,
 }
 
 pub fn is_video_file(path: &Path) -> bool {
@@ -89,20 +105,6 @@ pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
                 .join(", ")
         });
     
-    let poster = nfo.thumb
-        .and_then(|thumbs| {
-            thumbs.iter()
-                .find(|t| t.aspect.as_deref() == Some("poster"))
-                .or_else(|| thumbs.first())
-                .and_then(|t| t.value.clone())
-        });
-    
-    let fanart = nfo.fanart
-        .and_then(|fa| {
-            fa.thumb
-                .and_then(|thumbs| thumbs.first().and_then(|t| t.value.clone()))
-        });
-    
     let metadata = MovieMetadata {
         title: nfo.title.unwrap_or_else(|| "Unknown".to_string()),
         year: nfo.year,
@@ -111,8 +113,6 @@ pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
         genres,
         director: nfo.director,
         actors,
-        poster,
-        fanart,
     };
     
     info!("[文件解析] NFO解析完成: title={}, year={:?}", metadata.title, metadata.year);
@@ -142,40 +142,11 @@ pub fn scan_directory(path: &str) -> Vec<(PathBuf, Option<MovieMetadata>)> {
         video_count += 1;
         info!("[目录扫描] 发现视频文件: {:?}", path);
         
-        let mut metadata = find_nfo_for_video(path)
+        let metadata = find_nfo_for_video(path)
             .and_then(|nfo_path| {
                 info!("[目录扫描] 找到NFO文件: {:?}", nfo_path);
                 parse_nfo_file(&nfo_path)
             });
-        
-        // Auto-discover poster if not in NFO
-        if let Some(ref mut meta) = metadata {
-            if meta.poster.is_none() {
-                meta.poster = find_poster_for_video(path);
-            }
-            if meta.fanart.is_none() {
-                meta.fanart = find_fanart_for_video(path);
-            }
-        } else {
-            // No NFO file, try to find poster anyway
-            let poster = find_poster_for_video(path);
-            let fanart = find_fanart_for_video(path);
-            if poster.is_some() || fanart.is_some() {
-                if metadata.is_none() {
-                    metadata = Some(MovieMetadata {
-                        title: extract_title_from_filename(path),
-                        year: None,
-                        plot: None,
-                        rating: None,
-                        genres: None,
-                        director: None,
-                        actors: None,
-                        poster,
-                        fanart,
-                    });
-                }
-            }
-        }
         
         results.push((path.to_path_buf(), metadata));
     }
@@ -201,38 +172,6 @@ pub fn extract_title_from_filename(path: &Path) -> String {
                 .join(" ")
         })
         .unwrap_or_else(|| "Unknown".to_string())
-}
-
-pub fn find_poster_for_video(video_path: &Path) -> Option<String> {
-    let parent = video_path.parent()?;
-    
-    // Common poster filenames
-    let poster_names = vec!["poster.jpg", "poster.png", "folder.jpg", "cover.jpg"];
-    
-    for name in poster_names {
-        let poster_path = parent.join(name);
-        if poster_path.exists() {
-            return Some(poster_path.to_string_lossy().to_string());
-        }
-    }
-    
-    None
-}
-
-pub fn find_fanart_for_video(video_path: &Path) -> Option<String> {
-    let parent = video_path.parent()?;
-    
-    // Common fanart filenames
-    let fanart_names = vec!["fanart.jpg", "fanart.png", "backdrop.jpg", "background.jpg"];
-    
-    for name in fanart_names {
-        let fanart_path = parent.join(name);
-        if fanart_path.exists() {
-            return Some(fanart_path.to_string_lossy().to_string());
-        }
-    }
-    
-    None
 }
 
 pub fn get_video_info(path: &Path) -> Option<(i64, i32, i32)> {
@@ -314,7 +253,7 @@ fn get_video_info_ffprobe(path: &Path) -> Option<(i64, i32, i32)> {
     let parts: Vec<&str> = stdout.trim().split(',').collect();
     
     if parts.len() >= 3 {
-        let duration = parts[0].parse::<f64>().ok()? as i64;
+        let duration = parts[0].parse::<f64>().ok().map(|d| d as i64)?;
         let width = parts[1].parse::<i32>().ok()?;
         let height = parts[2].parse::<i32>().ok()?;
         Some((duration, width, height))

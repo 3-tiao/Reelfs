@@ -89,8 +89,6 @@ fn handle_fs_event(db: &Database, event: Event) {
                     let genres = metadata.as_ref().and_then(|m| m.genres.as_deref());
                     let director = metadata.as_ref().and_then(|m| m.director.as_deref());
                     let actors = metadata.as_ref().and_then(|m| m.actors.as_deref());
-                    let poster = metadata.as_ref().and_then(|m| m.poster.as_deref());
-                    let fanart = metadata.as_ref().and_then(|m| m.fanart.as_deref());
                     let file_size = get_file_size(&path);
                     let (duration_seconds, width, height) = get_video_info(&path)
                         .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
@@ -107,8 +105,6 @@ fn handle_fs_event(db: &Database, event: Event) {
                         genres,
                         director,
                         actors,
-                        poster,
-                        fanart,
                         file_size,
                         duration_seconds,
                         width,
