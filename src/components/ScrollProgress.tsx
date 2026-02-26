@@ -58,7 +58,7 @@ export default function ScrollProgress({ total, current, onScrollTo }: ScrollPro
   }, [isDragging, dragPosition]);
 
   return (
-    <div className="fixed right-6 top-1/2 bottom-6 w-2 bg-gray-800 rounded-lg shadow-lg overflow-hidden z-50">
+    <div className="fixed right-6 top-20 bottom-6 w-2 bg-gray-800 rounded-lg shadow-lg overflow-hidden z-50">
       <div className="h-full flex flex-col">
         <div className="flex-1 bg-gray-700 rounded-t-lg relative overflow-hidden">
           <div 

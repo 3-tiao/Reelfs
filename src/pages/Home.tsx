@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
@@ -6,13 +6,13 @@ import MovieGrid from "../components/MovieGrid";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
 import ScrollProgress from "../components/ScrollProgress";
-import { listen } from "@tauri-apps/api/event";
 
 export default function Home() {
   const navigate = useNavigate();
   const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered, clearFilters } = useMovieStore();
+  const movieGridRef = useRef<HTMLDivElement>(null);
   const [scrollPercentage, setScrollPercentage] = useState(0);
-
+  
   useEffect(() => {
     fetchMovies(0);
   }, []);
@@ -31,21 +31,23 @@ export default function Home() {
     fetchMoviesFiltered(0, 200);
   };
 
-  useEffect(() => {
-    const unlistenPromise = listen('scan-progress', (event) => {
-      if (event.payload) {
-        const payload = event.payload as { current: number; total: number };
-        const percentage = payload.total > 0 ? (payload.current / payload.total) * 100 : 0;
-        setScrollPercentage(percentage);
-      }
-    });
-    
-    unlistenPromise.then(unlisten => {
-      return () => {
-        unlisten();
-      };
-    });
-  }, []);
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (movieGridRef.current) {
+      const scrollTop = event.currentTarget.scrollTop;
+      const scrollHeight = event.currentTarget.scrollHeight - event.currentTarget.clientHeight;
+      const percentage = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
+      setScrollPercentage(percentage);
+    }
+  };
+
+  const handleScrollTo = (percentage: number) => {
+    if (movieGridRef.current) {
+      const container = movieGridRef.current;
+      const scrollHeight = container.scrollHeight - container.clientHeight;
+      const targetScrollTop = scrollHeight * (percentage / 100);
+      container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-950">
@@ -82,11 +84,13 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <MovieGrid movies={movies} />
+          <div ref={movieGridRef} onScroll={handleScroll} className="overflow-y-auto max-h-[calc(100vh-8rem)]">
+            <MovieGrid movies={movies} />
+          </div>
         )}
       </main>
       
-      <ScrollProgress total={movies.length} current={scrollPercentage} onScrollTo={() => {}} />
+      <ScrollProgress total={100} current={scrollPercentage} onScrollTo={handleScrollTo} />
     </div>
   );
 }
