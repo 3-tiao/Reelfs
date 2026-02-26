@@ -305,6 +305,14 @@ export default function Settings() {
                 <RefreshCw className="w-5 h-5 mr-2" />
                 重新生成缩略图
               </button>
+              
+              <button
+                onClick={handleScan}
+                disabled={nasPaths.length === 0}
+                className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
+              >
+                开始扫描
+              </button>
             </div>
           </section>
           
