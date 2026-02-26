@@ -1,14 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import MovieGrid from "../components/MovieGrid";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
+import ScrollProgress from "../components/ScrollProgress";
 
 export default function Home() {
   const navigate = useNavigate();
   const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered, clearFilters } = useMovieStore();
+  const movieGridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchMovies(0);
@@ -26,6 +28,15 @@ export default function Home() {
 
   const handleFilterChange = () => {
     fetchMoviesFiltered(0, 200);
+  };
+
+  const handleScrollTo = (percentage: number) => {
+    if (movieGridRef.current) {
+      const container = movieGridRef.current;
+      const scrollHeight = container.scrollHeight - container.clientHeight;
+      const targetScrollTop = scrollHeight * (percentage / 100);
+      container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+    }
   };
 
   return (
@@ -47,7 +58,7 @@ export default function Home() {
           </div>
         </div>
       </header>
-
+      
       <main className="p-4">
         {isUsingFilters && (
           <div className="mb-4 text-gray-400 text-sm">
@@ -63,9 +74,13 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <MovieGrid movies={movies} />
+          <div ref={movieGridRef} className="overflow-y-auto max-h-[calc(100vh-8rem)]">
+            <MovieGrid movies={movies} />
+          </div>
         )}
       </main>
+      
+      <ScrollProgress total={movies.length} current={0} onScrollTo={handleScrollTo} />
     </div>
   );
 }
