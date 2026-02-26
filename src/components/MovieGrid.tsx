@@ -5,7 +5,7 @@ import { Movie } from "../services/tauri";
 
 interface MovieGridProps {
   movies: Movie[];
-  onScroll?: (percentage: number) => void;
+  onScroll?: (info: { thumbHeight: number; thumbPosition: number }) => void;
 }
 
 export interface MovieGridRef {
@@ -61,8 +61,14 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
         const totalHeight = rowCount * (cardHeight + gap);
         const clientHeight = dimensions.height;
         const scrollHeight = totalHeight - clientHeight;
-        const percentage = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
-        onScroll(percentage);
+        
+        const thumbHeight = (clientHeight / totalHeight) * 100;
+        
+        const thumbPosition = scrollHeight > 0 
+          ? (scrollTop / scrollHeight) * (100 - thumbHeight) 
+          : 0;
+        
+        onScroll({ thumbHeight, thumbPosition });
       }
     },
     [rowCount, cardHeight, gap, dimensions.height, onScroll]

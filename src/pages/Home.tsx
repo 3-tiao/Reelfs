@@ -11,7 +11,7 @@ export default function Home() {
   const navigate = useNavigate();
   const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered, clearFilters } = useMovieStore();
   const movieGridRef = useRef<MovieGridRef>(null);
-  const [scrollPercentage, setScrollPercentage] = useState(0);
+  const [scrollInfo, setScrollInfo] = useState({ thumbHeight: 0, thumbPosition: 0 });
   
   useEffect(() => {
     fetchMovies(0);
@@ -72,11 +72,15 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <MovieGrid ref={movieGridRef} movies={movies} onScroll={setScrollPercentage} />
+          <MovieGrid ref={movieGridRef} movies={movies} onScroll={setScrollInfo} />
         )}
       </main>
       
-      <ScrollProgress percentage={scrollPercentage} onScrollTo={handleScrollTo} />
+      <ScrollProgress 
+        thumbHeight={scrollInfo.thumbHeight}
+        thumbPosition={scrollInfo.thumbPosition}
+        onScrollTo={handleScrollTo} 
+      />
     </div>
   );
 }
