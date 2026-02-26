@@ -297,18 +297,17 @@ export default function Settings() {
                 </label>
               </div>
               
-              <ScanProgress inline={true} />
-              
               <button
-                onClick={handleScan}
+                onClick={handleRegenerateThumbnails}
                 disabled={nasPaths.length === 0}
-                className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
+                className="w-full px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
               >
-                开始扫描
+                <RefreshCw className="w-5 h-5 mr-2" />
+                重新生成缩略图
               </button>
             </div>
           </section>
-
+          
           <section className="bg-gray-900 rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
               <Database className="w-5 h-5" />
@@ -328,13 +327,6 @@ export default function Settings() {
                 <p className="text-2xl font-bold">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
               </div>
             </div>
-            <button
-              onClick={handleRegenerateThumbnails}
-              className="w-full mt-4 px-6 py-3 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold text-lg transition-colors"
-            >
-              <RefreshCw className="w-5 h-5 mr-2" />
-              重新生成缩略图
-            </button>
           </section>
 
           <section className="bg-gray-900 rounded-lg p-6">
