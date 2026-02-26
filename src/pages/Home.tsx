@@ -6,6 +6,7 @@ import MovieGrid from "../components/MovieGrid";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
 import ScrollProgress from "../components/ScrollProgress";
+import { listen } from "@tauri-apps/api/event";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -31,17 +32,19 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const unlisten = listen('scan-progress', (event) => {
+    const unlistenPromise = listen('scan-progress', (event) => {
       if (event.payload) {
-        const { current, total } = event.payload;
-        const percentage = total > 0 ? (current / total) * 100 : 0;
+        const payload = event.payload as { current: number; total: number };
+        const percentage = payload.total > 0 ? (payload.current / payload.total) * 100 : 0;
         setScrollPercentage(percentage);
       }
     });
-
-    return () => {
-      unlisten();
-    };
+    
+    unlistenPromise.then(unlisten => {
+      return () => {
+        unlisten();
+      };
+    });
   }, []);
 
   return (
