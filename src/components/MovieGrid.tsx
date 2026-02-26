@@ -56,21 +56,12 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
   }));
 
   const handleScroll = useCallback(
-    ({ scrollTop, scrollUpdateWasRequested }: any) => {
+    ({ scrollTop }: any) => {
       if (onScroll) {
         const totalHeight = rowCount * (cardHeight + gap);
         const clientHeight = dimensions.height;
         const scrollHeight = totalHeight - clientHeight;
         const percentage = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
-        
-        console.log('[MovieGrid] 滚动事件:', {
-          scrollTop,
-          totalHeight,
-          clientHeight,
-          scrollHeight,
-          percentage
-        });
-        
         onScroll(percentage);
       }
     },
