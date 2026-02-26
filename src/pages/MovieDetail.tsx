@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Star } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating } from "../services/tauri";
-import { readBinaryFile } from "@tauri-apps/api/fs";
+import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 
 const formatDuration = (seconds: number): string => {
   const hours = Math.floor(seconds / 3600);
@@ -56,11 +56,11 @@ export default function MovieDetail() {
       setMovie(movieData);
       setHistory(historyData);
 
-      const posterPath = getPosterPath(movieData.file_path);
+      const posterPath = await getPosterPath(movieData.file_path);
       if (posterPath) {
         await loadImage(posterPath, setPosterSrc);
       }
-      const fanartPath = getFanartPath(movieData.file_path);
+      const fanartPath = await getFanartPath(movieData.file_path);
       if (fanartPath) {
         await loadImage(fanartPath, setFanartSrc);
       }
@@ -71,25 +71,29 @@ export default function MovieDetail() {
     }
   };
 
-  const getPosterPath = (videoPath: string): string | null => {
+  const getPosterPath = async (videoPath: string): Promise<string | null> => {
     const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
     const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg'];
     
     for (const name of posterNames) {
       const posterPath = `${dir}/${name}`;
-      return posterPath;
+      if (await exists(posterPath)) {
+        return posterPath;
+      }
     }
     
     return null;
   };
 
-  const getFanartPath = (videoPath: string): string | null => {
+  const getFanartPath = async (videoPath: string): Promise<string | null> => {
     const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
     const fanartNames = ['fanart.jpg', 'fanart.png', 'backdrop.jpg', 'background.jpg'];
     
     for (const name of fanartNames) {
       const fanartPath = `${dir}/${name}`;
-      return fanartPath;
+      if (await exists(fanartPath)) {
+        return fanartPath;
+      }
     }
     
     return null;

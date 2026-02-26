@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
@@ -10,7 +10,7 @@ import ScrollProgress from "../components/ScrollProgress";
 export default function Home() {
   const navigate = useNavigate();
   const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered, clearFilters } = useMovieStore();
-  const movieGridRef = useRef<HTMLDivElement>(null);
+  const [scrollPercentage, setScrollPercentage] = useState(0);
 
   useEffect(() => {
     fetchMovies(0);
@@ -30,14 +30,19 @@ export default function Home() {
     fetchMoviesFiltered(0, 200);
   };
 
-  const handleScrollTo = (percentage: number) => {
-    if (movieGridRef.current) {
-      const container = movieGridRef.current;
-      const scrollHeight = container.scrollHeight - container.clientHeight;
-      const targetScrollTop = scrollHeight * (percentage / 100);
-      container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-    }
-  };
+  useEffect(() => {
+    const unlisten = listen('scan-progress', (event) => {
+      if (event.payload) {
+        const { current, total } = event.payload;
+        const percentage = total > 0 ? (current / total) * 100 : 0;
+        setScrollPercentage(percentage);
+      }
+    });
+
+    return () => {
+      unlisten();
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-950">
@@ -74,13 +79,11 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div ref={movieGridRef} className="overflow-y-auto max-h-[calc(100vh-8rem)]">
-            <MovieGrid movies={movies} />
-          </div>
+          <MovieGrid movies={movies} />
         )}
       </main>
       
-      <ScrollProgress total={movies.length} current={0} onScrollTo={handleScrollTo} />
+      <ScrollProgress total={movies.length} current={scrollPercentage} onScrollTo={() => {}} />
     </div>
   );
 }

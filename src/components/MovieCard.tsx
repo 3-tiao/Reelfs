@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, RefreshCw } from "lucide-react";
-import { readBinaryFile } from "@tauri-apps/api/fs";
+import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 import { generateThumbnail } from "../services/thumbnail";
 
 interface MovieCardProps {
@@ -42,7 +42,7 @@ export default function MovieCard({ movie }: MovieCardProps) {
   };
 
   const generateAndLoadThumbnail = async () => {
-    const posterPath = getPosterPath(movie.file_path);
+    const posterPath = await getPosterPath(movie.file_path);
     
     if (!posterPath) {
       console.error('[MovieCard] 没有海报路径，无法生成缩略图');
@@ -65,13 +65,15 @@ export default function MovieCard({ movie }: MovieCardProps) {
     }
   };
 
-  const getPosterPath = (videoPath: string): string | null => {
+  const getPosterPath = async (videoPath: string): Promise<string | null> => {
     const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
     const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg'];
     
     for (const name of posterNames) {
       const posterPath = `${dir}/${name}`;
-      return posterPath;
+      if (await exists(posterPath)) {
+        return posterPath;
+      }
     }
     
     return null;

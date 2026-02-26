@@ -103,13 +103,15 @@ export async function batchGenerateThumbnails(
   console.log('[缩略图生成] 批量生成完成:', successCount, '/', movies.length, '成功，', failCount, '失败');
 }
 
-function getPosterPath(videoPath: string): string | null {
+async function getPosterPath(videoPath: string): Promise<string | null> {
   const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
   const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg'];
   
   for (const name of posterNames) {
     const posterPath = `${dir}/${name}`;
-    return posterPath;
+    if (await exists(posterPath)) {
+      return posterPath;
+    }
   }
   
   return null;
