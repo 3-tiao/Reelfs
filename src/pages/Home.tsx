@@ -32,10 +32,15 @@ export default function Home() {
   };
 
   const handleScrollTo = (percentage: number) => {
+    console.log('[Home] handleScrollTo:', percentage);
     if (movieGridRef.current) {
       movieGridRef.current.scrollToPercentage(percentage);
     }
   };
+
+  useEffect(() => {
+    console.log('[Home] scrollPercentage 更新:', scrollPercentage);
+  }, [scrollPercentage]);
 
   return (
     <div className="min-h-screen bg-gray-950">
