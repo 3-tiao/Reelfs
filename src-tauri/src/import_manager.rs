@@ -119,6 +119,7 @@ impl ImportManager {
             {
                 let mut status = self.scan_status.lock().unwrap();
                 status.total_files += results.len();
+                let _ = self.window.emit("scan-progress", status.clone());
             }
 
             let mut batch = Vec::new();
