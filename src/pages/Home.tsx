@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
-import MovieGrid from "../components/MovieGrid";
+import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
 import ScrollProgress from "../components/ScrollProgress";
@@ -10,7 +10,7 @@ import ScrollProgress from "../components/ScrollProgress";
 export default function Home() {
   const navigate = useNavigate();
   const { movies, isLoading, fetchMovies, searchMovies, reset, isUsingFilters, fetchMoviesFiltered, clearFilters } = useMovieStore();
-  const movieGridRef = useRef<HTMLDivElement>(null);
+  const movieGridRef = useRef<MovieGridRef>(null);
   const [scrollPercentage, setScrollPercentage] = useState(0);
   
   useEffect(() => {
@@ -31,21 +31,9 @@ export default function Home() {
     fetchMoviesFiltered(0, 200);
   };
 
-  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
-    if (movieGridRef.current) {
-      const scrollTop = event.currentTarget.scrollTop;
-      const scrollHeight = event.currentTarget.scrollHeight - event.currentTarget.clientHeight;
-      const percentage = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
-      setScrollPercentage(percentage);
-    }
-  };
-
   const handleScrollTo = (percentage: number) => {
     if (movieGridRef.current) {
-      const container = movieGridRef.current;
-      const scrollHeight = container.scrollHeight - container.clientHeight;
-      const targetScrollTop = scrollHeight * (percentage / 100);
-      container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+      movieGridRef.current.scrollToPercentage(percentage);
     }
   };
 
@@ -84,13 +72,11 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div ref={movieGridRef} onScroll={handleScroll} className="overflow-y-auto max-h-[calc(100vh-8rem)]">
-            <MovieGrid movies={movies} />
-          </div>
+          <MovieGrid ref={movieGridRef} movies={movies} onScroll={setScrollPercentage} />
         )}
       </main>
       
-      <ScrollProgress total={100} current={scrollPercentage} onScrollTo={handleScrollTo} />
+      <ScrollProgress percentage={scrollPercentage} onScrollTo={handleScrollTo} />
     </div>
   );
 }

@@ -1,13 +1,19 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
 import { FixedSizeGrid as Grid } from "react-window";
 import MovieCard from "./MovieCard";
 import { Movie } from "../services/tauri";
 
 interface MovieGridProps {
   movies: Movie[];
+  onScroll?: (percentage: number) => void;
 }
 
-export default function MovieGrid({ movies }: MovieGridProps) {
+export interface MovieGridRef {
+  scrollToPercentage: (percentage: number) => void;
+}
+
+export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll }, ref) {
+  const gridRef = useRef<any>(null);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
     height: window.innerHeight - 80,
@@ -37,6 +43,31 @@ export default function MovieGrid({ movies }: MovieGridProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useImperativeHandle(ref, () => ({
+    scrollToPercentage: (percentage: number) => {
+      if (gridRef.current) {
+        const totalHeight = rowCount * (cardHeight + gap);
+        const clientHeight = dimensions.height;
+        const scrollHeight = totalHeight - clientHeight;
+        const targetScrollTop = scrollHeight * (percentage / 100);
+        gridRef.current.scrollTo({ scrollTop: targetScrollTop });
+      }
+    },
+  }));
+
+  const handleScroll = useCallback(
+    ({ scrollOffset, scrollUpdateWasRequested }: any) => {
+      if (!scrollUpdateWasRequested && onScroll) {
+        const totalHeight = rowCount * (cardHeight + gap);
+        const clientHeight = dimensions.height;
+        const scrollHeight = totalHeight - clientHeight;
+        const percentage = scrollHeight > 0 ? (scrollOffset / scrollHeight) * 100 : 0;
+        onScroll(percentage);
+      }
+    },
+    [rowCount, cardHeight, gap, dimensions.height, onScroll]
+  );
+
   const Cell = useCallback(
     ({ columnIndex, rowIndex, style }: any) => {
       const index = rowIndex * columnCount + columnIndex;
@@ -63,6 +94,7 @@ export default function MovieGrid({ movies }: MovieGridProps) {
 
   return (
     <Grid
+      ref={gridRef}
       columnCount={columnCount}
       columnWidth={cardWidth + gap}
       height={dimensions.height}
@@ -71,8 +103,9 @@ export default function MovieGrid({ movies }: MovieGridProps) {
       width={dimensions.width}
       overscanRowCount={2}
       overscanColumnsCount={2}
+      onScroll={handleScroll}
     >
       {Cell}
     </Grid>
   );
-}
+});
