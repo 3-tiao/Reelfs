@@ -10,6 +10,7 @@ pub struct ImportManager {
     db: Arc<Mutex<Database>>,
     config: AppConfig,
     scan_status: Arc<Mutex<ScanStatus>>,
+    stop_scan_flag: Arc<Mutex<bool>>,
     window: Window,
     scan_mode: String,
     delete_invalid: bool,
@@ -20,6 +21,7 @@ impl ImportManager {
         db: Arc<Mutex<Database>>,
         config: AppConfig,
         scan_status: Arc<Mutex<ScanStatus>>,
+        stop_scan_flag: Arc<Mutex<bool>>,
         window: Window,
         scan_mode: String,
         delete_invalid: bool,
@@ -28,6 +30,7 @@ impl ImportManager {
             db,
             config,
             scan_status,
+            stop_scan_flag,
             window,
             scan_mode,
             delete_invalid,
@@ -44,6 +47,12 @@ impl ImportManager {
         if is_scanning {
             warn!("[导入管理器] 导入已在进行中");
             return Err("Import already in progress".to_string());
+        }
+
+        // 重置停止标志
+        {
+            let mut flag = self.stop_scan_flag.lock().unwrap();
+            *flag = false;
         }
 
         info!("[导入管理器] 开始扫描: mode={}, delete_invalid={}", self.scan_mode, self.delete_invalid);
@@ -125,6 +134,15 @@ impl ImportManager {
             let mut batch = Vec::new();
 
             for (i, (video_path, metadata)) in results.iter().enumerate() {
+                // 检查是否需要停止
+                {
+                    let flag = self.stop_scan_flag.lock().unwrap();
+                    if *flag {
+                        info!("[导入管理器] 扫描已停止");
+                        return Ok(new_file_ids);
+                    }
+                }
+                
                 let file_path_str = video_path.to_string_lossy().to_string();
                 
                 if is_incremental {

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
-import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase } from "../services/tauri";
+import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase, stopScan, onScanComplete } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
 import ScanProgress from "../components/ScanProgress";
 
@@ -15,10 +15,22 @@ export default function Settings() {
   const [scanMode, setScanMode] = useState<"incremental" | "full">("incremental");
   const [deleteInvalid, setDeleteInvalid] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => {
     loadConfig();
     loadStats();
+  }, [loadConfig]);
+
+  useEffect(() => {
+    const unlistenPromise = onScanComplete(() => {
+      setIsScanning(false);
+      loadStats();
+    });
+
+    return () => {
+      unlistenPromise.then((fn) => fn());
+    };
   }, []);
 
   useEffect(() => {
@@ -125,15 +137,26 @@ export default function Settings() {
   };
 
   const handleScan = async () => {
-    try {
-      await startInitialScan(scanMode, deleteInvalid);
-      setDeleteInvalid(false);
-      setTimeout(() => {
-        loadStats();
-      }, 1000);
-    } catch (error) {
-      alert("Failed to start scan: " + error);
-      setDeleteInvalid(false);
+    if (isScanning) {
+      try {
+        await stopScan();
+        setIsScanning(false);
+      } catch (error) {
+        console.error("停止扫描失败:", error);
+        alert("停止扫描失败: " + error);
+      }
+    } else {
+      try {
+        await startInitialScan(scanMode, deleteInvalid);
+        setIsScanning(true);
+        setDeleteInvalid(false);
+        setTimeout(() => {
+          loadStats();
+        }, 1000);
+      } catch (error) {
+        console.error("开始扫描失败:", error);
+        alert("开始扫描失败: " + error);
+      }
     }
   };
 
@@ -322,10 +345,21 @@ export default function Settings() {
               
               <button
                 onClick={handleScan}
-                disabled={nasPaths.length === 0}
-                className="w-full flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
+                disabled={!isScanning && nasPaths.length === 0}
+                className={`w-full flex items-center justify-center px-6 py-3 rounded-lg font-semibold transition-colors ${
+                  isScanning 
+                    ? "bg-red-600 hover:bg-red-700" 
+                    : "bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500"
+                }`}
               >
-                开始扫描
+                {isScanning ? (
+                  <>
+                    <AlertTriangle className="w-5 h-5 mr-2" />
+                    停止扫描
+                  </>
+                ) : (
+                  "开始扫描"
+                )}
               </button>
               
               <ScanProgress inline={true} />

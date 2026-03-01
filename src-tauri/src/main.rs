@@ -20,6 +20,7 @@ struct AppState {
     db: Arc<Mutex<Database>>,
     config: Arc<Mutex<AppConfig>>,
     scan_status: Arc<Mutex<ScanStatus>>,
+    stop_scan_flag: Arc<Mutex<bool>>,
 }
 
 #[tauri::command]
@@ -81,8 +82,9 @@ async fn start_initial_scan(
     let config = state.config.lock().unwrap().clone();
     let db = Arc::clone(&state.db);
     let scan_status = Arc::clone(&state.scan_status);
+    let stop_scan_flag = Arc::clone(&state.stop_scan_flag);
     
-    let manager = import_manager::ImportManager::new(db, config, scan_status, window, scan_mode, delete_invalid);
+    let manager = import_manager::ImportManager::new(db, config, scan_status, stop_scan_flag, window, scan_mode, delete_invalid);
     manager.start_import().map(|_| "Import started".to_string())
 }
 
@@ -384,6 +386,20 @@ async fn reset_database(
 }
 
 #[tauri::command]
+async fn stop_scan(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    info!("[扫描] 停止扫描");
+    
+    let mut flag = state.stop_scan_flag.lock().unwrap();
+    *flag = true;
+    
+    info!("[扫描] 停止标志已设置");
+    
+    Ok(())
+}
+
+#[tauri::command]
 async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
     info!("[设置] 开始清理缓存");
     
@@ -579,6 +595,7 @@ fn main() {
                 scanned_files: 0,
                 current_file: None,
             })),
+            stop_scan_flag: Arc::new(Mutex::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
             get_movies,
@@ -602,6 +619,7 @@ fn main() {
             get_unique_genres,
             get_unique_actors,
             reset_database,
+            stop_scan,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -188,3 +188,7 @@ export const getUniqueActors = async (): Promise<string[]> => {
 export const resetDatabase = async (): Promise<void> => {
   return await invoke("reset_database");
 };
+
+export const stopScan = async (): Promise<void> => {
+  return await invoke("stop_scan");
+};
