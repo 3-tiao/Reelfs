@@ -121,16 +121,24 @@ impl ImportManager {
         let total_paths = self.config.nas_paths.len();
         let is_incremental = self.scan_mode == "incremental";
 
+        // 先统计所有文件数量
+        let mut total_files = 0;
+        for nas_path in &self.config.nas_paths {
+            let results = indexer::scan_directory(nas_path);
+            total_files += results.len();
+        }
+        
+        // 更新总文件数
+        {
+            let mut status = self.scan_status.lock().unwrap();
+            status.total_files = total_files;
+            let _ = self.window.emit("scan-progress", status.clone());
+        }
+
         for (path_index, nas_path) in self.config.nas_paths.iter().enumerate() {
             info!("[导入管理器] 扫描路径 ({}/{}): {}", path_index + 1, total_paths, nas_path);
 
             let results = indexer::scan_directory(nas_path);
-
-            {
-                let mut status = self.scan_status.lock().unwrap();
-                status.total_files += results.len();
-                let _ = self.window.emit("scan-progress", status.clone());
-            }
 
             let mut batch = Vec::new();
 
@@ -140,6 +148,7 @@ impl ImportManager {
                     let flag = self.stop_scan_flag.lock().unwrap();
                     if *flag {
                         info!("[导入管理器] 扫描已停止");
+                        self.set_complete_state();
                         return Ok(new_file_ids);
                     }
                 }
