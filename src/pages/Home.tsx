@@ -33,6 +33,7 @@ export default function Home() {
     totalCount: 0,
     currentIndex: 0
   });
+  const [isRestoringScroll, setIsRestoringScroll] = useState(false);
   
   useEffect(() => {
     // 只在 movies 为空时才加载数据
@@ -44,12 +45,17 @@ export default function Home() {
   // 恢复滚动位置
   useEffect(() => {
     if (scrollPosition > 0 && movies.length > 0) {
+      setIsRestoringScroll(true);
       // 需要等待 Grid 渲染完成
       const timer = setTimeout(() => {
         if (movieGridRef.current) {
           movieGridRef.current.scrollToPosition(scrollPosition);
+          // 短暂延迟后显示内容
+          setTimeout(() => {
+            setIsRestoringScroll(false);
+          }, 50);
         }
-      }, 200);
+      }, 0);
       return () => clearTimeout(timer);
     }
   }, [movies.length, scrollPosition]);
@@ -136,12 +142,14 @@ export default function Home() {
           </div>
         ) : (
           <>
-            <MovieGrid 
-              ref={movieGridRef} 
-              movies={movies} 
-              onScroll={handleScrollInfo}
-              onLoadMore={loadMore}
-            />
+            <div className={isRestoringScroll ? 'opacity-0' : 'opacity-100 transition-opacity duration-100'}>
+              <MovieGrid 
+                ref={movieGridRef} 
+                movies={movies} 
+                onScroll={handleScrollInfo}
+                onLoadMore={loadMore}
+              />
+            </div>
             {isLoadingMore && (
               <div className="flex items-center justify-center py-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
