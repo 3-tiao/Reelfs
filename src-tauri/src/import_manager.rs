@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
 use tauri::Window;
 use log::{info, debug, warn, error};
 use rayon::prelude::*;
@@ -255,6 +255,10 @@ impl ImportManager {
         }
 
         // 使用 rayon 并行处理文件
+        let processed_counter = Arc::new(AtomicUsize::new(0));
+        let scan_status = Arc::clone(&self.scan_status);
+        let window = self.window.clone();
+        
         let processed_files: Vec<_> = all_video_paths
             .par_iter()
             .enumerate()
@@ -300,6 +304,15 @@ impl ImportManager {
                 let (duration_seconds, width, height) = indexer::get_video_info(video_path)
                     .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
                     .unwrap_or((None, None, None));
+
+                // 更新进度
+                let count = processed_counter.fetch_add(1, Ordering::SeqCst) + 1;
+                if count % 10 == 0 || count == total_files {
+                    let mut status = scan_status.lock().unwrap();
+                    status.scanned_files = count;
+                    status.stage_message = format!("处理文件中... {}/{}", count, total_files);
+                    let _ = window.emit("scan-progress", status.clone());
+                }
 
                 Some((i, file_path_str, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height))
             })
