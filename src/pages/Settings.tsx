@@ -307,7 +307,7 @@ export default function Settings() {
               
               <button
                 onClick={handleScan}
-                disabled={!stats || stats.total_movies === 0}
+                disabled={nasPaths.length === 0}
                 className="w-full flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
               >
                 开始扫描
