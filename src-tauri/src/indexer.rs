@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 use log::{info, debug};
 
@@ -121,6 +122,10 @@ pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
 }
 
 pub fn scan_directory(path: &str) -> Vec<(PathBuf, Option<MovieMetadata>)> {
+    scan_directory_with_stop_flag(path, None)
+}
+
+pub fn scan_directory_with_stop_flag(path: &str, stop_flag: Option<Arc<Mutex<bool>>>) -> Vec<(PathBuf, Option<MovieMetadata>)> {
     info!("[目录扫描] 开始扫描目标路径: {}", path);
     debug!("[目录扫描] 视频文件扩展名: {:?}", VIDEO_EXTENSIONS);
     
@@ -132,6 +137,15 @@ pub fn scan_directory(path: &str) -> Vec<(PathBuf, Option<MovieMetadata>)> {
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        // 检查是否需要停止
+        if let Some(ref flag) = stop_flag {
+            let flag = flag.lock().unwrap();
+            if *flag {
+                info!("[目录扫描] 扫描已停止");
+                return results;
+            }
+        }
+        
         let path = entry.path();
         
         if !is_video_file(path) {

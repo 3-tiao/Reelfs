@@ -124,7 +124,18 @@ impl ImportManager {
         // 收集所有文件
         let mut all_results = Vec::new();
         for nas_path in &self.config.nas_paths {
-            let results = indexer::scan_directory(nas_path);
+            let results = indexer::scan_directory_with_stop_flag(nas_path, Some(Arc::clone(&self.stop_scan_flag)));
+            
+            // 检查是否已停止
+            {
+                let flag = self.stop_scan_flag.lock().unwrap();
+                if *flag {
+                    info!("[导入管理器] 扫描已停止");
+                    self.set_complete_state();
+                    return Ok(new_file_ids);
+                }
+            }
+            
             all_results.extend(results);
         }
         
