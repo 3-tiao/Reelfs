@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Star } from "lucide-react";
-import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating } from "../services/tauri";
+import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo } from "../services/tauri";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 
 const formatDuration = (seconds: number): string => {
@@ -55,6 +55,30 @@ export default function MovieDetail() {
       const [movieData, historyData] = await getMovieDetail(movieId);
       setMovie(movieData);
       setHistory(historyData);
+
+      // 如果没有视频信息，异步获取
+      if (!movieData.duration_seconds && !movieData.width && !movieData.height) {
+        console.log("[MovieDetail] 视频信息不存在，异步获取中...");
+        getAndUpdateVideoInfo(movieId)
+          .then((info) => {
+            if (info.duration_seconds || info.width || info.height) {
+              setMovie((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      duration_seconds: info.duration_seconds ?? undefined,
+                      width: info.width ?? undefined,
+                      height: info.height ?? undefined,
+                    }
+                  : null
+              );
+              console.log("[MovieDetail] 视频信息更新成功:", info);
+            }
+          })
+          .catch((err) => {
+            console.error("[MovieDetail] 获取视频信息失败:", err);
+          });
+      }
 
       const posterPath = await getPosterPath(movieData.file_path);
       if (posterPath) {

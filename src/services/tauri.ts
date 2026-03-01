@@ -192,3 +192,16 @@ export const resetDatabase = async (): Promise<void> => {
 export const stopScan = async (): Promise<void> => {
   return await invoke("stop_scan");
 };
+
+export const getAndUpdateVideoInfo = async (id: number): Promise<{
+  duration_seconds: number | null;
+  width: number | null;
+  height: number | null;
+}> => {
+  const result = await invoke<[number | null, number | null, number | null]>("get_and_update_video_info", { id });
+  return {
+    duration_seconds: result[0],
+    width: result[1],
+    height: result[2],
+  };
+};

@@ -391,6 +391,26 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_video_info(
+        &self,
+        movie_id: i64,
+        duration_seconds: Option<i64>,
+        width: Option<i32>,
+        height: Option<i32>,
+    ) -> Result<()> {
+        debug!("[数据库] 更新视频信息: movie_id={}, duration={:?}, width={:?}, height={:?}", 
+               movie_id, duration_seconds, width, height);
+        
+        self.conn.execute(
+            "UPDATE movies SET duration_seconds = ?1, width = ?2, height = ?3, updated_at = CURRENT_TIMESTAMP WHERE id = ?4",
+            params![duration_seconds, width, height, movie_id],
+        )?;
+        
+        info!("[数据库] 视频信息更新成功: movie_id={}", movie_id);
+        
+        Ok(())
+    }
+
     pub fn get_play_history(&self, movie_id: i64) -> Result<Option<PlayHistory>> {
         debug!("[数据库] 获取播放历史: movie_id={}", movie_id);
         

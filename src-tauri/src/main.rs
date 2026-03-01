@@ -400,6 +400,34 @@ async fn stop_scan(
 }
 
 #[tauri::command]
+async fn get_and_update_video_info(
+    id: i64,
+    state: tauri::State<'_, AppState>,
+) -> Result<(Option<i64>, Option<i32>, Option<i32>), String> {
+    info!("[视频信息] 获取视频信息: id={}", id);
+    
+    let db = state.db.lock().unwrap();
+    let movie = match db.get_movie_by_id(id) {
+        Ok(m) => m,
+        Err(e) => return Err(format!("获取电影失败: {}", e)),
+    };
+    
+    let path = std::path::Path::new(&movie.file_path);
+    let (duration_seconds, width, height) = indexer::get_video_info(path)
+        .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
+        .unwrap_or((None, None, None));
+    
+    if duration_seconds.is_some() || width.is_some() || height.is_some() {
+        if let Err(e) = db.update_video_info(id, duration_seconds, width, height) {
+            return Err(format!("更新视频信息失败: {}", e));
+        }
+        info!("[视频信息] 更新成功: id={}, duration={:?}, width={:?}, height={:?}", id, duration_seconds, width, height);
+    }
+    
+    Ok((duration_seconds, width, height))
+}
+
+#[tauri::command]
 async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
     info!("[设置] 开始清理缓存");
     
@@ -620,6 +648,7 @@ fn main() {
             get_unique_actors,
             reset_database,
             stop_scan,
+            get_and_update_video_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

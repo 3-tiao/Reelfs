@@ -301,9 +301,10 @@ impl ImportManager {
                 let director = metadata.as_ref().and_then(|m| m.director.clone());
                 let actors = metadata.as_ref().and_then(|m| m.actors.clone());
                 let file_size = indexer::get_file_size(video_path);
-                let (duration_seconds, width, height) = indexer::get_video_info(video_path)
-                    .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
-                    .unwrap_or((None, None, None));
+                // 视频信息延迟到详情页获取
+                let duration_seconds = None;
+                let width = None;
+                let height = None;
 
                 // 更新进度
                 let count = processed_counter.fetch_add(1, Ordering::SeqCst) + 1;

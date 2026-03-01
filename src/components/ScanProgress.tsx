@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ScanStatus, onScanProgress, onScanComplete } from "../services/tauri";
-import { Loader2, FileVideo, Image, FolderSearch, Database, Sparkles } from "lucide-react";
+import { Loader2, FolderSearch, Database, Sparkles } from "lucide-react";
 
 interface ScanProgressProps {
   inline?: boolean;
@@ -8,23 +8,18 @@ interface ScanProgressProps {
 
 export default function ScanProgress({ inline = false }: ScanProgressProps) {
   const [status, setStatus] = useState<ScanStatus | null>(null);
-  const [startTime, setStartTime] = useState<number | null>(null);
 
   useEffect(() => {
     console.log('[ScanProgress] 设置事件监听');
     
     const unlistenProgress = onScanProgress((newStatus) => {
       console.log('[ScanProgress] 收到扫描进度事件:', newStatus);
-      if (newStatus.is_scanning && !startTime) {
-        setStartTime(Date.now());
-      }
       setStatus(newStatus);
     });
 
     const unlistenComplete = onScanComplete(() => {
       console.log('[ScanProgress] 收到扫描完成事件');
       setStatus(null);
-      setStartTime(null);
     });
 
     return () => {
@@ -93,19 +88,6 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
     }
   };
 
-  const getEstimatedTime = () => {
-    if (!startTime || progress === 0 || progress < 5) return null;
-    
-    const elapsed = Date.now() - startTime;
-    const estimatedTotal = elapsed / (progress / 100);
-    const remaining = estimatedTotal - elapsed;
-    
-    if (remaining < 5000) return "即将完成";
-    if (remaining < 60000) return `约 ${Math.round(remaining / 1000)} 秒`;
-    if (remaining < 3600000) return `约 ${Math.round(remaining / 60000)} 分钟`;
-    return `约 ${Math.round(remaining / 3600000)} 小时`;
-  };
-
   const content = (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -117,7 +99,6 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
             <p className="text-white font-medium">{status.stage_message}</p>
             <p className="text-gray-400 text-sm">
               {status.scanned_files} / {status.total_files} 文件
-              {getEstimatedTime() && ` · 剩余 ${getEstimatedTime()}`}
             </p>
           </div>
         </div>

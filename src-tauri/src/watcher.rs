@@ -2,7 +2,7 @@ use notify::{Watcher, RecursiveMode, Event, EventKind, event::*};
 use std::sync::mpsc::channel;
 use std::path::Path;
 use std::time::Duration;
-use crate::indexer::{is_video_file, find_nfo_for_video, parse_nfo_file, extract_title_from_filename, get_file_size, get_video_info};
+use crate::indexer::{is_video_file, find_nfo_for_video, parse_nfo_file, extract_title_from_filename, get_file_size};
 use crate::database::Database;
 use log::{info, debug, warn, error};
 
@@ -90,9 +90,10 @@ fn handle_fs_event(db: &Database, event: Event) {
                     let director = metadata.as_ref().and_then(|m| m.director.as_deref());
                     let actors = metadata.as_ref().and_then(|m| m.actors.as_deref());
                     let file_size = get_file_size(&path);
-                    let (duration_seconds, width, height) = get_video_info(&path)
-                        .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
-                        .unwrap_or((None, None, None));
+                    // 视频信息延迟到详情页获取
+                    let duration_seconds = None;
+                    let width = None;
+                    let height = None;
                     
                     let file_path = path.to_string_lossy().to_string();
                     
