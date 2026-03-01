@@ -25,21 +25,6 @@ pub fn get_poster_path(video_path: &Path) -> Option<String> {
     None
 }
 
-pub fn get_fanart_path(video_path: &Path) -> Option<String> {
-    let parent = video_path.parent()?;
-    
-    let fanart_names = vec!["fanart.jpg", "fanart.png", "backdrop.jpg", "background.jpg"];
-    
-    for name in fanart_names {
-        let fanart_path = parent.join(name);
-        if fanart_path.exists() {
-            return Some(fanart_path.to_string_lossy().to_string());
-        }
-    }
-    
-    None
-}
-
 #[derive(Debug, Deserialize)]
 struct NfoMovie {
     title: Option<String>,
@@ -119,10 +104,6 @@ pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
     info!("[文件解析] NFO解析完成: title={}, year={:?}", metadata.title, metadata.year);
     
     Some(metadata)
-}
-
-pub fn scan_directory(path: &str) -> Vec<PathBuf> {
-    scan_directory_with_stop_flag(path, None, None)
 }
 
 pub fn scan_directory_with_stop_flag(

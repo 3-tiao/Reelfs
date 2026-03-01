@@ -559,50 +559,6 @@ impl Database {
         Ok(invalid_count)
     }
 
-    pub fn clear_thumbnails(&self) -> Result<()> {
-        info!("[数据库] 开始清理缩略图");
-        
-        let mut stmt = self.conn.prepare("SELECT id, thumbnail_path FROM movies WHERE thumbnail_path IS NOT NULL")?;
-        let mut movies = Vec::new();
-        
-        let mut rows = stmt.query([])?;
-        while let Ok(Some(row)) = rows.next() {
-            let id: i64 = row.get(0)?;
-            let thumbnail_path: String = row.get(1)?;
-            movies.push((id, thumbnail_path));
-        }
-        
-        drop(rows);
-        drop(stmt);
-        
-        let mut cleared_count = 0;
-        
-        for (movie_id, thumbnail_path) in movies {
-            let thumbnail_file = std::path::Path::new(&thumbnail_path);
-            
-            if thumbnail_file.exists() {
-                debug!("[数据库] 删除缩略图文件: {:?}", thumbnail_path);
-                
-                if let Err(e) = std::fs::remove_file(&thumbnail_file) {
-                    error!("[数据库] 删除缩略图文件失败: {:?}, error: {}", thumbnail_path, e);
-                } else {
-                    debug!("[数据库] 缩略图文件删除成功: {:?}", thumbnail_path);
-                }
-            }
-            
-            self.conn.execute(
-                "UPDATE movies SET thumbnail_path = NULL WHERE id = ?1",
-                params![movie_id],
-            )?;
-            
-            cleared_count += 1;
-        }
-        
-        info!("[数据库] 清理缩略图完成: {} 个文件", cleared_count);
-        
-        Ok(())
-    }
-
     pub fn get_movies_with_filters(
         &self,
         offset: i32,
