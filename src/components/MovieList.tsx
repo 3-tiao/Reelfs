@@ -4,7 +4,7 @@ import { Movie } from "../services/tauri";
 import { Film, Eye, Calendar, Star, Play, RefreshCw } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { generateThumbnail } from "../services/thumbnail";
-import { exists } from "@tauri-apps/api/fs";
+import { exists, readBinaryFile } from "@tauri-apps/api/fs";
 
 interface MovieListProps {
   movies: Movie[];
@@ -109,7 +109,7 @@ interface MovieListItemProps {
 
 function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
-  const [imageSrc, setImageSrc] = useState<string | null>(movie.thumbnail_path ? `file://${movie.thumbnail_path}` : null);
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const hasLoadedRef = useRef(false);
 
@@ -127,6 +127,48 @@ function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate 
     return null;
   };
 
+  const loadLocalImage = async (path: string) => {
+    try {
+      console.log('[MovieListItem] 开始加载图片:', path);
+      
+      const data = await readBinaryFile(path);
+      console.log('[MovieListItem] 文件读取成功，大小:', data.length, 'bytes');
+      
+      const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+      console.log('[MovieListItem] Blob URL 创建成功:', url);
+      
+      setImageSrc(url);
+      console.log('[MovieListItem] 图片加载完成');
+    } catch (error) {
+      console.error('[MovieListItem] 加载图片失败:', path, error);
+    }
+  };
+
+  const generateAndLoadThumbnail = async () => {
+    const posterPath = await getPosterPath(movie.file_path);
+    
+    if (!posterPath) {
+      console.error('[MovieListItem] 没有海报路径，无法生成缩略图');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      console.log('[MovieListItem] 开始生成缩略图:', { id: movie.id, title: movie.title });
+      
+      const thumbnailPath = `/Users/user/.reelfs/cache/thumbnails/${movie.id}.jpg`;
+      await generateThumbnail(posterPath, thumbnailPath, movie.id);
+      
+      await loadLocalImage(thumbnailPath);
+    } catch (error) {
+      console.error('[MovieListItem] 生成缩略图失败:', error);
+      await loadLocalImage(posterPath);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const loadOrGenerateThumbnail = async () => {
     if (hasLoadedRef.current || !showThumbnails) {
       return;
@@ -135,32 +177,11 @@ function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate 
     hasLoadedRef.current = true;
 
     if (movie.thumbnail_path) {
-      setImageSrc(`file://${movie.thumbnail_path}`);
+      await loadLocalImage(movie.thumbnail_path);
       return;
     }
 
-    setIsLoading(true);
-
-    const posterPath = await getPosterPath(movie.file_path);
-    
-    if (!posterPath) {
-      console.error('[MovieListItem] 没有海报路径，无法生成缩略图');
-      setIsLoading(false);
-      return;
-    }
-    
-    try {
-      console.log('[MovieListItem] 开始生成缩略图:', { id: movie.id, title: movie.title });
-      
-      const thumbnailPath = `/Users/user/.reelfs/cache/thumbnails/${movie.id}.jpg`;
-      await generateThumbnail(posterPath, thumbnailPath, movie.id);
-      
-      setImageSrc(`file://${thumbnailPath}`);
-    } catch (error) {
-      console.error('[MovieListItem] 生成缩略图失败:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    await generateAndLoadThumbnail();
   };
 
   useEffect(() => {
