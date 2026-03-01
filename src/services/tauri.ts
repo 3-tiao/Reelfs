@@ -184,3 +184,7 @@ export const getUniqueGenres = async (): Promise<string[]> => {
 export const getUniqueActors = async (): Promise<string[]> => {
   return await invoke("get_unique_actors");
 };
+
+export const resetDatabase = async (): Promise<void> => {
+  return await invoke("reset_database");
+};

@@ -363,7 +363,24 @@ async fn regenerate_all_thumbnails(
     
     info!("[缩略图生成] 重新生成缩略图完成: {}/{} 个", thumbnail_count, total_thumbnails);
     
-    Ok(format!("重新生成缩略图完成: {}/{} 个", thumbnail_count, total_thumbnails))
+    let _ = window.emit("scan-complete", ());
+    
+    Ok(format!("成功生成 {} 个缩略图", thumbnail_count))
+}
+
+#[tauri::command]
+async fn reset_database(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    info!("[数据库] 开始重置数据库");
+    
+    let db = state.db.lock().unwrap();
+    
+    db.clear_all_movies().map_err(|e| format!("清空数据库失败: {}", e))?;
+    
+    info!("[数据库] 数据库重置完成");
+    
+    Ok(())
 }
 
 #[tauri::command]
@@ -584,6 +601,7 @@ fn main() {
             get_movies_filtered,
             get_unique_genres,
             get_unique_actors,
+            reset_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

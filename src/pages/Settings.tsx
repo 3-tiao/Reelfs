@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle, Zap } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
-import { startInitialScan, getStats, Stats, regenerateAllThumbnails } from "../services/tauri";
+import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
 import ScanProgress from "../components/ScanProgress";
 
@@ -14,6 +14,7 @@ export default function Settings() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [scanMode, setScanMode] = useState<"incremental" | "full">("incremental");
   const [deleteInvalid, setDeleteInvalid] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -144,7 +145,21 @@ export default function Settings() {
         loadStats();
       }, 1000);
     } catch (error) {
-      alert("Failed to regenerate thumbnails: " + error);
+      console.error("重新生成缩略图失败:", error);
+      alert("重新生成缩略图失败: " + error);
+    }
+  };
+
+  const handleResetData = async () => {
+    try {
+      await resetDatabase();
+      setShowResetConfirm(false);
+      setTimeout(() => {
+        loadStats();
+      }, 1000);
+    } catch (error) {
+      console.error("重置数据失败:", error);
+      alert("重置数据失败: " + error);
     }
   };
 
@@ -315,6 +330,19 @@ export default function Settings() {
               </button>
               
               <ScanProgress inline={true} />
+              
+              <div className="pt-4 border-t border-gray-800">
+                <button
+                  onClick={() => setShowResetConfirm(true)}
+                  className="w-full flex items-center justify-center px-6 py-3 bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-600/30 rounded-lg font-semibold transition-colors"
+                >
+                  <AlertTriangle className="w-5 h-5 mr-2" />
+                  重置数据
+                </button>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  此操作将删除所有电影数据，不可恢复
+                </p>
+              </div>
             </div>
           </section>
           
@@ -349,6 +377,34 @@ export default function Settings() {
           </section>
         </div>
       </main>
+
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg p-6 max-w-md mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="w-6 h-6 text-red-400" />
+              <h3 className="text-xl font-semibold">确认重置数据？</h3>
+            </div>
+            <p className="text-gray-400 mb-6">
+              此操作将删除所有电影数据和缩略图，此操作不可恢复。
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleResetData}
+                className="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+              >
+                确认重置
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

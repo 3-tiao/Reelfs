@@ -730,4 +730,16 @@ impl Database {
 
         Ok(all_actors)
     }
+
+    pub fn clear_all_movies(&self) -> Result<()> {
+        info!("[数据库] 清空所有电影数据");
+        
+        self.conn.execute("DELETE FROM movies", [])?;
+        self.conn.execute("DELETE FROM movie_metadata", [])?;
+        self.conn.execute("DELETE FROM play_history", [])?;
+        
+        info!("[数据库] 所有电影数据已清空");
+        
+        Ok(())
+    }
 }
