@@ -9,7 +9,7 @@ interface NsfwStore {
 export const useNsfwStore = create<NsfwStore>()(
   persist(
     (set) => ({
-      showThumbnails: true,
+      showThumbnails: false,
       toggleShowThumbnails: () => set((state) => ({ showThumbnails: !state.showThumbnails })),
     }),
     {
