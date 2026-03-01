@@ -214,6 +214,22 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   const listRef = useRef<any>(null);
   const currentScrollTopRef = useRef(0);
   const loadingRef = useRef(false);
+  const [dimensions, setDimensions] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight - 180,
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight - 180,
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useImperativeHandle(ref, () => ({
     scrollToPercentage: (percentage: number) => {
@@ -284,8 +300,8 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   return (
     <List
       ref={listRef}
-      width="100%"
-      height="100%"
+      width={dimensions.width}
+      height={dimensions.height}
       itemCount={movies.length}
       itemSize={72}
       onScroll={handleScroll}
