@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, Eye, EyeOff } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
+import { useNsfwStore } from "../stores/nsfwStore";
 import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
@@ -22,6 +23,7 @@ export default function Home() {
     fetchMoviesFiltered, 
     clearFilters 
   } = useMovieStore();
+  const { showThumbnails, toggleShowThumbnails } = useNsfwStore();
   const movieGridRef = useRef<MovieGridRef>(null);
   const [scrollInfo, setScrollInfo] = useState({ thumbHeight: 0, thumbPosition: 0 });
   
@@ -59,12 +61,26 @@ export default function Home() {
               <FilterSortBar onFilterChange={handleFilterChange} />
             </div>
             
-            <button
-              onClick={() => navigate("/settings")}
-              className="p-2.5 hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              <SettingsIcon className="w-4 h-4 text-gray-400 hover:text-white" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleShowThumbnails}
+                className={`p-2.5 rounded-lg transition-colors ${
+                  showThumbnails 
+                    ? "bg-green-600/20 text-green-400 hover:bg-green-600/30" 
+                    : "bg-red-600/20 text-red-400 hover:bg-red-600/30"
+                }`}
+                title={showThumbnails ? "显示缩略图" : "隐藏缩略图 (NSFW)"}
+              >
+                {showThumbnails ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
+              
+              <button
+                onClick={() => navigate("/settings")}
+                className="p-2.5 hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <SettingsIcon className="w-4 h-4 text-gray-400 hover:text-white" />
+              </button>
+            </div>
           </div>
         </div>
       </header>

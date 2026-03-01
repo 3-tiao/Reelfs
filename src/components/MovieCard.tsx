@@ -4,6 +4,7 @@ import { Movie } from "../services/tauri";
 import { Film, RefreshCw } from "lucide-react";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 import { generateThumbnail } from "../services/thumbnail";
+import { useNsfwStore } from "../stores/nsfwStore";
 
 interface MovieCardProps {
   movie: Movie;
@@ -11,11 +12,17 @@ interface MovieCardProps {
 
 export default function MovieCard({ movie }: MovieCardProps) {
   const navigate = useNavigate();
+  const { showThumbnails } = useNsfwStore();
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!showThumbnails) {
+      setImageSrc(null);
+      return;
+    }
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -31,7 +38,7 @@ export default function MovieCard({ movie }: MovieCardProps) {
     }
 
     return () => observer.disconnect();
-  }, [movie]);
+  }, [movie, showThumbnails]);
 
   const loadOrGenerateThumbnail = async () => {
     if (movie.thumbnail_path) {
