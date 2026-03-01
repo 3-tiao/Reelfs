@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowUpDown, Filter, X, ChevronDown, ChevronUp, Film, Calendar, Star, Clock, User } from "lucide-react";
+import { ArrowUpDown, Filter, X, ChevronDown, ChevronUp, Film, Calendar, Star, Clock, User, Eye, EyeOff } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import { Filters, SortOptions } from "../services/tauri";
 
@@ -82,7 +82,7 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
     return Object.keys(filters).some(key => {
       const value = filters[key as keyof Filters];
       return value !== undefined && value !== null && value !== '';
-    });
+    }) || filters.isWatched !== undefined;
   };
 
   const sortOptionsList = [
@@ -248,6 +248,44 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-400 text-xs mb-2">观看状态</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleFilterChange('isWatched', undefined)}
+                    className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg transition-colors text-sm ${
+                      filters.isWatched === undefined
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    全部
+                  </button>
+                  <button
+                    onClick={() => handleFilterChange('isWatched', true)}
+                    className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg transition-colors text-sm ${
+                      filters.isWatched === true
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <Eye className="w-4 h-4" />
+                    已看
+                  </button>
+                  <button
+                    onClick={() => handleFilterChange('isWatched', false)}
+                    className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg transition-colors text-sm ${
+                      filters.isWatched === false
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <EyeOff className="w-4 h-4" />
+                    未看
+                  </button>
+                </div>
               </div>
 
               {hasActiveFilters() && (

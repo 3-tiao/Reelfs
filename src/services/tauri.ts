@@ -71,6 +71,7 @@ export interface Filters {
   maxRating?: number;
   actors?: string;
   genres?: string;
+  isWatched?: boolean;
 }
 
 export interface SortOptions {
@@ -179,6 +180,7 @@ export const getMoviesFiltered = async (
     genres: filters?.genres,
     sortBy: sortOptions?.sortBy,
     sortOrder: sortOptions?.sortOrder,
+    isWatched: filters?.isWatched,
   });
 };
 

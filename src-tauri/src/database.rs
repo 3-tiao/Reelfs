@@ -615,9 +615,10 @@ impl Database {
         genres: Option<String>,
         sort_by: Option<String>,
         sort_order: Option<String>,
+        is_watched: Option<bool>,
     ) -> Result<Vec<Movie>> {
         debug!("[数据库] 获取筛选电影列表: offset={}, limit={}, filters={:?}, sort={:?} {:?}",
-               offset, limit, (min_year, max_year, min_rating, max_rating, &actors, &genres), sort_by, sort_order);
+               offset, limit, (min_year, max_year, min_rating, max_rating, &actors, &genres, is_watched), sort_by, sort_order);
 
         let mut where_clauses = Vec::new();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -654,6 +655,11 @@ impl Database {
                 where_clauses.push("genres LIKE ?".to_string());
                 params.push(Box::new(format!("%{}%", genres_str)));
             }
+        }
+
+        if let Some(watched) = is_watched {
+            where_clauses.push("is_watched = ?".to_string());
+            params.push(Box::new(if watched { 1 } else { 0 }));
         }
 
         let where_clause = if where_clauses.is_empty() {

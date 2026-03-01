@@ -533,12 +533,13 @@ async fn get_movies_filtered(
     genres: Option<String>,
     sort_by: Option<String>,
     sort_order: Option<String>,
+    is_watched: Option<bool>,
 ) -> Result<Vec<Movie>, String> {
     info!("[API] get_movies_filtered 调用: offset={}, limit={}, filters={:?}, sort={:?} {:?}",
-           offset, limit, (min_year, max_year, min_rating, max_rating, &actors, &genres), sort_by, sort_order);
+           offset, limit, (min_year, max_year, min_rating, max_rating, &actors, &genres, is_watched), sort_by, sort_order);
     
     let db = state.db.lock().unwrap();
-    let movies = db.get_movies_with_filters(offset, limit, min_year, max_year, min_rating, max_rating, actors, genres, sort_by, sort_order)
+    let movies = db.get_movies_with_filters(offset, limit, min_year, max_year, min_rating, max_rating, actors, genres, sort_by, sort_order, is_watched)
         .map_err(|e| {
             error!("[API] get_movies_filtered 失败: {}", e);
             format!("Database error: {}", e)
