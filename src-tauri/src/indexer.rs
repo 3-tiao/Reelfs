@@ -121,7 +121,7 @@ pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
     Some(metadata)
 }
 
-pub fn scan_directory(path: &str) -> Vec<(PathBuf, Option<MovieMetadata>)> {
+pub fn scan_directory(path: &str) -> Vec<PathBuf> {
     scan_directory_with_stop_flag(path, None, None)
 }
 
@@ -129,7 +129,7 @@ pub fn scan_directory_with_stop_flag(
     path: &str, 
     stop_flag: Option<Arc<Mutex<bool>>>,
     progress_callback: Option<Arc<dyn Fn(usize) + Send + Sync>>,
-) -> Vec<(PathBuf, Option<MovieMetadata>)> {
+) -> Vec<PathBuf> {
     info!("[目录扫描] 开始扫描目标路径: {}", path);
     debug!("[目录扫描] 视频文件扩展名: {:?}", VIDEO_EXTENSIONS);
     
@@ -158,24 +158,17 @@ pub fn scan_directory_with_stop_flag(
         }
         
         video_count += 1;
-        info!("[目录扫描] 发现视频文件: {:?}", path);
+        debug!("[目录扫描] 发现视频文件: {:?}", path);
         
         // 调用进度回调
         if let Some(ref callback) = progress_callback {
             callback(video_count);
         }
         
-        let metadata = find_nfo_for_video(path)
-            .and_then(|nfo_path| {
-                info!("[目录扫描] 找到NFO文件: {:?}", nfo_path);
-                parse_nfo_file(&nfo_path)
-            });
-        
-        results.push((path.to_path_buf(), metadata));
+        results.push(path.to_path_buf());
     }
     
     info!("[目录扫描] 扫描完成，共发现 {} 个视频文件", video_count);
-    debug!("[目录扫描] 扫描结果: {:?}", results);
     
     results
 }

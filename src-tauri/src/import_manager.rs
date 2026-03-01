@@ -121,8 +121,8 @@ impl ImportManager {
         let _total_paths = self.config.nas_paths.len();
         let is_incremental = self.scan_mode == "incremental";
 
-        // 收集所有文件，同时更新进度
-        let mut all_results = Vec::new();
+        // 收集所有文件路径，同时更新进度
+        let mut all_video_paths = Vec::new();
         for (path_index, nas_path) in self.config.nas_paths.iter().enumerate() {
             info!("[导入管理器] 扫描路径 ({}/{}): {}", path_index + 1, self.config.nas_paths.len(), nas_path);
             
@@ -143,7 +143,7 @@ impl ImportManager {
                 let _ = window.emit("scan-progress", status.clone());
             });
             
-            let results = indexer::scan_directory_with_stop_flag(
+            let video_paths = indexer::scan_directory_with_stop_flag(
                 nas_path, 
                 Some(Arc::clone(&self.stop_scan_flag)),
                 Some(progress_callback),
@@ -159,10 +159,10 @@ impl ImportManager {
                 }
             }
             
-            all_results.extend(results);
+            all_video_paths.extend(video_paths);
         }
         
-        let total_files = all_results.len();
+        let total_files = all_video_paths.len();
         
         // 更新总文件数，重置已扫描文件数
         {
@@ -175,7 +175,7 @@ impl ImportManager {
 
         let mut batch = Vec::new();
 
-        for (i, (video_path, metadata)) in all_results.iter().enumerate() {
+        for (i, video_path) in all_video_paths.iter().enumerate() {
             // 检查是否需要停止
             {
                 let flag = self.stop_scan_flag.lock().unwrap();
@@ -196,7 +196,14 @@ impl ImportManager {
                 }
             }
 
-            let title = if let Some(meta) = metadata {
+            // 在处理阶段解析 NFO 文件
+            let metadata = indexer::find_nfo_for_video(video_path)
+                .and_then(|nfo_path| {
+                    info!("[导入管理器] 找到NFO文件: {:?}", nfo_path);
+                    indexer::parse_nfo_file(&nfo_path)
+                });
+
+            let title = if let Some(ref meta) = metadata {
                 meta.title.clone()
             } else {
                 indexer::extract_title_from_filename(video_path)
@@ -228,7 +235,7 @@ impl ImportManager {
                 height,
             ));
 
-            if batch.len() >= 100 || i == all_results.len() - 1 {
+            if batch.len() >= 100 || i == all_video_paths.len() - 1 {
                 let db = self.db.lock().unwrap();
                 if let Err(e) = db.batch_insert_movies(&batch) {
                     error!("[导入管理器] 批量插入失败: {}", e);
