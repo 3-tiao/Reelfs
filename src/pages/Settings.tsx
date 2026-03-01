@@ -4,7 +4,6 @@ import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon
 import { useSettingsStore } from "../stores/settingsStore";
 import { startInitialScan, getStats, Stats, regenerateAllThumbnails } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
-import ScanProgress from "../components/ScanProgress";
 
 export default function Settings() {
   const navigate = useNavigate();

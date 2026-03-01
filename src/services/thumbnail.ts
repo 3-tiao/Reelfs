@@ -81,7 +81,7 @@ export async function batchGenerateThumbnails(
   for (let i = 0; i < movies.length; i++) {
     const movie = movies[i];
     
-    const posterPath = getPosterPath(movie.file_path);
+    const posterPath = await getPosterPath(movie.file_path);
     
     if (posterPath) {
       const thumbnailPath = `${cacheDir}/thumbnails/${movie.id}.jpg`;

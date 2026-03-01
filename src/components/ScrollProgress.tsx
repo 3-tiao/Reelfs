@@ -4,7 +4,7 @@ interface ScrollProgressProps {
   onScrollTo: (percentage: number) => void;
 }
 
-export default function ScrollProgress({ thumbHeight, thumbPosition, onScrollTo }: ScrollProgressProps) {
+export default function ScrollProgress({ thumbHeight, thumbPosition }: ScrollProgressProps) {
   const safeThumbHeight = isNaN(thumbHeight) ? 0 : Math.max(0, Math.min(100, thumbHeight));
   const safeThumbPosition = isNaN(thumbPosition) ? 0 : Math.max(0, Math.min(100 - safeThumbHeight, thumbPosition));
   
