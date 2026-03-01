@@ -14,6 +14,7 @@ interface MovieStore {
   availableGenres: string[];
   availableActors: string[];
   isUsingFilters: boolean;
+  scrollPosition: number;
 
   fetchMovies: (offset: number) => Promise<void>;
   loadMore: () => Promise<void>;
@@ -26,6 +27,7 @@ interface MovieStore {
   clearFilters: () => void;
   fetchAvailableGenres: () => Promise<void>;
   fetchAvailableActors: () => Promise<void>;
+  setScrollPosition: (position: number) => void;
 }
 
 export const useMovieStore = create<MovieStore>((set, get) => ({
@@ -41,6 +43,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   availableGenres: [],
   availableActors: [],
   isUsingFilters: false,
+  scrollPosition: 0,
 
   fetchMovies: async (offset: number) => {
     set({ isLoading: true, error: null });
@@ -149,5 +152,9 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
     } catch (error) {
       console.error('[MovieStore] 获取演员列表失败:', error);
     }
+  },
+
+  setScrollPosition: (position: number) => {
+    set({ scrollPosition: position });
   },
 }));

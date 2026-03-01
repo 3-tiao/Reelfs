@@ -21,7 +21,9 @@ export default function Home() {
     reset, 
     isUsingFilters, 
     fetchMoviesFiltered, 
-    clearFilters 
+    clearFilters,
+    scrollPosition,
+    setScrollPosition
   } = useMovieStore();
   const { showThumbnails, toggleShowThumbnails } = useNsfwStore();
   const movieGridRef = useRef<MovieGridRef>(null);
@@ -33,7 +35,42 @@ export default function Home() {
   });
   
   useEffect(() => {
-    fetchMovies(0);
+    // 只在 movies 为空时才加载数据
+    if (movies.length === 0) {
+      fetchMovies(0);
+    }
+  }, []);
+  
+  // 恢复滚动位置
+  useEffect(() => {
+    if (scrollPosition > 0 && movieGridRef.current && movies.length > 0) {
+      // 需要等待 Grid 渲染完成
+      const timer = setTimeout(() => {
+        if (movieGridRef.current) {
+          // scrollPosition 存储的是 scrollTop 值，需要转换为百分比
+          const cardHeight = 350;
+          const gap = 16;
+          const columnCount = Math.floor((window.innerWidth - gap) / (200 + gap));
+          const rowCount = Math.ceil(movies.length / columnCount);
+          const totalHeight = rowCount * (cardHeight + gap);
+          const clientHeight = window.innerHeight - 80;
+          const scrollHeight = totalHeight - clientHeight;
+          const percentage = (scrollPosition / scrollHeight) * 100;
+          movieGridRef.current.scrollToPercentage(percentage);
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [movies.length, scrollPosition]);
+
+  // 保存滚动位置
+  useEffect(() => {
+    return () => {
+      if (movieGridRef.current) {
+        const position = movieGridRef.current.getScrollPosition();
+        setScrollPosition(position);
+      }
+    };
   }, []);
 
   const handleSearch = (query: string) => {
