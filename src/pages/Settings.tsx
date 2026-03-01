@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle, Zap } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
 import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
