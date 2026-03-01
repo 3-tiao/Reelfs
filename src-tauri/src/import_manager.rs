@@ -133,7 +133,21 @@ impl ImportManager {
                 let _ = self.window.emit("scan-progress", status.clone());
             }
             
-            let results = indexer::scan_directory_with_stop_flag(nas_path, Some(Arc::clone(&self.stop_scan_flag)));
+            // 创建进度回调
+            let scan_status = Arc::clone(&self.scan_status);
+            let window = self.window.clone();
+            let progress_callback = Arc::new(move |count: usize| {
+                let mut status = scan_status.lock().unwrap();
+                status.scanned_files = count;
+                status.stage_message = format!("扫描目录中... 已发现 {} 个文件", count);
+                let _ = window.emit("scan-progress", status.clone());
+            });
+            
+            let results = indexer::scan_directory_with_stop_flag(
+                nas_path, 
+                Some(Arc::clone(&self.stop_scan_flag)),
+                Some(progress_callback),
+            );
             
             // 检查是否已停止
             {
