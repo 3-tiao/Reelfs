@@ -2,11 +2,10 @@ import { useEffect, useState, useCallback, useMemo, useRef, forwardRef, useImper
 import { FixedSizeGrid as Grid } from "react-window";
 import MovieCard from "./MovieCard";
 import { Movie } from "../services/tauri";
-import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
-import "overlayscrollbars/overlayscrollbars.css";
 
 interface MovieGridProps {
   movies: Movie[];
+  onScroll?: (info: { thumbHeight: number; thumbPosition: number }) => void;
   onLoadMore?: () => void;
 }
 
@@ -14,9 +13,8 @@ export interface MovieGridRef {
   scrollToPercentage: (percentage: number) => void;
 }
 
-export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onLoadMore }, ref) {
+export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll, onLoadMore }, ref) {
   const gridRef = useRef<any>(null);
-  const scrollRef = useRef<any>(null);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
     height: window.innerHeight - 80,
@@ -60,6 +58,20 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
 
   const handleScroll = useCallback(
     ({ scrollTop }: any) => {
+      if (onScroll) {
+        const totalHeight = rowCount * (cardHeight + gap);
+        const clientHeight = dimensions.height;
+        const scrollHeight = totalHeight - clientHeight;
+        
+        const thumbHeight = (clientHeight / totalHeight) * 100;
+        
+        const thumbPosition = scrollHeight > 0 
+          ? (scrollTop / scrollHeight) * (100 - thumbHeight) 
+          : 0;
+        
+        onScroll({ thumbHeight, thumbPosition });
+      }
+      
       if (onLoadMore) {
         const totalHeight = rowCount * (cardHeight + gap);
         const clientHeight = dimensions.height;
@@ -70,7 +82,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
         }
       }
     },
-    [rowCount, cardHeight, gap, dimensions.height, onLoadMore]
+    [rowCount, cardHeight, gap, dimensions.height, onScroll, onLoadMore]
   );
 
   const Cell = useCallback(
@@ -98,34 +110,19 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
   }
 
   return (
-    <OverlayScrollbarsComponent
-      ref={scrollRef}
-      style={{ width: dimensions.width, height: dimensions.height }}
-      options={{
-        scrollbars: {
-          theme: 'os-theme-dark',
-          autoHide: 'move',
-          autoHideDelay: 500,
-          dragScroll: true,
-          clickScroll: true,
-        },
-      }}
+    <Grid
+      ref={gridRef}
+      columnCount={columnCount}
+      columnWidth={cardWidth + gap}
+      height={dimensions.height}
+      rowCount={rowCount}
+      rowHeight={cardHeight + gap}
+      width={dimensions.width}
+      overscanRowCount={2}
+      overscanColumnsCount={2}
+      onScroll={handleScroll}
     >
-      <Grid
-        ref={gridRef}
-        columnCount={columnCount}
-        columnWidth={cardWidth + gap}
-        height={dimensions.height}
-        rowCount={rowCount}
-        rowHeight={cardHeight + gap}
-        width={dimensions.width}
-        overscanRowCount={2}
-        overscanColumnsCount={2}
-        onScroll={handleScroll}
-        style={{ overflow: 'visible' }}
-      >
-        {Cell}
-      </Grid>
-    </OverlayScrollbarsComponent>
+      {Cell}
+    </Grid>
   );
 });
