@@ -62,6 +62,7 @@ impl ImportManager {
         
         let db = Arc::clone(&self.db);
         let scan_status = Arc::clone(&self.scan_status);
+        let stop_scan_flag = Arc::clone(&self.stop_scan_flag);
         let config = self.config.clone();
         let window = self.window.clone();
         let cache_dir = config.cache_dir.clone();
@@ -71,7 +72,7 @@ impl ImportManager {
         let _ = window.emit("scan-progress", scan_status.lock().unwrap().clone());
         
         std::thread::spawn(move || {
-            let manager = ImportManager::new(db, config, scan_status, window, scan_mode, delete_invalid);
+            let manager = ImportManager::new(db, config, scan_status, stop_scan_flag, window, scan_mode, delete_invalid);
             
             if let Err(e) = manager.run_import_process(&cache_dir) {
                 error!("[导入管理器] 导入过程失败: {}", e);
