@@ -5,7 +5,7 @@ import { Movie } from "../services/tauri";
 
 interface MovieGridProps {
   movies: Movie[];
-  onScroll?: (info: { thumbHeight: number; thumbPosition: number; totalCount: number; currentIndex: number }) => void;
+  onScroll?: () => void;
   onLoadMore?: () => void;
 }
 
@@ -73,27 +73,9 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
       // 保存当前滚动位置
       currentScrollTopRef.current = scrollTop;
       
+      // 调用 onScroll 回调
       if (onScroll) {
-        const totalHeight = rowCount * (cardHeight + gap);
-        const clientHeight = dimensions.height;
-        const scrollHeight = totalHeight - clientHeight;
-        
-        const thumbHeight = (clientHeight / totalHeight) * 100;
-        
-        const thumbPosition = scrollHeight > 0 
-          ? (scrollTop / scrollHeight) * (100 - thumbHeight) 
-          : 0;
-        
-        // 计算当前显示的第一个电影的索引
-        const firstVisibleRow = Math.floor(scrollTop / (cardHeight + gap));
-        const firstVisibleIndex = firstVisibleRow * columnCount + 1;
-        
-        onScroll({ 
-          thumbHeight, 
-          thumbPosition, 
-          totalCount: movies.length,
-          currentIndex: Math.min(firstVisibleIndex, movies.length)
-        });
+        onScroll();
       }
       
       if (onLoadMore && !loadingRef.current) {
@@ -111,7 +93,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
         }
       }
     },
-    [rowCount, cardHeight, gap, dimensions.height, onScroll, onLoadMore, columnCount, movies.length]
+    [rowCount, cardHeight, gap, dimensions.height, onScroll, onLoadMore]
   );
 
   const Cell = useCallback(

@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, forwardRef, useImperativeHandle } from "react";
 import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, Eye, Calendar, Star, Play } from "lucide-react";
@@ -6,7 +6,7 @@ import { useNsfwStore } from "../stores/nsfwStore";
 
 interface MovieListProps {
   movies: Movie[];
-  onScroll?: (info: { thumbHeight: number; thumbPosition: number; totalCount: number; currentIndex: number }) => void;
+  onScroll?: () => void;
   onLoadMore?: () => void;
 }
 
@@ -16,12 +16,32 @@ export interface MovieListRef {
   scrollToPosition: (scrollTop: number) => void;
 }
 
-export default function MovieList({ movies, onScroll, onLoadMore }: MovieListProps) {
+export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ movies, onScroll, onLoadMore }, ref) {
   const navigate = useNavigate();
   const { showThumbnails } = useNsfwStore();
   const listRef = useRef<HTMLDivElement>(null);
   const currentScrollTopRef = useRef(0);
   const loadingRef = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    scrollToPercentage: (percentage: number) => {
+      if (listRef.current) {
+        const totalHeight = listRef.current.scrollHeight;
+        const clientHeight = listRef.current.clientHeight;
+        const scrollHeight = totalHeight - clientHeight;
+        const targetScrollTop = scrollHeight * (percentage / 100);
+        listRef.current.scrollTop = targetScrollTop;
+      }
+    },
+    getScrollPosition: () => {
+      return currentScrollTopRef.current;
+    },
+    scrollToPosition: (scrollTop: number) => {
+      if (listRef.current) {
+        listRef.current.scrollTop = scrollTop;
+      }
+    },
+  }));
 
   const handleScroll = useCallback(() => {
     if (!listRef.current) return;
@@ -29,25 +49,9 @@ export default function MovieList({ movies, onScroll, onLoadMore }: MovieListPro
     const scrollTop = listRef.current.scrollTop;
     currentScrollTopRef.current = scrollTop;
     
+    // 调用 onScroll 回调
     if (onScroll) {
-      const totalHeight = listRef.current.scrollHeight;
-      const clientHeight = listRef.current.clientHeight;
-      const scrollHeight = totalHeight - clientHeight;
-      
-      const thumbHeight = (clientHeight / totalHeight) * 100;
-      const thumbPosition = scrollHeight > 0 
-        ? (scrollTop / scrollHeight) * (100 - thumbHeight) 
-        : 0;
-      
-      const itemHeight = 72;
-      const firstVisibleIndex = Math.floor(scrollTop / itemHeight) + 1;
-      
-      onScroll({ 
-        thumbHeight, 
-        thumbPosition, 
-        totalCount: movies.length,
-        currentIndex: Math.min(firstVisibleIndex, movies.length)
-      });
+      onScroll();
     }
     
     if (onLoadMore && !loadingRef.current) {
@@ -63,7 +67,7 @@ export default function MovieList({ movies, onScroll, onLoadMore }: MovieListPro
         }, 500);
       }
     }
-  }, [movies.length, onScroll, onLoadMore]);
+  }, [onScroll, onLoadMore]);
 
   const formatDuration = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -150,4 +154,4 @@ export default function MovieList({ movies, onScroll, onLoadMore }: MovieListPro
       ))}
     </div>
   );
-}
+});

@@ -1,11 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon, Eye, EyeOff, Grid, List } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { useViewStore } from "../stores/viewStore";
 import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
-import MovieList from "../components/MovieList";
+import MovieList, { MovieListRef } from "../components/MovieList";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
 
@@ -23,11 +23,27 @@ export default function Home() {
     isUsingFilters, 
     fetchMoviesFiltered, 
     clearFilters,
-    scrollPosition
+    scrollPosition,
+    setScrollPosition
   } = useMovieStore();
   const { showThumbnails, toggleShowThumbnails } = useNsfwStore();
   const { viewMode, setViewMode } = useViewStore();
   const movieGridRef = useRef<MovieGridRef>(null);
+  const movieListRef = useRef<MovieListRef>(null);
+  
+  // 保存滚动位置
+  const lastSavedPositionRef = useRef(0);
+  
+  const handleScroll = useCallback(() => {
+    const ref = viewMode === 'grid' ? movieGridRef.current : movieListRef.current;
+    if (ref) {
+      const position = ref.getScrollPosition();
+      if (Math.abs(position - lastSavedPositionRef.current) > 100) {
+        lastSavedPositionRef.current = position;
+        setScrollPosition(position);
+      }
+    }
+  }, [viewMode, setScrollPosition]);
   
   useEffect(() => {
     // 只在 movies 为空时才加载数据
@@ -42,14 +58,16 @@ export default function Home() {
   useEffect(() => {
     if (scrollPosition > 0 && movies.length > 0 && !hasRestoredRef.current) {
       hasRestoredRef.current = true;
-      // 需要等待 Grid 渲染完成后恢复滚动位置
+      // 需要等待渲染完成后恢复滚动位置
       requestAnimationFrame(() => {
-        if (movieGridRef.current) {
+        if (viewMode === 'grid' && movieGridRef.current) {
           movieGridRef.current.scrollToPosition(scrollPosition);
+        } else if (viewMode === 'list' && movieListRef.current) {
+          movieListRef.current.scrollToPosition(scrollPosition);
         }
       });
     }
-  }, [movies.length, scrollPosition]);
+  }, [movies.length, scrollPosition, viewMode]);
 
   const handleSearch = (query: string) => {
     if (query.trim()) {
@@ -144,12 +162,15 @@ export default function Home() {
               <MovieGrid 
                 ref={movieGridRef} 
                 movies={movies} 
+                onScroll={handleScroll}
                 onLoadMore={loadMore}
               />
             ) : (
               <div style={{ height: 'calc(100vh - 180px)' }}>
                 <MovieList 
+                  ref={movieListRef}
                   movies={movies} 
+                  onScroll={handleScroll}
                   onLoadMore={loadMore}
                 />
               </div>
