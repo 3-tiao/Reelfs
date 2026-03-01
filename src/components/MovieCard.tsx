@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
-import { Film, RefreshCw } from "lucide-react";
+import { Film, RefreshCw, Eye } from "lucide-react";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 import { generateThumbnail } from "../services/thumbnail";
 import { useNsfwStore } from "../stores/nsfwStore";
@@ -150,6 +150,12 @@ export default function MovieCard({ movie }: MovieCardProps) {
             )}
           </div>
         </div>
+        
+        {movie.is_watched === 1 && (
+          <div className="absolute top-2 right-2 bg-green-500/80 rounded-full p-1">
+            <Eye className="w-4 h-4 text-white" />
+          </div>
+        )}
       </div>
       
       <div className="mt-2 px-1">

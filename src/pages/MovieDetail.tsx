@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Film, FolderOpen, Star } from "lucide-react";
-import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo } from "../services/tauri";
+import { ArrowLeft, Play, Film, FolderOpen, Star, Eye, EyeOff } from "lucide-react";
+import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus } from "../services/tauri";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 
 const formatDuration = (seconds: number): string => {
@@ -169,6 +169,18 @@ export default function MovieDetail() {
     }
   };
 
+  const handleToggleWatched = async () => {
+    if (!movie) return;
+    
+    try {
+      const newStatus = movie.is_watched !== 1;
+      await setWatchedStatus(movie.id, newStatus);
+      setMovie({ ...movie, is_watched: newStatus ? 1 : 0 });
+    } catch (error) {
+      console.error("Failed to toggle watched status:", error);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -248,6 +260,27 @@ export default function MovieDetail() {
                   {history && history.last_position > 0
                     ? `Continue Playing (${Math.floor(history.last_position / 60)}m)`
                     : "Play"}
+                </button>
+                
+                <button
+                  onClick={handleToggleWatched}
+                  className={`flex items-center gap-2 px-6 py-4 rounded-xl font-semibold transition-all duration-200 ${
+                    movie.is_watched === 1
+                      ? "bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700"
+                  }`}
+                >
+                  {movie.is_watched === 1 ? (
+                    <>
+                      <Eye className="w-5 h-5" />
+                      Watched
+                    </>
+                  ) : (
+                    <>
+                      <EyeOff className="w-5 h-5" />
+                      Mark as Watched
+                    </>
+                  )}
                 </button>
               </div>
               <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-3 font-medium">Rating</h3>

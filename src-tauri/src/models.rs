@@ -21,6 +21,7 @@ pub struct Movie {
     pub last_accessed: Option<String>,
     pub last_checked_at: Option<String>,
     pub scan_state: Option<String>,
+    pub is_watched: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

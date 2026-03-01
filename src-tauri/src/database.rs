@@ -144,6 +144,15 @@ impl Database {
             tx.execute("ALTER TABLE movies ADD COLUMN scan_state TEXT", [])?;
         }
         
+        let has_is_watched = tx.prepare(
+            "SELECT 1 FROM pragma_table_info('movies') WHERE name = 'is_watched'"
+        )?.exists([])?;
+        
+        if !has_is_watched {
+            info!("[数据库] 添加 is_watched 列");
+            tx.execute("ALTER TABLE movies ADD COLUMN is_watched INTEGER DEFAULT 0", [])?;
+        }
+        
         tx.commit()?;
         
         info!("[数据库] 数据库迁移完成");
@@ -206,7 +215,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched
              FROM movies ORDER BY added_at DESC LIMIT ?1 OFFSET ?2"
         )?;
 
@@ -231,6 +240,7 @@ impl Database {
                 last_accessed: row.get(16)?,
                 last_checked_at: row.get(17)?,
                 scan_state: row.get(18)?,
+                is_watched: row.get(19)?,
             })
         })?;
 
@@ -243,7 +253,7 @@ impl Database {
         let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched
              FROM movies WHERE id = ?1",
             params![id],
             |row| {
@@ -267,6 +277,7 @@ impl Database {
                     last_accessed: row.get(16)?,
                     last_checked_at: row.get(17)?,
                     scan_state: row.get(18)?,
+                    is_watched: row.get(19)?,
                 })
             }
         );
@@ -285,7 +296,7 @@ impl Database {
         let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched
              FROM movies WHERE file_path = ?1",
             params![file_path],
             |row| {
@@ -309,6 +320,7 @@ impl Database {
                     last_accessed: row.get(16)?,
                     last_checked_at: row.get(17)?,
                     scan_state: row.get(18)?,
+                    is_watched: row.get(19)?,
                 })
             }
         );
@@ -339,7 +351,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors, 
                     m.thumbnail_path, m.file_size, m.duration_seconds,
-                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched
              FROM movies m
              WHERE m.title LIKE ?1 OR m.file_path LIKE ?1 OR m.actors LIKE ?1 OR m.director LIKE ?1
              ORDER BY m.added_at DESC"
@@ -366,6 +378,7 @@ impl Database {
                 last_accessed: row.get(16)?,
                 last_checked_at: row.get(17)?,
                 scan_state: row.get(18)?,
+                is_watched: row.get(19)?,
             })
         })?;
 
@@ -407,6 +420,19 @@ impl Database {
         )?;
         
         info!("[数据库] 视频信息更新成功: movie_id={}", movie_id);
+        
+        Ok(())
+    }
+
+    pub fn set_watched_status(&self, movie_id: i64, is_watched: bool) -> Result<()> {
+        debug!("[数据库] 设置观看状态: movie_id={}, is_watched={}", movie_id, is_watched);
+        
+        self.conn.execute(
+            "UPDATE movies SET is_watched = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+            params![if is_watched { 1 } else { 0 }, movie_id],
+        )?;
+        
+        info!("[数据库] 观看状态更新成功: movie_id={}, is_watched={}", movie_id, is_watched);
         
         Ok(())
     }
@@ -642,7 +668,7 @@ impl Database {
         let query = format!(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors,
                     thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched
              FROM movies
              {}
              ORDER BY {} {}
@@ -678,6 +704,7 @@ impl Database {
                 last_accessed: row.get(16)?,
                 last_checked_at: row.get(17)?,
                 scan_state: row.get(18)?,
+                is_watched: row.get(19)?,
             })
         })?;
 

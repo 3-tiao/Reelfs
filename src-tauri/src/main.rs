@@ -118,6 +118,11 @@ async fn play_movie(
         h.last_position
     });
     
+    // 自动标记为已观看
+    if let Err(e) = db.set_watched_status(id, true) {
+        warn!("[播放器] 设置观看状态失败: {}", e);
+    }
+    
     player::play_movie(&movie.file_path, start_position)?;
     
     info!("[播放器] 播放器启动成功: {}", movie.file_path);
@@ -176,6 +181,22 @@ async fn update_play_progress(
     db.update_play_history(id, position)
         .map_err(|e| {
             error!("[播放器] 更新播放进度失败: {}", e);
+            format!("Database error: {}", e)
+        })
+}
+
+#[tauri::command]
+async fn set_watched_status(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+    is_watched: bool,
+) -> Result<(), String> {
+    info!("[API] 设置观看状态: id={}, is_watched={}", id, is_watched);
+    
+    let db = state.db.lock().unwrap();
+    db.set_watched_status(id, is_watched)
+        .map_err(|e| {
+            error!("[API] 设置观看状态失败: {}", e);
             format!("Database error: {}", e)
         })
 }
@@ -649,6 +670,7 @@ fn main() {
             reset_database,
             stop_scan,
             get_and_update_video_info,
+            set_watched_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

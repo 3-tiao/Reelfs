@@ -21,6 +21,7 @@ export interface Movie {
   last_accessed?: string;
   last_checked_at?: string;
   scan_state?: string;
+  is_watched?: number;
 }
 
 export interface PlayHistory {
@@ -103,6 +104,10 @@ export const playMovie = async (id: number): Promise<void> => {
 
 export const updatePlayProgress = async (id: number, position: number): Promise<void> => {
   return await invoke("update_play_progress", { id, position });
+};
+
+export const setWatchedStatus = async (id: number, isWatched: boolean): Promise<void> => {
+  return await invoke("set_watched_status", { id, isWatched });
 };
 
 export const getStats = async (): Promise<Stats> => {
