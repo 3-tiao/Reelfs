@@ -47,18 +47,7 @@ export default function Home() {
       // 需要等待 Grid 渲染完成
       const timer = setTimeout(() => {
         if (movieGridRef.current) {
-          // scrollPosition 存储的是 scrollTop 值，需要转换为百分比
-          const cardHeight = 350;
-          const gap = 16;
-          const columnCount = Math.floor((window.innerWidth - gap) / (200 + gap));
-          const rowCount = Math.ceil(movies.length / columnCount);
-          const totalHeight = rowCount * (cardHeight + gap);
-          const clientHeight = window.innerHeight - 80;
-          const scrollHeight = totalHeight - clientHeight;
-          if (scrollHeight > 0) {
-            const percentage = (scrollPosition / scrollHeight) * 100;
-            movieGridRef.current.scrollToPercentage(percentage);
-          }
+          movieGridRef.current.scrollToPosition(scrollPosition);
         }
       }, 200);
       return () => clearTimeout(timer);

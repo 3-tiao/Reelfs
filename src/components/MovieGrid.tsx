@@ -12,10 +12,12 @@ interface MovieGridProps {
 export interface MovieGridRef {
   scrollToPercentage: (percentage: number) => void;
   getScrollPosition: () => number;
+  scrollToPosition: (scrollTop: number) => void;
 }
 
 export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll, onLoadMore }, ref) {
   const gridRef = useRef<any>(null);
+  const currentScrollTopRef = useRef(0);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
     height: window.innerHeight - 80,
@@ -57,16 +59,20 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
       }
     },
     getScrollPosition: () => {
+      return currentScrollTopRef.current;
+    },
+    scrollToPosition: (scrollTop: number) => {
       if (gridRef.current) {
-        // react-window 的 Grid 使用 _scrollTop 存储当前滚动位置
-        return gridRef.current._scrollTop || 0;
+        gridRef.current.scrollTo({ scrollLeft: 0, scrollTop });
       }
-      return 0;
     },
   }));
 
   const handleScroll = useCallback(
     ({ scrollTop }: any) => {
+      // 保存当前滚动位置
+      currentScrollTopRef.current = scrollTop;
+      
       if (onScroll) {
         const totalHeight = rowCount * (cardHeight + gap);
         const clientHeight = dimensions.height;
