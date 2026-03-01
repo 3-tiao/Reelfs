@@ -58,7 +58,8 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
     },
     getScrollPosition: () => {
       if (gridRef.current) {
-        return gridRef.current.state?.scrollTop || 0;
+        // react-window 的 Grid 使用 _scrollTop 存储当前滚动位置
+        return gridRef.current._scrollTop || 0;
       }
       return 0;
     },

@@ -43,7 +43,7 @@ export default function Home() {
   
   // 恢复滚动位置
   useEffect(() => {
-    if (scrollPosition > 0 && movieGridRef.current && movies.length > 0) {
+    if (scrollPosition > 0 && movies.length > 0) {
       // 需要等待 Grid 渲染完成
       const timer = setTimeout(() => {
         if (movieGridRef.current) {
@@ -55,21 +55,27 @@ export default function Home() {
           const totalHeight = rowCount * (cardHeight + gap);
           const clientHeight = window.innerHeight - 80;
           const scrollHeight = totalHeight - clientHeight;
-          const percentage = (scrollPosition / scrollHeight) * 100;
-          movieGridRef.current.scrollToPercentage(percentage);
+          if (scrollHeight > 0) {
+            const percentage = (scrollPosition / scrollHeight) * 100;
+            movieGridRef.current.scrollToPercentage(percentage);
+          }
         }
-      }, 100);
+      }, 200);
       return () => clearTimeout(timer);
     }
   }, [movies.length, scrollPosition]);
 
-  // 保存滚动位置
+  // 保存滚动位置 - 使用 useLayoutEffect 确保在导航前保存
   useEffect(() => {
-    return () => {
+    const handleBeforeUnload = () => {
       if (movieGridRef.current) {
         const position = movieGridRef.current.getScrollPosition();
         setScrollPosition(position);
       }
+    };
+    
+    return () => {
+      handleBeforeUnload();
     };
   }, []);
 
