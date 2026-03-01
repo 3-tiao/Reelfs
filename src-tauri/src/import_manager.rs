@@ -121,12 +121,14 @@ impl ImportManager {
         let total_paths = self.config.nas_paths.len();
         let is_incremental = self.scan_mode == "incremental";
 
-        // 先统计所有文件数量
-        let mut total_files = 0;
+        // 收集所有文件
+        let mut all_results = Vec::new();
         for nas_path in &self.config.nas_paths {
             let results = indexer::scan_directory(nas_path);
-            total_files += results.len();
+            all_results.extend(results);
         }
+        
+        let total_files = all_results.len();
         
         // 更新总文件数
         {
@@ -135,90 +137,84 @@ impl ImportManager {
             let _ = self.window.emit("scan-progress", status.clone());
         }
 
-        for (path_index, nas_path) in self.config.nas_paths.iter().enumerate() {
-            info!("[导入管理器] 扫描路径 ({}/{}): {}", path_index + 1, total_paths, nas_path);
+        let mut batch = Vec::new();
 
-            let results = indexer::scan_directory(nas_path);
-
-            let mut batch = Vec::new();
-
-            for (i, (video_path, metadata)) in results.iter().enumerate() {
-                // 检查是否需要停止
-                {
-                    let flag = self.stop_scan_flag.lock().unwrap();
-                    if *flag {
-                        info!("[导入管理器] 扫描已停止");
-                        self.set_complete_state();
-                        return Ok(new_file_ids);
-                    }
+        for (i, (video_path, metadata)) in all_results.iter().enumerate() {
+            // 检查是否需要停止
+            {
+                let flag = self.stop_scan_flag.lock().unwrap();
+                if *flag {
+                    info!("[导入管理器] 扫描已停止");
+                    self.set_complete_state();
+                    return Ok(new_file_ids);
                 }
+            }
+            
+            let file_path_str = video_path.to_string_lossy().to_string();
                 
-                let file_path_str = video_path.to_string_lossy().to_string();
-                
-                if is_incremental {
-                    let db = self.db.lock().unwrap();
-                    if let Ok(Some(_)) = db.get_movie_by_path(&file_path_str) {
-                        debug!("[导入管理器] 跳过已存在文件: {}", file_path_str);
-                        continue;
-                    }
+            if is_incremental {
+                let db = self.db.lock().unwrap();
+                if let Ok(Some(_)) = db.get_movie_by_path(&file_path_str) {
+                    debug!("[导入管理器] 跳过已存在文件: {}", file_path_str);
+                    continue;
                 }
+            }
 
-                let title = if let Some(meta) = metadata {
-                    meta.title.clone()
+            let title = if let Some(meta) = metadata {
+                meta.title.clone()
+            } else {
+                indexer::extract_title_from_filename(video_path)
+            };
+
+            let year = metadata.as_ref().and_then(|m| m.year);
+            let plot = metadata.as_ref().and_then(|m| m.plot.clone());
+            let rating = metadata.as_ref().and_then(|m| m.rating);
+            let genres = metadata.as_ref().and_then(|m| m.genres.clone());
+            let director = metadata.as_ref().and_then(|m| m.director.clone());
+            let actors = metadata.as_ref().and_then(|m| m.actors.clone());
+            let file_size = indexer::get_file_size(video_path);
+            let (duration_seconds, width, height) = indexer::get_video_info(video_path)
+                .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
+                .unwrap_or((None, None, None));
+
+            batch.push((
+                file_path_str.clone(),
+                title,
+                year,
+                plot,
+                rating,
+                genres,
+                director,
+                actors,
+                file_size,
+                duration_seconds,
+                width,
+                height,
+            ));
+
+            if batch.len() >= 100 || i == all_results.len() - 1 {
+                let db = self.db.lock().unwrap();
+                if let Err(e) = db.batch_insert_movies(&batch) {
+                    error!("[导入管理器] 批量插入失败: {}", e);
                 } else {
-                    indexer::extract_title_from_filename(video_path)
-                };
-
-                let year = metadata.as_ref().and_then(|m| m.year);
-                let plot = metadata.as_ref().and_then(|m| m.plot.clone());
-                let rating = metadata.as_ref().and_then(|m| m.rating);
-                let genres = metadata.as_ref().and_then(|m| m.genres.clone());
-                let director = metadata.as_ref().and_then(|m| m.director.clone());
-                let actors = metadata.as_ref().and_then(|m| m.actors.clone());
-                let file_size = indexer::get_file_size(video_path);
-                let (duration_seconds, width, height) = indexer::get_video_info(video_path)
-                    .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
-                    .unwrap_or((None, None, None));
-
-                batch.push((
-                    file_path_str.clone(),
-                    title,
-                    year,
-                    plot,
-                    rating,
-                    genres,
-                    director,
-                    actors,
-                    file_size,
-                    duration_seconds,
-                    width,
-                    height,
-                ));
-
-                if batch.len() >= 100 || i == results.len() - 1 {
-                    let db = self.db.lock().unwrap();
-                    if let Err(e) = db.batch_insert_movies(&batch) {
-                        error!("[导入管理器] 批量插入失败: {}", e);
-                    } else {
-                        debug!("[导入管理器] 批量插入成功: {} 条记录", batch.len());
-                        
-                        for (file_path, _, _, _, _, _, _, _, _, _, _, _) in &batch {
-                            if let Ok(Some(movie)) = db.get_movie_by_path(file_path) {
-                                new_file_ids.push(movie.id);
-                            }
+                    debug!("[导入管理器] 批量插入成功: {} 条记录", batch.len());
+                    
+                    for (file_path, _, _, _, _, _, _, _, _, _, _, _) in &batch {
+                        if let Ok(Some(movie)) = db.get_movie_by_path(file_path) {
+                            new_file_ids.push(movie.id);
                         }
                     }
-                    batch.clear();
                 }
-
-                {
-                    let mut status = self.scan_status.lock().unwrap();
-                    status.scanned_files += 1;
-                    status.current_file = Some(file_path_str);
-                }
-
-                let _ = self.window.emit("scan-progress", self.scan_status.lock().unwrap().clone());
+                batch.clear();
             }
+
+            {
+                let mut status = self.scan_status.lock().unwrap();
+                status.scanned_files += 1;
+                status.current_file = Some(file_path_str);
+            }
+
+            let _ = self.window.emit("scan-progress", self.scan_status.lock().unwrap().clone());
         }
 
         Ok(new_file_ids)
