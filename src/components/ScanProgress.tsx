@@ -94,13 +94,13 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
   };
 
   const getEstimatedTime = () => {
-    if (!startTime || progress === 0) return null;
+    if (!startTime || progress === 0 || progress < 5) return null;
     
     const elapsed = Date.now() - startTime;
     const estimatedTotal = elapsed / (progress / 100);
     const remaining = estimatedTotal - elapsed;
     
-    if (remaining < 1000) return "即将完成";
+    if (remaining < 5000) return "即将完成";
     if (remaining < 60000) return `约 ${Math.round(remaining / 1000)} 秒`;
     if (remaining < 3600000) return `约 ${Math.round(remaining / 60000)} 分钟`;
     return `约 ${Math.round(remaining / 3600000)} 小时`;
