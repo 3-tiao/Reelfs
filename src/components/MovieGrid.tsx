@@ -21,7 +21,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
   });
 
   const cardWidth = 200;
-  const cardHeight = 320;
+  const cardHeight = 350;
   const gap = 16;
 
   const columnCount = useMemo(() => {
