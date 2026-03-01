@@ -27,6 +27,8 @@ interface MovieListItemProps {
   navigate: (path: string) => void;
 }
 
+const imageCache = new Map<number, string>();
+
 const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -58,6 +60,7 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
       const url = URL.createObjectURL(blob);
       console.log('[MovieListItem] Blob URL 创建成功:', url);
       
+      imageCache.set(movie.id, url);
       setImageSrc(url);
       console.log('[MovieListItem] 图片加载完成');
     } catch (error) {
@@ -95,6 +98,13 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
     }
 
     hasLoadedRef.current = true;
+
+    const cachedImage = imageCache.get(movie.id);
+    if (cachedImage) {
+      console.log('[MovieListItem] 使用缓存的图片:', movie.id);
+      setImageSrc(cachedImage);
+      return;
+    }
 
     if (movie.thumbnail_path) {
       await loadLocalImage(movie.thumbnail_path);
@@ -258,7 +268,7 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     
     if (onLoadMore && !loadingRef.current) {
       const totalHeight = movies.length * 72;
-      const clientHeight = window.innerHeight - 80;
+      const clientHeight = window.innerHeight - 180;
       const scrollHeight = totalHeight - clientHeight;
       
       if (scrollHeight > 0 && scrollOffset >= scrollHeight * 0.8) {
