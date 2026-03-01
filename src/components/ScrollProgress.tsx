@@ -19,7 +19,7 @@ export default function ScrollProgress({
   const [isHovering, setIsHovering] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  const safeThumbHeight = isNaN(thumbHeight) ? 0 : Math.max(0, Math.min(100, thumbHeight));
+  const safeThumbHeight = isNaN(thumbHeight) ? 0 : Math.max(5, Math.min(100, thumbHeight)); // 最小 5%
   const safeThumbPosition = isNaN(thumbPosition) ? 0 : Math.max(0, Math.min(100 - safeThumbHeight, thumbPosition));
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

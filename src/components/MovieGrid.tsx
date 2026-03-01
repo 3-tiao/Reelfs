@@ -19,6 +19,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
     width: window.innerWidth,
     height: window.innerHeight - 80,
   });
+  const loadingRef = useRef(false);
 
   const cardWidth = 200;
   const cardHeight = 350;
@@ -81,13 +82,18 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
         });
       }
       
-      if (onLoadMore) {
+      if (onLoadMore && !loadingRef.current) {
         const totalHeight = rowCount * (cardHeight + gap);
         const clientHeight = dimensions.height;
         const scrollHeight = totalHeight - clientHeight;
         
         if (scrollHeight > 0 && scrollTop >= scrollHeight * 0.8) {
+          loadingRef.current = true;
           onLoadMore();
+          // 500ms 后重置 loading 状态
+          setTimeout(() => {
+            loadingRef.current = false;
+          }, 500);
         }
       }
     },
