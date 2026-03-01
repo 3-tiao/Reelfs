@@ -42,9 +42,12 @@ export default function Home() {
     }
   }, []);
   
-  // 恢复滚动位置
+  // 恢复滚动位置 - 只在首次加载时执行
+  const hasRestoredRef = useRef(false);
+  
   useEffect(() => {
-    if (scrollPosition > 0 && movies.length > 0) {
+    if (scrollPosition > 0 && movies.length > 0 && !hasRestoredRef.current) {
+      hasRestoredRef.current = true;
       setIsRestoringScroll(true);
       // 需要等待 Grid 渲染完成
       const timer = setTimeout(() => {
@@ -75,12 +78,15 @@ export default function Home() {
   };
 
   // 保存滚动位置 - 在滚动时实时保存
+  const lastSavedPositionRef = useRef(0);
+  
   const handleScrollInfo = useCallback((info: { thumbHeight: number; thumbPosition: number; totalCount: number; currentIndex: number }) => {
     setScrollInfo(info);
-    // 同时保存滚动位置到 store
+    // 每 100px 才保存一次，减少更新频率
     if (movieGridRef.current) {
       const position = movieGridRef.current.getScrollPosition();
-      if (position > 0) {
+      if (Math.abs(position - lastSavedPositionRef.current) > 100) {
+        lastSavedPositionRef.current = position;
         setScrollPosition(position);
       }
     }
