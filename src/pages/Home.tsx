@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon, Eye, EyeOff, Grid, List } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
@@ -8,7 +8,6 @@ import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
 import MovieList from "../components/MovieList";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
-import ScrollProgress from "../components/ScrollProgress";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -24,18 +23,11 @@ export default function Home() {
     isUsingFilters, 
     fetchMoviesFiltered, 
     clearFilters,
-    scrollPosition,
-    setScrollPosition
+    scrollPosition
   } = useMovieStore();
   const { showThumbnails, toggleShowThumbnails } = useNsfwStore();
   const { viewMode, setViewMode } = useViewStore();
   const movieGridRef = useRef<MovieGridRef>(null);
-  const [scrollInfo, setScrollInfo] = useState({ 
-    thumbHeight: 0, 
-    thumbPosition: 0,
-    totalCount: 0,
-    currentIndex: 0
-  });
   
   useEffect(() => {
     // 只在 movies 为空时才加载数据
@@ -71,27 +63,6 @@ export default function Home() {
 
   const handleFilterChange = () => {
     fetchMoviesFiltered(0, 200);
-  };
-
-  // 保存滚动位置 - 在滚动时实时保存
-  const lastSavedPositionRef = useRef(0);
-  
-  const handleScrollInfo = useCallback((info: { thumbHeight: number; thumbPosition: number; totalCount: number; currentIndex: number }) => {
-    setScrollInfo(info);
-    // 每 100px 才保存一次，减少更新频率
-    if (movieGridRef.current) {
-      const position = movieGridRef.current.getScrollPosition();
-      if (Math.abs(position - lastSavedPositionRef.current) > 100) {
-        lastSavedPositionRef.current = position;
-        setScrollPosition(position);
-      }
-    }
-  }, [setScrollPosition]);
-
-  const handleScrollTo = (percentage: number) => {
-    if (movieGridRef.current) {
-      movieGridRef.current.scrollToPercentage(percentage);
-    }
   };
 
   return (
@@ -173,14 +144,12 @@ export default function Home() {
               <MovieGrid 
                 ref={movieGridRef} 
                 movies={movies} 
-                onScroll={handleScrollInfo}
                 onLoadMore={loadMore}
               />
             ) : (
               <div style={{ height: 'calc(100vh - 180px)' }}>
                 <MovieList 
                   movies={movies} 
-                  onScroll={handleScrollInfo}
                   onLoadMore={loadMore}
                 />
               </div>
@@ -198,14 +167,6 @@ export default function Home() {
           </>
         )}
       </main>
-      
-      <ScrollProgress 
-        thumbHeight={scrollInfo.thumbHeight}
-        thumbPosition={scrollInfo.thumbPosition}
-        totalCount={scrollInfo.totalCount}
-        currentIndex={scrollInfo.currentIndex}
-        onScrollTo={handleScrollTo} 
-      />
     </div>
   );
 }
