@@ -1,4 +1,4 @@
-import { useRef, useCallback, forwardRef, useImperativeHandle, useState, useEffect } from "react";
+import { useRef, useCallback, forwardRef, useImperativeHandle, useState, useEffect, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, Eye, Calendar, Star, Play, RefreshCw } from "lucide-react";
@@ -18,87 +18,6 @@ export interface MovieListRef {
   scrollToPosition: (scrollTop: number) => void;
 }
 
-export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ movies, onScroll, onLoadMore }, ref) {
-  const navigate = useNavigate();
-  const { showThumbnails } = useNsfwStore();
-  const listRef = useRef<HTMLDivElement>(null);
-  const currentScrollTopRef = useRef(0);
-  const loadingRef = useRef(false);
-
-  useImperativeHandle(ref, () => ({
-    scrollToPercentage: (percentage: number) => {
-      if (listRef.current) {
-        const totalHeight = listRef.current.scrollHeight;
-        const clientHeight = listRef.current.clientHeight;
-        const scrollHeight = totalHeight - clientHeight;
-        const targetScrollTop = scrollHeight * (percentage / 100);
-        listRef.current.scrollTop = targetScrollTop;
-      }
-    },
-    getScrollPosition: () => {
-      return currentScrollTopRef.current;
-    },
-    scrollToPosition: (scrollTop: number) => {
-      if (listRef.current) {
-        listRef.current.scrollTop = scrollTop;
-      }
-    },
-  }));
-
-  const handleScroll = useCallback(() => {
-    if (!listRef.current) return;
-    
-    const scrollTop = listRef.current.scrollTop;
-    currentScrollTopRef.current = scrollTop;
-    
-    if (onScroll) {
-      onScroll();
-    }
-    
-    if (onLoadMore && !loadingRef.current) {
-      const totalHeight = listRef.current.scrollHeight;
-      const clientHeight = listRef.current.clientHeight;
-      const scrollHeight = totalHeight - clientHeight;
-      
-      if (scrollHeight > 0 && scrollTop >= scrollHeight * 0.8) {
-        loadingRef.current = true;
-        onLoadMore();
-        setTimeout(() => {
-          loadingRef.current = false;
-        }, 500);
-      }
-    }
-  }, [onScroll, onLoadMore]);
-
-  const formatDuration = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
-  };
-
-  return (
-    <div 
-      ref={listRef}
-      className="overflow-y-auto h-full"
-      onScroll={handleScroll}
-    >
-      {movies.map((movie, index) => (
-        <MovieListItem
-          key={movie.id}
-          movie={movie}
-          index={index}
-          showThumbnails={showThumbnails}
-          formatDuration={formatDuration}
-          navigate={navigate}
-        />
-      ))}
-    </div>
-  );
-});
-
 interface MovieListItemProps {
   movie: Movie;
   index: number;
@@ -107,7 +26,7 @@ interface MovieListItemProps {
   navigate: (path: string) => void;
 }
 
-function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
+const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -286,4 +205,85 @@ function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate 
       </div>
     </div>
   );
-}
+});
+
+export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ movies, onScroll, onLoadMore }, ref) {
+  const navigate = useNavigate();
+  const { showThumbnails } = useNsfwStore();
+  const listRef = useRef<HTMLDivElement>(null);
+  const currentScrollTopRef = useRef(0);
+  const loadingRef = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    scrollToPercentage: (percentage: number) => {
+      if (listRef.current) {
+        const totalHeight = listRef.current.scrollHeight;
+        const clientHeight = listRef.current.clientHeight;
+        const scrollHeight = totalHeight - clientHeight;
+        const targetScrollTop = scrollHeight * (percentage / 100);
+        listRef.current.scrollTop = targetScrollTop;
+      }
+    },
+    getScrollPosition: () => {
+      return currentScrollTopRef.current;
+    },
+    scrollToPosition: (scrollTop: number) => {
+      if (listRef.current) {
+        listRef.current.scrollTop = scrollTop;
+      }
+    },
+  }));
+
+  const handleScroll = useCallback(() => {
+    if (!listRef.current) return;
+    
+    const scrollTop = listRef.current.scrollTop;
+    currentScrollTopRef.current = scrollTop;
+    
+    if (onScroll) {
+      onScroll();
+    }
+    
+    if (onLoadMore && !loadingRef.current) {
+      const totalHeight = listRef.current.scrollHeight;
+      const clientHeight = listRef.current.clientHeight;
+      const scrollHeight = totalHeight - clientHeight;
+      
+      if (scrollHeight > 0 && scrollTop >= scrollHeight * 0.8) {
+        loadingRef.current = true;
+        onLoadMore();
+        setTimeout(() => {
+          loadingRef.current = false;
+        }, 500);
+      }
+    }
+  }, [onScroll, onLoadMore]);
+
+  const formatDuration = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
+  };
+
+  return (
+    <div 
+      ref={listRef}
+      className="overflow-y-auto h-full"
+      onScroll={handleScroll}
+    >
+      {movies.map((movie, index) => (
+        <MovieListItem
+          key={movie.id}
+          movie={movie}
+          index={index}
+          showThumbnails={showThumbnails}
+          formatDuration={formatDuration}
+          navigate={navigate}
+        />
+      ))}
+    </div>
+  );
+});
