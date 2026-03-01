@@ -1,9 +1,11 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Settings as SettingsIcon, Eye, EyeOff } from "lucide-react";
+import { Settings as SettingsIcon, Eye, EyeOff, Grid, List } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import { useNsfwStore } from "../stores/nsfwStore";
+import { useViewStore } from "../stores/viewStore";
 import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
+import MovieList from "../components/MovieList";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
 import ScrollProgress from "../components/ScrollProgress";
@@ -26,6 +28,7 @@ export default function Home() {
     setScrollPosition
   } = useMovieStore();
   const { showThumbnails, toggleShowThumbnails } = useNsfwStore();
+  const { viewMode, setViewMode } = useViewStore();
   const movieGridRef = useRef<MovieGridRef>(null);
   const [scrollInfo, setScrollInfo] = useState({ 
     thumbHeight: 0, 
@@ -102,6 +105,31 @@ export default function Home() {
             </div>
             
             <div className="flex items-center gap-2">
+              <div className="flex items-center bg-gray-800 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 rounded-lg transition-colors ${
+                    viewMode === 'grid' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="网格视图"
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 rounded-lg transition-colors ${
+                    viewMode === 'list' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="列表视图"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+              
               <button
                 onClick={toggleShowThumbnails}
                 className={`p-2.5 rounded-lg transition-colors ${
@@ -141,12 +169,22 @@ export default function Home() {
           </div>
         ) : (
           <>
-            <MovieGrid 
-              ref={movieGridRef} 
-              movies={movies} 
-              onScroll={handleScrollInfo}
-              onLoadMore={loadMore}
-            />
+            {viewMode === 'grid' ? (
+              <MovieGrid 
+                ref={movieGridRef} 
+                movies={movies} 
+                onScroll={handleScrollInfo}
+                onLoadMore={loadMore}
+              />
+            ) : (
+              <div style={{ height: 'calc(100vh - 180px)' }}>
+                <MovieList 
+                  movies={movies} 
+                  onScroll={handleScrollInfo}
+                  onLoadMore={loadMore}
+                />
+              </div>
+            )}
             {isLoadingMore && (
               <div className="flex items-center justify-center py-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
