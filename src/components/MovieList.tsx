@@ -24,7 +24,6 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   const listRef = useRef<HTMLDivElement>(null);
   const currentScrollTopRef = useRef(0);
   const loadingRef = useRef(false);
-  const [imageStates, setImageStates] = useState<Map<number, { src: string | null; loading: boolean }>>(new Map());
 
   useImperativeHandle(ref, () => ({
     scrollToPercentage: (percentage: number) => {
@@ -80,6 +79,40 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     return `${minutes}m`;
   };
 
+  return (
+    <div 
+      ref={listRef}
+      className="overflow-y-auto h-full"
+      onScroll={handleScroll}
+    >
+      {movies.map((movie, index) => (
+        <MovieListItem
+          key={movie.id}
+          movie={movie}
+          index={index}
+          showThumbnails={showThumbnails}
+          formatDuration={formatDuration}
+          navigate={navigate}
+        />
+      ))}
+    </div>
+  );
+});
+
+interface MovieListItemProps {
+  movie: Movie;
+  index: number;
+  showThumbnails: boolean;
+  formatDuration: (seconds: number) => string;
+  navigate: (path: string) => void;
+}
+
+function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
+  const itemRef = useRef<HTMLDivElement>(null);
+  const [imageSrc, setImageSrc] = useState<string | null>(movie.thumbnail_path ? `file://${movie.thumbnail_path}` : null);
+  const [isLoading, setIsLoading] = useState(false);
+  const hasLoadedRef = useRef(false);
+
   const getPosterPath = async (videoPath: string): Promise<string | null> => {
     const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
     const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg'];
@@ -94,92 +127,53 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     return null;
   };
 
-  const loadOrGenerateThumbnail = async (movie: Movie, index: number) => {
-    if (!showThumbnails) {
+  const loadOrGenerateThumbnail = async () => {
+    if (hasLoadedRef.current || !showThumbnails) {
       return;
     }
 
-    const currentState = imageStates.get(index);
-    if (currentState && (currentState.src || currentState.loading)) {
-      return;
-    }
+    hasLoadedRef.current = true;
 
     if (movie.thumbnail_path) {
-      setImageStates(prev => new Map(prev).set(index, { src: `file://${movie.thumbnail_path}`, loading: false }));
+      setImageSrc(`file://${movie.thumbnail_path}`);
       return;
     }
 
-    setImageStates(prev => new Map(prev).set(index, { src: null, loading: true }));
+    setIsLoading(true);
 
     const posterPath = await getPosterPath(movie.file_path);
     
     if (!posterPath) {
-      console.error('[MovieList] 没有海报路径，无法生成缩略图');
-      setImageStates(prev => new Map(prev).set(index, { src: null, loading: false }));
+      console.error('[MovieListItem] 没有海报路径，无法生成缩略图');
+      setIsLoading(false);
       return;
     }
     
     try {
-      console.log('[MovieList] 开始生成缩略图:', { id: movie.id, title: movie.title });
+      console.log('[MovieListItem] 开始生成缩略图:', { id: movie.id, title: movie.title });
       
       const thumbnailPath = `/Users/user/.reelfs/cache/thumbnails/${movie.id}.jpg`;
       await generateThumbnail(posterPath, thumbnailPath, movie.id);
       
-      setImageStates(prev => new Map(prev).set(index, { src: `file://${thumbnailPath}`, loading: false }));
+      setImageSrc(`file://${thumbnailPath}`);
     } catch (error) {
-      console.error('[MovieList] 生成缩略图失败:', error);
-      setImageStates(prev => new Map(prev).set(index, { src: null, loading: false }));
+      console.error('[MovieListItem] 生成缩略图失败:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  return (
-    <div 
-      ref={listRef}
-      className="overflow-y-auto h-full"
-      onScroll={handleScroll}
-    >
-      {movies.map((movie, index) => {
-        const imageState = imageStates.get(index) || { src: null, loading: false };
-        
-        return (
-          <MovieListItem
-            key={movie.id}
-            movie={movie}
-            index={index}
-            imageState={imageState}
-            showThumbnails={showThumbnails}
-            onLoadThumbnail={loadOrGenerateThumbnail}
-            formatDuration={formatDuration}
-            navigate={navigate}
-          />
-        );
-      })}
-    </div>
-  );
-});
-
-interface MovieListItemProps {
-  movie: Movie;
-  index: number;
-  imageState: { src: string | null; loading: boolean };
-  showThumbnails: boolean;
-  onLoadThumbnail: (movie: Movie, index: number) => Promise<void>;
-  formatDuration: (seconds: number) => string;
-  navigate: (path: string) => void;
-}
-
-function MovieListItem({ movie, index, imageState, showThumbnails, onLoadThumbnail, formatDuration, navigate }: MovieListItemProps) {
-  const itemRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     if (!showThumbnails) {
+      setImageSrc(null);
+      hasLoadedRef.current = false;
       return;
     }
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          onLoadThumbnail(movie, index);
+          loadOrGenerateThumbnail();
           observer.disconnect();
         }
       },
@@ -191,7 +185,7 @@ function MovieListItem({ movie, index, imageState, showThumbnails, onLoadThumbna
     }
 
     return () => observer.disconnect();
-  }, [movie, index, showThumbnails, onLoadThumbnail]);
+  }, [showThumbnails]);
 
   return (
     <div
@@ -206,13 +200,13 @@ function MovieListItem({ movie, index, imageState, showThumbnails, onLoadThumbna
       
       <div className="flex-shrink-0 w-12 h-16 bg-gray-800 rounded overflow-hidden">
         {showThumbnails ? (
-          imageState.loading ? (
+          isLoading ? (
             <div className="w-full h-full flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
             </div>
-          ) : imageState.src ? (
+          ) : imageSrc ? (
             <img
-              src={imageState.src}
+              src={imageSrc}
               alt={movie.title}
               className="w-full h-full object-cover"
             />
