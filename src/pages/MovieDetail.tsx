@@ -55,8 +55,17 @@ export default function MovieDetail() {
       const [movieData, historyData] = await getMovieDetail(movieId);
       setMovie(movieData);
       setHistory(historyData);
+      setIsLoading(false);
 
-      // 如果没有视频信息，异步获取
+      const posterPath = await getPosterPath(movieData.file_path);
+      if (posterPath) {
+        loadImage(posterPath, setPosterSrc);
+      }
+      const fanartPath = await getFanartPath(movieData.file_path);
+      if (fanartPath) {
+        loadImage(fanartPath, setFanartSrc);
+      }
+
       if (!movieData.duration_seconds && !movieData.width && !movieData.height) {
         console.log("[MovieDetail] 视频信息不存在，异步获取中...");
         getAndUpdateVideoInfo(movieId)
@@ -79,18 +88,8 @@ export default function MovieDetail() {
             console.error("[MovieDetail] 获取视频信息失败:", err);
           });
       }
-
-      const posterPath = await getPosterPath(movieData.file_path);
-      if (posterPath) {
-        await loadImage(posterPath, setPosterSrc);
-      }
-      const fanartPath = await getFanartPath(movieData.file_path);
-      if (fanartPath) {
-        await loadImage(fanartPath, setFanartSrc);
-      }
     } catch (error) {
       console.error("Failed to load movie details:", error);
-    } finally {
       setIsLoading(false);
     }
   };
