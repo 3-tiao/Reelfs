@@ -10,11 +10,15 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
   const [status, setStatus] = useState<ScanStatus | null>(null);
 
   useEffect(() => {
+    console.log('[ScanProgress] 设置事件监听');
+    
     const unlistenProgress = onScanProgress((newStatus) => {
+      console.log('[ScanProgress] 收到扫描进度事件:', newStatus);
       setStatus(newStatus);
     });
 
     const unlistenComplete = onScanComplete(() => {
+      console.log('[ScanProgress] 收到扫描完成事件');
       setStatus(null);
     });
 

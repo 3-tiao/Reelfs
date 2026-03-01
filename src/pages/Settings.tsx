@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon
 import { useSettingsStore } from "../stores/settingsStore";
 import { startInitialScan, getStats, Stats, regenerateAllThumbnails } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
+import ScanProgress from "../components/ScanProgress";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -171,6 +172,8 @@ export default function Settings() {
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <h1 className="text-3xl font-bold mb-8">Settings</h1>
+
+        <ScanProgress inline={true} />
 
         <div className="space-y-8">
           <section className="bg-gray-900 rounded-lg p-6">
