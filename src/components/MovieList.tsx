@@ -24,7 +24,6 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   const listRef = useRef<HTMLDivElement>(null);
   const currentScrollTopRef = useRef(0);
   const loadingRef = useRef(false);
-  const itemRefs = useRef<Map<number, HTMLImageElement>>(new Map());
   const [imageStates, setImageStates] = useState<Map<number, { src: string | null; loading: boolean }>>(new Map());
 
   useImperativeHandle(ref, () => ({
@@ -97,7 +96,11 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
 
   const loadOrGenerateThumbnail = async (movie: Movie, index: number) => {
     if (!showThumbnails) {
-      setImageStates(prev => new Map(prev).set(index, { src: null, loading: false }));
+      return;
+    }
+
+    const currentState = imageStates.get(index);
+    if (currentState && (currentState.src || currentState.loading)) {
       return;
     }
 
@@ -129,34 +132,6 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     }
   };
 
-  const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const target = entry.target as HTMLImageElement;
-        const index = parseInt(target.dataset.index || '0');
-        const movie = movies[index];
-        
-        if (movie) {
-          loadOrGenerateThumbnail(movie, index);
-        }
-      }
-    });
-  }, [movies, showThumbnails]);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(handleIntersection, {
-      rootMargin: "100px"
-    });
-
-    itemRefs.current.forEach((img) => {
-      if (img) {
-        observer.observe(img);
-      }
-    });
-
-    return () => observer.disconnect();
-  }, [handleIntersection, movies.length]);
-
   return (
     <div 
       ref={listRef}
@@ -167,90 +142,133 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
         const imageState = imageStates.get(index) || { src: null, loading: false };
         
         return (
-          <div
+          <MovieListItem
             key={movie.id}
-            onClick={() => navigate(`/movie/${movie.id}`)}
-            className="flex items-center gap-4 px-4 py-3 hover:bg-gray-800/50 cursor-pointer transition-colors border-b border-gray-800/50 group"
-            style={{ height: '72px' }}
-          >
-            <div className="flex-shrink-0 w-8 text-center text-gray-500 text-sm">
-              {index + 1}
-            </div>
-            
-            <div className="flex-shrink-0 w-12 h-16 bg-gray-800 rounded overflow-hidden">
-              {showThumbnails ? (
-                imageState.loading ? (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
-                  </div>
-                ) : imageState.src ? (
-                  <img
-                    ref={(img) => {
-                      if (img) {
-                        itemRefs.current.set(index, img);
-                      }
-                    }}
-                    data-index={index}
-                    src={imageState.src}
-                    alt={movie.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Film className="w-6 h-6 text-gray-600" />
-                  </div>
-                )
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Film className="w-6 h-6 text-gray-600" />
-                </div>
-              )}
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-white truncate font-medium">{movie.title}</span>
-                {movie.is_watched === 1 && (
-                  <Eye className="w-4 h-4 text-green-500 flex-shrink-0" />
-                )}
-              </div>
-              <div className="flex items-center gap-4 text-sm text-gray-400 mt-1">
-                {movie.actors && (
-                  <span className="truncate max-w-[200px]">{movie.actors.split(',')[0]}</span>
-                )}
-                {movie.year && (
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {movie.year}
-                  </span>
-                )}
-                {movie.duration_seconds && (
-                  <span>{formatDuration(movie.duration_seconds)}</span>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4 flex-shrink-0">
-              {movie.rating && (
-                <div className="flex items-center gap-1 text-yellow-400">
-                  <Star className="w-4 h-4" fill="currentColor" />
-                  <span className="text-sm">{movie.rating.toFixed(1)}</span>
-                </div>
-              )}
-              
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/movie/${movie.id}`);
-                }}
-                className="opacity-0 group-hover:opacity-100 p-2 bg-blue-600 rounded-lg hover:bg-blue-500 transition-all"
-              >
-                <Play className="w-4 h-4 text-white" fill="currentColor" />
-              </button>
-            </div>
-          </div>
+            movie={movie}
+            index={index}
+            imageState={imageState}
+            showThumbnails={showThumbnails}
+            onLoadThumbnail={loadOrGenerateThumbnail}
+            formatDuration={formatDuration}
+            navigate={navigate}
+          />
         );
       })}
     </div>
   );
 });
+
+interface MovieListItemProps {
+  movie: Movie;
+  index: number;
+  imageState: { src: string | null; loading: boolean };
+  showThumbnails: boolean;
+  onLoadThumbnail: (movie: Movie, index: number) => Promise<void>;
+  formatDuration: (seconds: number) => string;
+  navigate: (path: string) => void;
+}
+
+function MovieListItem({ movie, index, imageState, showThumbnails, onLoadThumbnail, formatDuration, navigate }: MovieListItemProps) {
+  const itemRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showThumbnails) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          onLoadThumbnail(movie, index);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "100px" }
+    );
+
+    if (itemRef.current) {
+      observer.observe(itemRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [movie, index, showThumbnails, onLoadThumbnail]);
+
+  return (
+    <div
+      ref={itemRef}
+      onClick={() => navigate(`/movie/${movie.id}`)}
+      className="flex items-center gap-4 px-4 py-3 hover:bg-gray-800/50 cursor-pointer transition-colors border-b border-gray-800/50 group"
+      style={{ height: '72px' }}
+    >
+      <div className="flex-shrink-0 w-8 text-center text-gray-500 text-sm">
+        {index + 1}
+      </div>
+      
+      <div className="flex-shrink-0 w-12 h-16 bg-gray-800 rounded overflow-hidden">
+        {showThumbnails ? (
+          imageState.loading ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
+            </div>
+          ) : imageState.src ? (
+            <img
+              src={imageState.src}
+              alt={movie.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Film className="w-6 h-6 text-gray-600" />
+            </div>
+          )
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Film className="w-6 h-6 text-gray-600" />
+          </div>
+        )}
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-white truncate font-medium">{movie.title}</span>
+          {movie.is_watched === 1 && (
+            <Eye className="w-4 h-4 text-green-500 flex-shrink-0" />
+          )}
+        </div>
+        <div className="flex items-center gap-4 text-sm text-gray-400 mt-1">
+          {movie.actors && (
+            <span className="truncate max-w-[200px]">{movie.actors.split(',')[0]}</span>
+          )}
+          {movie.year && (
+            <span className="flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              {movie.year}
+            </span>
+          )}
+          {movie.duration_seconds && (
+            <span>{formatDuration(movie.duration_seconds)}</span>
+          )}
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-4 flex-shrink-0">
+        {movie.rating && (
+          <div className="flex items-center gap-1 text-yellow-400">
+            <Star className="w-4 h-4" fill="currentColor" />
+            <span className="text-sm">{movie.rating.toFixed(1)}</span>
+          </div>
+        )}
+        
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/movie/${movie.id}`);
+          }}
+          className="opacity-0 group-hover:opacity-100 p-2 bg-blue-600 rounded-lg hover:bg-blue-500 transition-all"
+        >
+          <Play className="w-4 h-4 text-white" fill="currentColor" />
+        </button>
+      </div>
+    </div>
+  );
+}
