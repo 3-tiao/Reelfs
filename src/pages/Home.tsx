@@ -25,7 +25,12 @@ export default function Home() {
   } = useMovieStore();
   const { showThumbnails, toggleShowThumbnails } = useNsfwStore();
   const movieGridRef = useRef<MovieGridRef>(null);
-  const [scrollInfo, setScrollInfo] = useState({ thumbHeight: 0, thumbPosition: 0 });
+  const [scrollInfo, setScrollInfo] = useState({ 
+    thumbHeight: 0, 
+    thumbPosition: 0,
+    totalCount: 0,
+    currentIndex: 0
+  });
   
   useEffect(() => {
     fetchMovies(0);
@@ -124,6 +129,8 @@ export default function Home() {
       <ScrollProgress 
         thumbHeight={scrollInfo.thumbHeight}
         thumbPosition={scrollInfo.thumbPosition}
+        totalCount={scrollInfo.totalCount}
+        currentIndex={scrollInfo.currentIndex}
         onScrollTo={handleScrollTo} 
       />
     </div>
