@@ -31,7 +31,10 @@ const imageCache = new Map<number, string>();
 
 const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [imageSrc, setImageSrc] = useState<string | null>(() => {
+    const cached = imageCache.get(movie.id);
+    return cached || null;
+  });
   const [isLoading, setIsLoading] = useState(false);
   const hasLoadedRef = useRef(false);
 
@@ -121,6 +124,14 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
       return;
     }
 
+    const cachedImage = imageCache.get(movie.id);
+    if (cachedImage) {
+      console.log('[MovieListItem] 使用缓存的图片:', movie.id);
+      setImageSrc(cachedImage);
+      hasLoadedRef.current = true;
+      return;
+    }
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -136,7 +147,7 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
     }
 
     return () => observer.disconnect();
-  }, [showThumbnails]);
+  }, [showThumbnails, movie.id]);
 
   return (
     <div
