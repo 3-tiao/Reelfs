@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon, Eye, EyeOff } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
@@ -6,7 +6,6 @@ import { useNsfwStore } from "../stores/nsfwStore";
 import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
-import ScrollProgress from "../components/ScrollProgress";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -25,7 +24,6 @@ export default function Home() {
   } = useMovieStore();
   const { showThumbnails, toggleShowThumbnails } = useNsfwStore();
   const movieGridRef = useRef<MovieGridRef>(null);
-  const [scrollInfo, setScrollInfo] = useState({ thumbHeight: 0, thumbPosition: 0 });
   
   useEffect(() => {
     fetchMovies(0);
@@ -43,12 +41,6 @@ export default function Home() {
 
   const handleFilterChange = () => {
     fetchMoviesFiltered(0, 200);
-  };
-
-  const handleScrollTo = (percentage: number) => {
-    if (movieGridRef.current) {
-      movieGridRef.current.scrollToPercentage(percentage);
-    }
   };
 
   return (
@@ -104,7 +96,6 @@ export default function Home() {
             <MovieGrid 
               ref={movieGridRef} 
               movies={movies} 
-              onScroll={setScrollInfo}
               onLoadMore={loadMore}
             />
             {isLoadingMore && (
@@ -120,12 +111,6 @@ export default function Home() {
           </>
         )}
       </main>
-      
-      <ScrollProgress 
-        thumbHeight={scrollInfo.thumbHeight}
-        thumbPosition={scrollInfo.thumbPosition}
-        onScrollTo={handleScrollTo} 
-      />
     </div>
   );
 }
