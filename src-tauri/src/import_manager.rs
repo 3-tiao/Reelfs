@@ -311,7 +311,7 @@ impl ImportManager {
                 if count % 10 == 0 || count == total_files {
                     let mut status = scan_status.lock().unwrap();
                     status.scanned_files = count;
-                    status.stage_message = format!("处理文件中... {}/{}", count, total_files);
+                    status.stage_message = "处理文件中...".to_string();
                     let _ = window.emit("scan-progress", status.clone());
                 }
 
