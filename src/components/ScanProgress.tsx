@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ScanStatus, onScanProgress, onScanComplete } from "../services/tauri";
-import { Loader2, FileVideo, Image } from "lucide-react";
+import { Loader2, FileVideo, Image, FolderSearch, Database, Sparkles } from "lucide-react";
 
 interface ScanProgressProps {
   inline?: boolean;
@@ -8,18 +8,23 @@ interface ScanProgressProps {
 
 export default function ScanProgress({ inline = false }: ScanProgressProps) {
   const [status, setStatus] = useState<ScanStatus | null>(null);
+  const [startTime, setStartTime] = useState<number | null>(null);
 
   useEffect(() => {
     console.log('[ScanProgress] 设置事件监听');
     
     const unlistenProgress = onScanProgress((newStatus) => {
       console.log('[ScanProgress] 收到扫描进度事件:', newStatus);
+      if (newStatus.is_scanning && !startTime) {
+        setStartTime(Date.now());
+      }
       setStatus(newStatus);
     });
 
     const unlistenComplete = onScanComplete(() => {
       console.log('[ScanProgress] 收到扫描完成事件');
       setStatus(null);
+      setStartTime(null);
     });
 
     return () => {
@@ -39,11 +44,11 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
   const getStageIcon = () => {
     switch (status.stage) {
       case "Scanning":
-        return <Loader2 className="w-5 h-5" />;
+        return <FolderSearch className="w-5 h-5" />;
       case "Importing":
-        return <FileVideo className="w-5 h-5" />;
+        return <Database className="w-5 h-5" />;
       case "GeneratingThumbnails":
-        return <Image className="w-5 h-5" />;
+        return <Sparkles className="w-5 h-5" />;
       default:
         return <Loader2 className="w-5 h-5" />;
     }
@@ -62,17 +67,57 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
     }
   };
 
+  const getStageBgColor = () => {
+    switch (status.stage) {
+      case "Scanning":
+        return "bg-blue-500/20";
+      case "Importing":
+        return "bg-green-500/20";
+      case "GeneratingThumbnails":
+        return "bg-purple-500/20";
+      default:
+        return "bg-blue-500/20";
+    }
+  };
+
+  const getProgressColor = () => {
+    switch (status.stage) {
+      case "Scanning":
+        return "from-blue-500 to-blue-400";
+      case "Importing":
+        return "from-green-500 to-green-400";
+      case "GeneratingThumbnails":
+        return "from-purple-500 to-purple-400";
+      default:
+        return "from-blue-500 to-blue-400";
+    }
+  };
+
+  const getEstimatedTime = () => {
+    if (!startTime || progress === 0) return null;
+    
+    const elapsed = Date.now() - startTime;
+    const estimatedTotal = elapsed / (progress / 100);
+    const remaining = estimatedTotal - elapsed;
+    
+    if (remaining < 1000) return "即将完成";
+    if (remaining < 60000) return `约 ${Math.round(remaining / 1000)} 秒`;
+    if (remaining < 3600000) return `约 ${Math.round(remaining / 60000)} 分钟`;
+    return `约 ${Math.round(remaining / 3600000)} 小时`;
+  };
+
   const content = (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg bg-gray-800 ${getStageColor()}`}>
+          <div className={`p-2 rounded-lg ${getStageBgColor()} ${getStageColor()}`}>
             {getStageIcon()}
           </div>
           <div>
             <p className="text-white font-medium">{status.stage_message}</p>
             <p className="text-gray-400 text-sm">
               {status.scanned_files} / {status.total_files} 文件
+              {getEstimatedTime() && ` · 剩余 ${getEstimatedTime()}`}
             </p>
           </div>
         </div>
@@ -80,7 +125,7 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
       </div>
       <div className="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
         <div
-          className="bg-gradient-to-r from-blue-500 to-blue-400 h-full transition-all duration-300"
+          className={`bg-gradient-to-r ${getProgressColor()} h-full transition-all duration-300`}
           style={{ width: `${progress}%` }}
         />
       </div>

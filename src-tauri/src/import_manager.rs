@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use tauri::Window;
 use log::{info, debug, warn, error};
+use rayon::prelude::*;
 use crate::database::Database;
 use crate::models::{AppConfig, ScanStatus, ImportStage};
 use crate::indexer;
@@ -98,8 +99,88 @@ impl ImportManager {
             self.set_stage(ImportStage::Importing, "导入文件信息中...");
             self.import_files()?;
 
-            self.set_stage(ImportStage::GeneratingThumbnails, "生成缩略图中...");
-            self.generate_thumbnails(cache_dir, &new_file_ids)?;
+            // 将缩略图生成放到后台线程
+            let db = Arc::clone(&self.db);
+            let scan_status = Arc::clone(&self.scan_status);
+            let window = self.window.clone();
+            let cache_dir = cache_dir.to_string();
+            let scan_mode = self.scan_mode.clone();
+            let new_file_ids_clone = new_file_ids.clone();
+            
+            std::thread::spawn(move || {
+                info!("[后台任务] 开始生成缩略图");
+                
+                let movies_without_thumbnails: Vec<(i64, String, String)> = {
+                    let db = db.lock().unwrap();
+                    
+                    if scan_mode == "incremental" && !new_file_ids_clone.is_empty() {
+                        info!("[后台任务] 增量扫描模式，只为新文件生成缩略图");
+                        new_file_ids_clone.iter()
+                            .filter_map(|&id| {
+                                if let Ok(movie) = db.get_movie_by_id(id) {
+                                    if movie.thumbnail_path.is_none() {
+                                        Some((movie.id, movie.title, movie.file_path))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect()
+                    } else if scan_mode == "full" {
+                        info!("[后台任务] 完全重新校验模式，为所有文件生成缩略图");
+                        let all_movies = db.get_movies(0, 1000);
+                        drop(db);
+
+                        all_movies.unwrap_or_default()
+                            .into_iter()
+                            .filter(|m| m.thumbnail_path.is_none())
+                            .map(|m| (m.id, m.title, m.file_path))
+                            .collect()
+                    } else {
+                        info!("[后台任务] 增量扫描模式，没有新文件需要生成缩略图");
+                        Vec::new()
+                    }
+                };
+
+                let total_thumbnails = movies_without_thumbnails.len();
+                let mut thumbnail_count = 0;
+
+                for (movie_id, title, file_path) in &movies_without_thumbnails {
+                    let video_path = std::path::Path::new(file_path);
+                    let poster = crate::indexer::get_poster_path(video_path);
+                    
+                    if let Some(poster) = poster {
+                        let thumbnail_path = thumbnail::get_thumbnail_path(&cache_dir, *movie_id);
+
+                        debug!("[后台任务] 处理缩略图: id={}, title={}", movie_id, title);
+
+                        match thumbnail::generate_thumbnail(&poster, &thumbnail_path) {
+                            Ok(_) => {
+                                let db = db.lock().unwrap();
+                                let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
+                                thumbnail_count += 1;
+                                debug!("[后台任务] 缩略图成功: id={}", movie_id);
+
+                                {
+                                    let mut status = scan_status.lock().unwrap();
+                                    status.stage = ImportStage::GeneratingThumbnails;
+                                    status.stage_message = format!("生成缩略图中... ({}/{})", thumbnail_count, total_thumbnails);
+                                    status.current_file = Some(format!("生成缩略图: {}", title));
+                                }
+
+                                let _ = window.emit("scan-progress", scan_status.lock().unwrap().clone());
+                            }
+                            Err(e) => {
+                                error!("[后台任务] 缩略图失败: id={}, error={}", movie_id, e);
+                            }
+                        }
+                    }
+                }
+
+                info!("[后台任务] 缩略图生成完成: {}/{} 个", thumbnail_count, total_thumbnails);
+            });
         } else {
             info!("[导入管理器] 没有新文件需要导入");
             if self.scan_mode == "incremental" {
@@ -173,53 +254,70 @@ impl ImportManager {
             let _ = self.window.emit("scan-progress", status.clone());
         }
 
-        let mut batch = Vec::new();
-
-        for (i, video_path) in all_video_paths.iter().enumerate() {
-            // 检查是否需要停止
-            {
-                let flag = self.stop_scan_flag.lock().unwrap();
-                if *flag {
-                    info!("[导入管理器] 扫描已停止");
-                    self.set_complete_state();
-                    return Ok(new_file_ids);
+        // 使用 rayon 并行处理文件
+        let processed_files: Vec<_> = all_video_paths
+            .par_iter()
+            .enumerate()
+            .filter_map(|(i, video_path)| {
+                // 检查是否需要停止
+                {
+                    let flag = self.stop_scan_flag.lock().unwrap();
+                    if *flag {
+                        return None;
+                    }
                 }
-            }
-            
-            let file_path_str = video_path.to_string_lossy().to_string();
                 
-            if is_incremental {
-                let db = self.db.lock().unwrap();
-                if let Ok(Some(_)) = db.get_movie_by_path(&file_path_str) {
-                    debug!("[导入管理器] 跳过已存在文件: {}", file_path_str);
-                    continue;
+                let file_path_str = video_path.to_string_lossy().to_string();
+                    
+                if is_incremental {
+                    let db = self.db.lock().unwrap();
+                    if let Ok(Some(_)) = db.get_movie_by_path(&file_path_str) {
+                        debug!("[导入管理器] 跳过已存在文件: {}", file_path_str);
+                        return None;
+                    }
                 }
+
+                // 在处理阶段解析 NFO 文件
+                let metadata = indexer::find_nfo_for_video(video_path)
+                    .and_then(|nfo_path| {
+                        debug!("[导入管理器] 找到NFO文件: {:?}", nfo_path);
+                        indexer::parse_nfo_file(&nfo_path)
+                    });
+
+                let title = if let Some(ref meta) = metadata {
+                    meta.title.clone()
+                } else {
+                    indexer::extract_title_from_filename(video_path)
+                };
+
+                let year = metadata.as_ref().and_then(|m| m.year);
+                let plot = metadata.as_ref().and_then(|m| m.plot.clone());
+                let rating = metadata.as_ref().and_then(|m| m.rating);
+                let genres = metadata.as_ref().and_then(|m| m.genres.clone());
+                let director = metadata.as_ref().and_then(|m| m.director.clone());
+                let actors = metadata.as_ref().and_then(|m| m.actors.clone());
+                let file_size = indexer::get_file_size(video_path);
+                let (duration_seconds, width, height) = indexer::get_video_info(video_path)
+                    .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
+                    .unwrap_or((None, None, None));
+
+                Some((i, file_path_str, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height))
+            })
+            .collect();
+
+        // 检查是否已停止
+        {
+            let flag = self.stop_scan_flag.lock().unwrap();
+            if *flag {
+                info!("[导入管理器] 扫描已停止");
+                self.set_complete_state();
+                return Ok(new_file_ids);
             }
+        }
 
-            // 在处理阶段解析 NFO 文件
-            let metadata = indexer::find_nfo_for_video(video_path)
-                .and_then(|nfo_path| {
-                    info!("[导入管理器] 找到NFO文件: {:?}", nfo_path);
-                    indexer::parse_nfo_file(&nfo_path)
-                });
-
-            let title = if let Some(ref meta) = metadata {
-                meta.title.clone()
-            } else {
-                indexer::extract_title_from_filename(video_path)
-            };
-
-            let year = metadata.as_ref().and_then(|m| m.year);
-            let plot = metadata.as_ref().and_then(|m| m.plot.clone());
-            let rating = metadata.as_ref().and_then(|m| m.rating);
-            let genres = metadata.as_ref().and_then(|m| m.genres.clone());
-            let director = metadata.as_ref().and_then(|m| m.director.clone());
-            let actors = metadata.as_ref().and_then(|m| m.actors.clone());
-            let file_size = indexer::get_file_size(video_path);
-            let (duration_seconds, width, height) = indexer::get_video_info(video_path)
-                .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
-                .unwrap_or((None, None, None));
-
+        // 串行插入数据库和更新进度
+        let mut batch = Vec::new();
+        for (i, file_path_str, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height) in processed_files {
             batch.push((
                 file_path_str.clone(),
                 title,
