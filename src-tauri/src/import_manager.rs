@@ -164,10 +164,11 @@ impl ImportManager {
         
         let total_files = all_results.len();
         
-        // 更新总文件数
+        // 更新总文件数，重置已扫描文件数
         {
             let mut status = self.scan_status.lock().unwrap();
             status.total_files = total_files;
+            status.scanned_files = 0;
             status.stage_message = format!("处理 {} 个文件中...", total_files);
             let _ = self.window.emit("scan-progress", status.clone());
         }
