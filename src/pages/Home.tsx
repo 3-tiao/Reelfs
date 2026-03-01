@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon, Eye, EyeOff } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
@@ -54,20 +54,6 @@ export default function Home() {
     }
   }, [movies.length, scrollPosition]);
 
-  // 保存滚动位置 - 使用 useLayoutEffect 确保在导航前保存
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (movieGridRef.current) {
-        const position = movieGridRef.current.getScrollPosition();
-        setScrollPosition(position);
-      }
-    };
-    
-    return () => {
-      handleBeforeUnload();
-    };
-  }, []);
-
   const handleSearch = (query: string) => {
     if (query.trim()) {
       searchMovies(query);
@@ -81,6 +67,18 @@ export default function Home() {
   const handleFilterChange = () => {
     fetchMoviesFiltered(0, 200);
   };
+
+  // 保存滚动位置 - 在滚动时实时保存
+  const handleScrollInfo = useCallback((info: { thumbHeight: number; thumbPosition: number; totalCount: number; currentIndex: number }) => {
+    setScrollInfo(info);
+    // 同时保存滚动位置到 store
+    if (movieGridRef.current) {
+      const position = movieGridRef.current.getScrollPosition();
+      if (position > 0) {
+        setScrollPosition(position);
+      }
+    }
+  }, [setScrollPosition]);
 
   const handleScrollTo = (percentage: number) => {
     if (movieGridRef.current) {
@@ -141,7 +139,7 @@ export default function Home() {
             <MovieGrid 
               ref={movieGridRef} 
               movies={movies} 
-              onScroll={setScrollInfo}
+              onScroll={handleScrollInfo}
               onLoadMore={loadMore}
             />
             {isLoadingMore && (
