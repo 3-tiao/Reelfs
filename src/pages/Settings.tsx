@@ -154,9 +154,8 @@ export default function Settings() {
     try {
       await resetDatabase();
       setShowResetConfirm(false);
-      setTimeout(() => {
-        loadStats();
-      }, 1000);
+      alert("数据已重置，页面将刷新");
+      window.location.reload();
     } catch (error) {
       console.error("重置数据失败:", error);
       alert("重置数据失败: " + error);
