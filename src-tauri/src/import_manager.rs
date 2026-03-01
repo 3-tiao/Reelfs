@@ -118,12 +118,21 @@ impl ImportManager {
 
     fn scan_directories(&self) -> Result<Vec<i64>, String> {
         let mut new_file_ids = Vec::new();
-        let total_paths = self.config.nas_paths.len();
+        let _total_paths = self.config.nas_paths.len();
         let is_incremental = self.scan_mode == "incremental";
 
-        // 收集所有文件
+        // 收集所有文件，同时更新进度
         let mut all_results = Vec::new();
-        for nas_path in &self.config.nas_paths {
+        for (path_index, nas_path) in self.config.nas_paths.iter().enumerate() {
+            info!("[导入管理器] 扫描路径 ({}/{}): {}", path_index + 1, self.config.nas_paths.len(), nas_path);
+            
+            // 更新阶段信息
+            {
+                let mut status = self.scan_status.lock().unwrap();
+                status.stage_message = format!("扫描目录中 ({}/{})...", path_index + 1, self.config.nas_paths.len());
+                let _ = self.window.emit("scan-progress", status.clone());
+            }
+            
             let results = indexer::scan_directory_with_stop_flag(nas_path, Some(Arc::clone(&self.stop_scan_flag)));
             
             // 检查是否已停止
@@ -145,6 +154,7 @@ impl ImportManager {
         {
             let mut status = self.scan_status.lock().unwrap();
             status.total_files = total_files;
+            status.stage_message = format!("处理 {} 个文件中...", total_files);
             let _ = self.window.emit("scan-progress", status.clone());
         }
 
