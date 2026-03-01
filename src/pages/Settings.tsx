@@ -173,8 +173,6 @@ export default function Settings() {
       <main className="max-w-4xl mx-auto px-6 py-8">
         <h1 className="text-3xl font-bold mb-8">Settings</h1>
 
-        <ScanProgress inline={true} />
-
         <div className="space-y-8">
           <section className="bg-gray-900 rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
@@ -315,6 +313,8 @@ export default function Settings() {
               >
                 开始扫描
               </button>
+              
+              <ScanProgress inline={true} />
             </div>
           </section>
           
