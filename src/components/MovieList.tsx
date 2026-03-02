@@ -237,14 +237,14 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   const loadingRef = useRef(false);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
-    height: window.innerHeight - 180,
+    height: window.innerHeight - 80,
   });
 
   useEffect(() => {
     const handleResize = () => {
       setDimensions({
         width: window.innerWidth,
-        height: window.innerHeight - 180,
+        height: window.innerHeight - 80,
       });
     };
 
