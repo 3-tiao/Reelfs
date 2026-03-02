@@ -166,14 +166,12 @@ export default function Home() {
                 onLoadMore={loadMore}
               />
             ) : (
-              <div style={{ height: 'calc(100vh - 180px)' }}>
-                <MovieList 
-                  ref={movieListRef}
-                  movies={movies} 
-                  onScroll={handleScroll}
-                  onLoadMore={loadMore}
-                />
-              </div>
+              <MovieList 
+                ref={movieListRef}
+                movies={movies} 
+                onScroll={handleScroll}
+                onLoadMore={loadMore}
+              />
             )}
             {isLoadingMore && (
               <div className="flex items-center justify-center py-4">
