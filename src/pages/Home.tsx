@@ -180,11 +180,6 @@ export default function Home() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
               </div>
             )}
-            {!hasMore && movies.length > 0 && (
-              <div className="text-center py-4 text-gray-400 text-sm">
-                已加载全部 {movies.length} 个电影
-              </div>
-            )}
           </>
         )}
       </main>
