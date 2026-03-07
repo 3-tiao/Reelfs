@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Movie } from "../services/tauri";
+import { Movie , logger } from "../services/tauri";
 import { Film, RefreshCw, Eye, Layers } from "lucide-react";
-import { readBinaryFile, exists } from "@tauri-apps/api/fs";
+import { exists } from "@tauri-apps/api/fs";
 import { generateThumbnail } from "../services/thumbnail";
 import { useNsfwStore } from "../stores/nsfwStore";
+import { getCachedThumbnail } from "../lib/thumbnailCache";
 
 interface MovieCardProps {
   movie: Movie;
@@ -23,10 +24,12 @@ export default function MovieCard({ movie }: MovieCardProps) {
       return;
     }
 
+    let isMounted = true;
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          loadOrGenerateThumbnail();
+          loadOrGenerateThumbnail(() => isMounted);
           observer.disconnect();
         }
       },
@@ -37,36 +40,46 @@ export default function MovieCard({ movie }: MovieCardProps) {
       observer.observe(cardRef.current);
     }
 
-    return () => observer.disconnect();
+    return () => {
+      isMounted = false;
+      observer.disconnect();
+    };
   }, [movie, showThumbnails]);
 
-  const loadOrGenerateThumbnail = async () => {
+  const loadOrGenerateThumbnail = async (checkMounted: () => boolean) => {
     if (movie.thumbnail_path) {
-      loadLocalImage(movie.thumbnail_path);
+      const url = await getCachedThumbnail(movie.thumbnail_path);
+      if (checkMounted() && url) {
+        setImageSrc(url);
+      }
     } else {
-      await generateAndLoadThumbnail();
+      await generateAndLoadThumbnail(checkMounted);
     }
   };
 
-  const generateAndLoadThumbnail = async () => {
+  const generateAndLoadThumbnail = async (checkMounted: () => boolean) => {
     const posterPath = await getPosterPath(movie.file_path);
     
     if (!posterPath) {
-      console.error('[MovieCard] 没有海报路径，无法生成缩略图');
       return;
     }
     
     try {
       setIsGenerating(true);
-      console.log('[MovieCard] 开始生成缩略图:', { id: movie.id, title: movie.title });
       
       const thumbnailPath = `/Users/user/.reelfs/cache/thumbnails/${movie.id}.jpg`;
       await generateThumbnail(posterPath, thumbnailPath, movie.id);
       
-      loadLocalImage(thumbnailPath);
+      const url = await getCachedThumbnail(thumbnailPath);
+      if (checkMounted() && url) {
+        setImageSrc(url);
+      }
     } catch (error) {
-      console.error('[MovieCard] 生成缩略图失败:', error);
-      loadLocalImage(posterPath);
+      logger.error('[MovieCard] 生成缩略图失败:', error);
+      const url = await getCachedThumbnail(posterPath);
+      if (checkMounted() && url) {
+        setImageSrc(url);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -84,31 +97,6 @@ export default function MovieCard({ movie }: MovieCardProps) {
     }
     
     return null;
-  };
-
-  const loadLocalImage = async (path: string) => {
-    try {
-      console.log('[MovieCard] 开始加载图片:', path);
-      console.log('[MovieCard] 电影信息:', { id: movie.id, title: movie.title });
-      
-      const data = await readBinaryFile(path);
-      console.log('[MovieCard] 文件读取成功，大小:', data.length, 'bytes');
-      
-      const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      console.log('[MovieCard] Blob URL 创建成功:', url);
-      
-      setImageSrc(url);
-      console.log('[MovieCard] 图片加载完成');
-    } catch (error) {
-      console.error('[MovieCard] 加载图片失败:', path, error);
-      console.error('[MovieCard] 错误详情:', {
-        path,
-        error: String(error),
-        movieId: movie.id,
-        movieTitle: movie.title
-      });
-    }
   };
 
   return (
