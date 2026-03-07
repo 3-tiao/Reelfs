@@ -12,7 +12,7 @@ mod video_group_detector;
 mod watcher;
 
 use database::Database;
-use models::{AppConfig, Movie, PlayHistory, ScanStatus, Stats, VideoGroup, VideoGroupWithParts, VideoPart};
+use models::{AppConfig, Movie, PlayHistory, ScanStatus, Stats, VideoGroup, VideoGroupWithParts};
 use video_group::VideoGroupManager;
 use video_group_detector::{detect_video_groups, VideoGroupCandidate};
 use std::sync::{Arc, Mutex};

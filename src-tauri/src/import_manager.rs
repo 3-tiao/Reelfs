@@ -6,7 +6,7 @@ use crate::database::Database;
 use crate::models::{AppConfig, ScanStatus, ImportStage, ScanResult};
 use crate::indexer;
 use crate::thumbnail;
-use crate::video_group_detector::{detect_video_groups, VideoGroupCandidate};
+use crate::video_group_detector::detect_video_groups;
 use crate::video_group::VideoGroupManager;
 
 pub struct ImportManager {
@@ -451,42 +451,13 @@ impl ImportManager {
         let conn = db.get_connection();
         let group_manager = VideoGroupManager::new(conn);
         
-        for candidate in candidates {
-            info!("[视频组检测] 创建视频组: {}", candidate.title);
-            
-            match group_manager.create_video_group(
-                &candidate.title,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ) {
-                Ok(group_id) => {
-                    info!("[视频组检测] 视频组创建成功: {} (ID: {})", candidate.title, group_id);
-                    
-                    for movie_with_part in candidate.movies {
-                        match group_manager.add_video_part(
-                            group_id,
-                            movie_with_part.movie.id,
-                            movie_with_part.part_number,
-                            Some(&movie_with_part.part_title),
-                        ) {
-                            Ok(_) => {
-                                info!("[视频组检测] 添加视频部分成功: {} - 第{}部分", 
-                                      candidate.title, movie_with_part.part_number);
-                            }
-                            Err(e) => {
-                                error!("[视频组检测] 添加视频部分失败: {} - {}", candidate.title, e);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("[视频组检测] 创建视频组失败: {} - {}", candidate.title, e);
-                }
+        info!("[视频组检测] 开始执行批量检测插入");
+        match group_manager.create_video_groups_batch(&candidates) {
+            Ok(count) => {
+                info!("[视频组检测] 批量创建视频组成功: {}/{}", count, candidates.len());
+            }
+            Err(e) => {
+                error!("[视频组检测] 批量创建视频组失败: {}", e);
             }
         }
         

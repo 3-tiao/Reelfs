@@ -1,6 +1,7 @@
 use rusqlite::{Connection, Result, params, OptionalExtension};
 use crate::models::{VideoGroup, VideoPart, VideoGroupWithParts, VideoPartWithMovie, Movie};
-use log::{info, debug};
+use crate::video_group_detector::VideoGroupCandidate;
+use log::{info, debug, error};
 
 pub struct VideoGroupManager<'a> {
     conn: &'a Connection,
@@ -72,6 +73,74 @@ impl<'a> VideoGroupManager<'a> {
         Ok(part_id)
     }
 
+    pub fn create_video_groups_batch(&self, candidates: &[VideoGroupCandidate]) -> Result<usize> {
+        info!("[VideoGroup] 开始批量创建视频组: {} 个候选", candidates.len());
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+        let mut created_count = 0;
+
+        for candidate in candidates {
+            if let Err(e) = tx.execute(
+                "INSERT INTO video_groups (title, year, plot, rating, genres, director, actors, poster_path, part_count)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
+                params![candidate.title, rusqlite::types::Null, rusqlite::types::Null, rusqlite::types::Null, rusqlite::types::Null, rusqlite::types::Null, rusqlite::types::Null, rusqlite::types::Null],
+            ) {
+                error!("[VideoGroup] 批量插入视频组失败 {}: {}", candidate.title, e);
+                continue;
+            }
+
+            let group_id = tx.last_insert_rowid();
+            created_count += 1;
+
+            let mut total_duration = 0;
+            let mut part_count = 0;
+
+            for movie_with_part in &candidate.movies {
+                let movie_id = movie_with_part.movie.id;
+                
+                // Fetch duration
+                let duration: Option<i64> = tx.query_row(
+                    "SELECT duration_seconds FROM movies WHERE id = ?1",
+                    params![movie_id],
+                    |row| row.get(0),
+                ).unwrap_or(None);
+
+                if let Some(d) = duration {
+                    total_duration += d;
+                }
+                part_count += 1;
+
+                if let Err(e) = tx.execute(
+                    "INSERT INTO video_parts (group_id, movie_id, part_number, part_title, duration_seconds)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![group_id, movie_id, movie_with_part.part_number, movie_with_part.part_title, duration],
+                ) {
+                    error!("[VideoGroup] 批量插入视频片段失败 movie_id={}: {}", movie_id, e);
+                    continue;
+                }
+
+                // Update movie group_id
+                let _ = tx.execute(
+                    "UPDATE movies SET group_id = ?1 WHERE id = ?2 AND group_id IS NULL",
+                    params![group_id, movie_id],
+                );
+            }
+
+            // Update stats
+            let _ = tx.execute(
+                "UPDATE video_groups SET total_duration = ?1, part_count = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
+                params![total_duration, part_count, group_id],
+            );
+        }
+
+        tx.commit()?;
+        info!("[VideoGroup] 批量创建视频组成功: {} 个", created_count);
+        Ok(created_count)
+    }
+
     fn update_group_stats(&self, group_id: i64) -> Result<()> {
         debug!("[VideoGroup] 更新视频组统计信息: group_id={}", group_id);
         
@@ -135,10 +204,63 @@ impl<'a> VideoGroupManager<'a> {
         if let Some(group) = group {
             let parts = self.get_video_parts(id)?;
             
-            let mut parts_with_movies = Vec::new();
+            if parts.is_empty() {
+                return Ok(Some(VideoGroupWithParts {
+                    group,
+                    parts: Vec::new(),
+                }));
+            }
+            
+            let movie_ids: Vec<String> = parts.iter().map(|p| p.movie_id.to_string()).collect();
+            let placeholders = movie_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let query = format!(
+                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+                        thumbnail_path, file_size, duration_seconds,
+                        width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
+                 FROM movies WHERE id IN ({})",
+                placeholders
+            );
+            
+            let mut stmt = self.conn.prepare(&query)?;
+            let movie_id_params: Vec<&dyn rusqlite::ToSql> = movie_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            
+            // Map fetched movies by their ID for O(1) assignment
+            let mut movies_map: std::collections::HashMap<i64, Movie> = std::collections::HashMap::new();
+            let rows = stmt.query_map(rusqlite::params_from_iter(movie_id_params), |row| {
+                Ok(Movie {
+                    id: row.get(0)?,
+                    file_path: row.get(1)?,
+                    title: row.get(2)?,
+                    year: row.get(3)?,
+                    plot: row.get(4)?,
+                    rating: row.get(5)?,
+                    genres: row.get(6)?,
+                    director: row.get(7)?,
+                    actors: row.get(8)?,
+                    thumbnail_path: row.get(9)?,
+                    file_size: row.get(10)?,
+                    duration_seconds: row.get(11)?,
+                    width: row.get(12)?,
+                    height: row.get(13)?,
+                    added_at: row.get(14)?,
+                    updated_at: row.get(15)?,
+                    last_accessed: row.get(16)?,
+                    last_checked_at: row.get(17)?,
+                    scan_state: row.get(18)?,
+                    is_watched: row.get(19)?,
+                    group_id: row.get(20)?,
+                })
+            })?;
+            
+            for movie_res in rows {
+                if let Ok(movie) = movie_res {
+                    movies_map.insert(movie.id, movie);
+                }
+            }
+            
+            let mut parts_with_movies = Vec::with_capacity(parts.len());
             for part in parts {
-                let movie = self.get_movie(part.movie_id)?;
-                if let Some(movie) = movie {
+                if let Some(movie) = movies_map.get(&part.movie_id).cloned() {
                     parts_with_movies.push(VideoPartWithMovie {
                         part,
                         movie,
