@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Eye, EyeOff } from "lucide-react";
-import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus } from "../services/tauri";
+import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus, logger } from "../services/tauri";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 import { formatBytes, formatDuration } from "../lib/utils";
 import DetailBackground from "../components/DetailBackground";
@@ -61,7 +61,7 @@ export default function MovieDetail() {
       }
 
       if (!movieData.duration_seconds && !movieData.width && !movieData.height) {
-        console.log("[MovieDetail] 视频信息不存在，异步获取中...");
+        logger.info("[MovieDetail] 视频信息不存在，异步获取中...");
         getAndUpdateVideoInfo(movieId)
           .then((info) => {
             if (info.duration_seconds || info.width || info.height) {
@@ -75,15 +75,15 @@ export default function MovieDetail() {
                     }
                   : null
               );
-              console.log("[MovieDetail] 视频信息更新成功:", info);
+              logger.info("[MovieDetail] 视频信息更新成功:", info);
             }
           })
           .catch((err) => {
-            console.error("[MovieDetail] 获取视频信息失败:", err);
+            logger.error("[MovieDetail] 获取视频信息失败:", err);
           });
       }
     } catch (error) {
-      console.error("Failed to load movie details:", error);
+      logger.error("Failed to load movie details:", error);
       setIsLoading(false);
     }
   };
@@ -123,7 +123,7 @@ export default function MovieDetail() {
       const url = URL.createObjectURL(blob);
       setter(url);
     } catch (error) {
-      console.error("Failed to load image:", path, error);
+      logger.error("Failed to load image:", path, error);
       setter(null);
     }
   };
@@ -133,7 +133,7 @@ export default function MovieDetail() {
       try {
         await playMovie(movie.id);
       } catch (error) {
-        console.error("Failed to play movie:", error);
+        logger.error("Failed to play movie:", error);
       }
     }
   };
@@ -143,7 +143,7 @@ export default function MovieDetail() {
       try {
         await showInFileManager(movie.file_path);
       } catch (error) {
-        console.error("Failed to show in file manager:", error);
+        logger.error("Failed to show in file manager:", error);
       }
     }
   };
@@ -156,7 +156,7 @@ export default function MovieDetail() {
       await setMovieRating(movie.id, rating);
       setMovie({ ...movie, rating: rating ?? undefined });
     } catch (error) {
-      console.error("Failed to set rating:", error);
+      logger.error("Failed to set rating:", error);
     } finally {
       setIsRating(false);
     }
@@ -170,7 +170,7 @@ export default function MovieDetail() {
       await setWatchedStatus(movie.id, newStatus);
       setMovie({ ...movie, is_watched: newStatus ? 1 : 0 });
     } catch (error) {
-      console.error("Failed to toggle watched status:", error);
+      logger.error("Failed to toggle watched status:", error);
     }
   };
 

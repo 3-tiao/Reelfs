@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle, CheckCircle, Film } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useMovieStore } from "../stores/movieStore";
-import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase, stopScan, onScanComplete, ScanResult } from "../services/tauri";
+import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase, stopScan, onScanComplete, ScanResult, logger } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
 import ScanProgress from "../components/ScanProgress";
 import { formatBytes } from "../lib/utils";
@@ -55,7 +55,7 @@ export default function Settings() {
       const data = await getStats();
       setStats(data);
     } catch (error) {
-      console.error("Failed to load stats:", error);
+      logger.error("Failed to load stats:", error);
     }
   };
 
@@ -82,7 +82,7 @@ export default function Settings() {
         }
       }
     } catch (error) {
-      console.error("Failed to select directory:", error);
+      logger.error("Failed to select directory:", error);
     }
   };
 
@@ -122,7 +122,7 @@ export default function Settings() {
         });
       }
     } catch (error) {
-      console.error("Failed to select cache directory:", error);
+      logger.error("Failed to select cache directory:", error);
     }
   };
 
@@ -152,7 +152,7 @@ export default function Settings() {
         await stopScan();
         setIsScanning(false);
       } catch (error) {
-        console.error("停止扫描失败:", error);
+        logger.error("停止扫描失败:", error);
         toast.warning("停止扫描失败: " + error);
       }
     } else {
@@ -164,7 +164,7 @@ export default function Settings() {
           loadStats();
         }, 1000);
       } catch (error) {
-        console.error("开始扫描失败:", error);
+        logger.error("开始扫描失败:", error);
         toast.error("开始扫描失败: " + error);
       }
     }
@@ -178,7 +178,7 @@ export default function Settings() {
         loadStats();
       }, 1000);
     } catch (error) {
-      console.error("重新生成缩略图失败:", error);
+      logger.error("重新生成缩略图失败:", error);
       toast.error("重新生成缩略图失败: " + error);
     }
   };
@@ -190,7 +190,7 @@ export default function Settings() {
       toast.success("数据已重置，页面将刷新");
       window.location.reload();
     } catch (error) {
-      console.error("重置数据失败:", error);
+      logger.error("重置数据失败:", error);
       toast.error("重置数据失败: " + error);
     }
   };

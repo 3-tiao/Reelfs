@@ -317,3 +317,19 @@ export const getAndUpdateVideoInfo = async (id: number): Promise<{
     height: result[2],
   };
 };
+
+export const frontendLog = async (level: string, message: string): Promise<void> => {
+  try {
+    await invoke("frontend_log", { level, message });
+  } catch (e) {
+    console.error("Failed to invoke frontend_log:", e);
+  }
+};
+
+export const logger = {
+  error: (...args: any[]) => frontendLog("error", args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ")),
+  warn: (...args: any[]) => frontendLog("warn", args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ")),
+  info: (...args: any[]) => frontendLog("info", args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ")),
+  debug: (...args: any[]) => frontendLog("debug", args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ")),
+  trace: (...args: any[]) => frontendLog("trace", args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ")),
+};

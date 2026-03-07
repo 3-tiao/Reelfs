@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Film, User } from "lucide-react";
-import { Movie, getMoviesFiltered } from "../services/tauri";
+import { Movie, getMoviesFiltered, logger } from "../services/tauri";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 
 export default function ActorDetail() {
@@ -24,7 +24,7 @@ export default function ActorDetail() {
       setMovies(actorMovies);
       setIsLoading(false);
     } catch (error) {
-      console.error("Failed to load actor movies:", error);
+      logger.error("Failed to load actor movies:", error);
       setIsLoading(false);
     }
   };
@@ -54,7 +54,7 @@ export default function ActorDetail() {
         const url = URL.createObjectURL(blob);
         setPosterCache(prev => new Map(prev).set(movieId, url));
       } catch (error) {
-        console.error("Failed to load poster:", posterPath, error);
+        logger.error("Failed to load poster:", posterPath, error);
       }
     }
   };

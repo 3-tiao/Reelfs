@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getVideoGroupDetail, VideoGroupWithParts, playMovie, showInFileManager } from "../services/tauri";
+import { getVideoGroupDetail, VideoGroupWithParts, playMovie, showInFileManager, logger } from "../services/tauri";
 import { Play, ArrowLeft, Film, FolderOpen } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
@@ -37,7 +37,7 @@ export default function VideoGroupDetail() {
       const data = await getVideoGroupDetail(parseInt(id!));
       setGroupData(data);
     } catch (error) {
-      console.error("Failed to load video group:", error);
+      logger.error("Failed to load video group:", error);
     } finally {
       setLoading(false);
     }
@@ -74,7 +74,7 @@ export default function VideoGroupDetail() {
       const url = URL.createObjectURL(blob);
       setter(url);
     } catch (error) {
-      console.error("Failed to load image:", path, error);
+      logger.error("Failed to load image:", path, error);
       setter(null);
     }
   };
@@ -96,7 +96,7 @@ export default function VideoGroupDetail() {
       const targetId = movieId || groupData.parts[0].movie.id;
       await playMovie(targetId);
     } catch (error) {
-      console.error("Failed to play movie:", error);
+      logger.error("Failed to play movie:", error);
     }
   };
 
@@ -104,7 +104,7 @@ export default function VideoGroupDetail() {
     try {
       await showInFileManager(filePath);
     } catch (error) {
-      console.error("Failed to show in file manager:", error);
+      logger.error("Failed to show in file manager:", error);
     }
   };
 

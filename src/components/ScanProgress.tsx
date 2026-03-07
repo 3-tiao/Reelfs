@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScanStatus, onScanProgress, onScanComplete } from "../services/tauri";
+import { ScanStatus, onScanProgress, onScanComplete , logger } from "../services/tauri";
 import { Loader2, FolderSearch, Database, Sparkles } from "lucide-react";
 
 interface ScanProgressProps {
@@ -10,15 +10,15 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
   const [status, setStatus] = useState<ScanStatus | null>(null);
 
   useEffect(() => {
-    console.log('[ScanProgress] 设置事件监听');
+    logger.info('[ScanProgress] 设置事件监听');
     
     const unlistenProgress = onScanProgress((newStatus) => {
-      console.log('[ScanProgress] 收到扫描进度事件:', newStatus);
+      logger.info('[ScanProgress] 收到扫描进度事件:', newStatus);
       setStatus(newStatus);
     });
 
     const unlistenComplete = onScanComplete(() => {
-      console.log('[ScanProgress] 收到扫描完成事件');
+      logger.info('[ScanProgress] 收到扫描完成事件');
       setStatus(null);
     });
 

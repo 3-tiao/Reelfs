@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Movie, getMovies, searchMovies, playMovie, Filters, SortOptions, getMoviesFiltered, getUniqueGenres, getUniqueActors } from "../services/tauri";
+import { Movie, getMovies, searchMovies, playMovie, Filters, SortOptions, getMoviesFiltered, getUniqueGenres, getUniqueActors, logger } from "../services/tauri";
 
 interface MovieStore {
   movies: Movie[];
@@ -49,12 +49,12 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const movies = await getMovies(offset, 200);
-      console.log('[MovieStore] 获取电影数据:', movies.length, '个电影');
-      console.log('[MovieStore] 前3个电影:', movies.slice(0, 3).map(m => ({
+      logger.info(`[MovieStore] 获取电影数据: ${movies.length} 个电影`);
+      logger.info(`[MovieStore] 前3个电影: ${JSON.stringify(movies.slice(0, 3).map(m => ({
         id: m.id,
         title: m.title,
         thumbnail_path: m.thumbnail_path
-      })));
+      })))}`);
       set({ 
         movies, 
         isLoading: false, 
@@ -62,7 +62,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
         currentPage: Math.floor(offset / 200)
       });
     } catch (error) {
-      console.error('[MovieStore] 获取电影失败:', error);
+      logger.error(`[MovieStore] 获取电影失败: ${error}`);
       set({ error: String(error), isLoading: false });
     }
   },
@@ -75,7 +75,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
     try {
       const offset = (state.currentPage + 1) * 200;
       const newMovies = await getMovies(offset, 200);
-      console.log('[MovieStore] 加载更多电影:', newMovies.length, '个电影');
+      logger.info(`[MovieStore] 加载更多电影: ${newMovies.length} 个电影`);
       
       set({ 
         movies: [...state.movies, ...newMovies],
@@ -84,7 +84,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
         currentPage: state.currentPage + 1
       });
     } catch (error) {
-      console.error('[MovieStore] 加载更多电影失败:', error);
+      logger.error(`[MovieStore] 加载更多电影失败: ${error}`);
       set({ isLoadingMore: false });
     }
   },
@@ -124,10 +124,10 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const movies = await getMoviesFiltered(offset, limit, state.filters, state.sortOptions);
-      console.log('[MovieStore] 获取筛选电影数据:', movies.length, '个电影');
+      logger.info(`[MovieStore] 获取筛选电影数据: ${movies.length} 个电影`);
       set({ movies, isLoading: false });
     } catch (error) {
-      console.error('[MovieStore] 获取筛选电影失败:', error);
+      logger.error(`[MovieStore] 获取筛选电影失败: ${error}`);
       set({ error: String(error), isLoading: false });
     }
   },
@@ -141,7 +141,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
       const genres = await getUniqueGenres();
       set({ availableGenres: genres });
     } catch (error) {
-      console.error('[MovieStore] 获取类型列表失败:', error);
+      logger.error(`[MovieStore] 获取类型列表失败: ${error}`);
     }
   },
 
@@ -150,7 +150,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
       const actors = await getUniqueActors();
       set({ availableActors: actors });
     } catch (error) {
-      console.error('[MovieStore] 获取演员列表失败:', error);
+      logger.error(`[MovieStore] 获取演员列表失败: ${error}`);
     }
   },
 
