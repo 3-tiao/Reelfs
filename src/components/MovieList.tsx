@@ -153,7 +153,7 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
   return (
     <div
       ref={itemRef}
-      onClick={() => navigate(`/movie/${movie.id}`)}
+      onClick={() => movie.group_id ? navigate(`/video-group/${movie.group_id}`) : navigate(`/movie/${movie.id}`)}
       className="flex items-center gap-4 px-4 py-3 hover:bg-zinc-800/50 cursor-pointer transition-colors border-b border-zinc-800/50 group"
       style={{ height: '72px' }}
     >
@@ -219,7 +219,7 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
         <button
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/movie/${movie.id}`);
+            movie.group_id ? navigate(`/video-group/${movie.group_id}`) : navigate(`/movie/${movie.id}`);
           }}
           className="opacity-0 group-hover:opacity-100 p-2 bg-gradient-to-r from-teal-500 to-teal-600 rounded-lg hover:from-teal-400 hover:to-teal-500 transition-all"
         >

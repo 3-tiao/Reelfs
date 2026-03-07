@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
-import { Film, RefreshCw, Eye } from "lucide-react";
+import { Film, RefreshCw, Eye, Layers } from "lucide-react";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 import { generateThumbnail } from "../services/thumbnail";
 import { useNsfwStore } from "../stores/nsfwStore";
@@ -114,7 +114,7 @@ export default function MovieCard({ movie }: MovieCardProps) {
   return (
     <div
       ref={cardRef}
-      onClick={() => navigate(`/movie/${movie.id}`)}
+      onClick={() => movie.group_id ? navigate(`/video-group/${movie.group_id}`) : navigate(`/movie/${movie.id}`)}
       className="group cursor-pointer transition-transform duration-200 hover:scale-105"
     >
       <div className="relative aspect-[2/3] bg-zinc-800/80 backdrop-blur-sm rounded-lg overflow-hidden shadow-lg border border-zinc-700/50">
@@ -154,6 +154,18 @@ export default function MovieCard({ movie }: MovieCardProps) {
         {movie.is_watched === 1 && (
           <div className="absolute top-2 right-2 bg-teal-500/80 rounded-full p-1 backdrop-blur-sm">
             <Eye className="w-4 h-4 text-white" />
+          </div>
+        )}
+        
+        {movie.group_id && (
+          <div 
+            className="absolute top-2 left-2 bg-purple-500/80 rounded-full p-1 backdrop-blur-sm cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/video-group/${movie.group_id}`);
+            }}
+          >
+            <Layers className="w-4 h-4 text-white" />
           </div>
         )}
       </div>

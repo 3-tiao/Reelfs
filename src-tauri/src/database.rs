@@ -24,6 +24,10 @@ impl Database {
         
         Ok(db)
     }
+    
+    pub fn get_connection(&self) -> &Connection {
+        &self.conn
+    }
 
     fn init_schema(&self) -> Result<()> {
         debug!("[数据库] 初始化数据库表结构");
@@ -59,12 +63,43 @@ impl Database {
                 FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS video_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                year INTEGER,
+                plot TEXT,
+                rating REAL,
+                genres TEXT,
+                director TEXT,
+                actors TEXT,
+                poster_path TEXT,
+                total_duration INTEGER,
+                part_count INTEGER DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS video_parts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                movie_id INTEGER NOT NULL,
+                part_number INTEGER NOT NULL,
+                part_title TEXT,
+                duration_seconds INTEGER,
+                FOREIGN KEY (group_id) REFERENCES video_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
+                UNIQUE(group_id, part_number)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_title ON movies(title);
             CREATE INDEX IF NOT EXISTS idx_year ON movies(year);
             CREATE INDEX IF NOT EXISTS idx_added_at ON movies(added_at DESC);
             CREATE INDEX IF NOT EXISTS idx_rating ON movies(rating);
             CREATE INDEX IF NOT EXISTS idx_last_accessed ON movies(last_accessed DESC);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_file_path ON movies(file_path);
+            CREATE INDEX IF NOT EXISTS idx_video_groups_title ON video_groups(title);
+            CREATE INDEX IF NOT EXISTS idx_video_parts_group ON video_parts(group_id);
+            CREATE INDEX IF NOT EXISTS idx_video_parts_movie ON video_parts(movie_id);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS movie_fts USING fts5(
                 title, 
@@ -153,6 +188,15 @@ impl Database {
             tx.execute("ALTER TABLE movies ADD COLUMN is_watched INTEGER DEFAULT 0", [])?;
         }
         
+        let has_group_id = tx.prepare(
+            "SELECT 1 FROM pragma_table_info('movies') WHERE name = 'group_id'"
+        )?.exists([])?;
+        
+        if !has_group_id {
+            info!("[数据库] 添加 group_id 列");
+            tx.execute("ALTER TABLE movies ADD COLUMN group_id INTEGER REFERENCES video_groups(id)", [])?;
+        }
+        
         tx.commit()?;
         
         info!("[数据库] 数据库迁移完成");
@@ -213,10 +257,24 @@ impl Database {
         debug!("[数据库] 获取电影列表: offset={}, limit={}", offset, limit);
         
         let mut stmt = self.conn.prepare(
-            "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
-                    thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched
-             FROM movies ORDER BY added_at DESC LIMIT ?1 OFFSET ?2"
+            "SELECT m.id, m.file_path, 
+                    COALESCE(vg.title, m.title) as title, 
+                    COALESCE(vg.year, m.year) as year, 
+                    COALESCE(vg.plot, m.plot) as plot, 
+                    COALESCE(vg.rating, m.rating) as rating, 
+                    COALESCE(vg.genres, m.genres) as genres, 
+                    COALESCE(vg.director, m.director) as director, 
+                    COALESCE(vg.actors, m.actors) as actors, 
+                    COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path, 
+                    m.file_size, 
+                    COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
+             FROM movies m
+             LEFT JOIN video_groups vg ON m.group_id = vg.id
+             WHERE m.group_id IS NULL OR m.id = (
+                 SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
+             )
+             ORDER BY m.added_at DESC LIMIT ?1 OFFSET ?2"
         )?;
 
         let movies = stmt.query_map(params![limit, offset], |row| {
@@ -241,6 +299,7 @@ impl Database {
                 last_checked_at: row.get(17)?,
                 scan_state: row.get(18)?,
                 is_watched: row.get(19)?,
+                group_id: row.get(20)?,
             })
         })?;
 
@@ -253,7 +312,7 @@ impl Database {
         let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
              FROM movies WHERE id = ?1",
             params![id],
             |row| {
@@ -278,6 +337,7 @@ impl Database {
                     last_checked_at: row.get(17)?,
                     scan_state: row.get(18)?,
                     is_watched: row.get(19)?,
+                    group_id: row.get(20)?,
                 })
             }
         );
@@ -296,7 +356,7 @@ impl Database {
         let movie = self.conn.query_row(
             "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
                     thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched
+                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
              FROM movies WHERE file_path = ?1",
             params![file_path],
             |row| {
@@ -321,6 +381,7 @@ impl Database {
                     last_checked_at: row.get(17)?,
                     scan_state: row.get(18)?,
                     is_watched: row.get(19)?,
+                    group_id: row.get(20)?,
                 })
             }
         );
@@ -349,11 +410,24 @@ impl Database {
         let pattern = format!("%{}%", query);
         
         let mut stmt = self.conn.prepare(
-            "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors, 
-                    m.thumbnail_path, m.file_size, m.duration_seconds,
-                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched
+            "SELECT m.id, m.file_path, 
+                    COALESCE(vg.title, m.title) as title, 
+                    COALESCE(vg.year, m.year) as year, 
+                    COALESCE(vg.plot, m.plot) as plot, 
+                    COALESCE(vg.rating, m.rating) as rating, 
+                    COALESCE(vg.genres, m.genres) as genres, 
+                    COALESCE(vg.director, m.director) as director, 
+                    COALESCE(vg.actors, m.actors) as actors, 
+                    COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path, 
+                    m.file_size, 
+                    COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
              FROM movies m
-             WHERE m.title LIKE ?1 OR m.file_path LIKE ?1 OR m.actors LIKE ?1 OR m.director LIKE ?1
+             LEFT JOIN video_groups vg ON m.group_id = vg.id
+             WHERE (m.title LIKE ?1 OR m.file_path LIKE ?1 OR m.actors LIKE ?1 OR m.director LIKE ?1)
+               AND (m.group_id IS NULL OR m.id = (
+                   SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
+               ))
              ORDER BY m.added_at DESC"
         )?;
 
@@ -379,6 +453,7 @@ impl Database {
                 last_checked_at: row.get(17)?,
                 scan_state: row.get(18)?,
                 is_watched: row.get(19)?,
+                group_id: row.get(20)?,
             })
         })?;
 
@@ -619,23 +694,42 @@ impl Database {
         }
 
         let where_clause = if where_clauses.is_empty() {
-            String::new()
+            "WHERE m.group_id IS NULL OR m.id = (
+                 SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
+             )".to_string()
         } else {
-            format!("WHERE {}", where_clauses.join(" AND "))
+            format!("WHERE ({}) AND (m.group_id IS NULL OR m.id = (
+                 SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
+             ))", where_clauses.join(" AND "))
         };
 
         let sort_column = sort_by.unwrap_or_else(|| "added_at".to_string());
+        // Map sort column to alias/table prefix
+        let sorted_col = match sort_column.as_str() {
+            "title" | "year" | "rating" | "duration_seconds" => format!("COALESCE(vg.{}, m.{})", sort_column, sort_column),
+            _ => format!("m.{}", sort_column),
+        };
         let sort_dir = sort_order.unwrap_or_else(|| "DESC".to_string());
 
         let query = format!(
-            "SELECT id, file_path, title, year, plot, rating, genres, director, actors,
-                    thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched
-             FROM movies
+            "SELECT m.id, m.file_path, 
+                    COALESCE(vg.title, m.title) as title, 
+                    COALESCE(vg.year, m.year) as year, 
+                    COALESCE(vg.plot, m.plot) as plot, 
+                    COALESCE(vg.rating, m.rating) as rating, 
+                    COALESCE(vg.genres, m.genres) as genres, 
+                    COALESCE(vg.director, m.director) as director, 
+                    COALESCE(vg.actors, m.actors) as actors, 
+                    COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path, 
+                    m.file_size, 
+                    COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
+             FROM movies m
+             LEFT JOIN video_groups vg ON m.group_id = vg.id
              {}
              ORDER BY {} {}
              LIMIT ? OFFSET ?",
-            where_clause, sort_column, sort_dir
+            where_clause, sorted_col, sort_dir
         );
 
         params.push(Box::new(limit));
@@ -667,6 +761,7 @@ impl Database {
                 last_checked_at: row.get(17)?,
                 scan_state: row.get(18)?,
                 is_watched: row.get(19)?,
+                group_id: row.get(20)?,
             })
         })?;
 
@@ -745,6 +840,8 @@ impl Database {
         
         self.conn.execute("DELETE FROM movies", [])?;
         self.conn.execute("DELETE FROM play_history", [])?;
+        self.conn.execute("DELETE FROM video_parts", [])?;
+        self.conn.execute("DELETE FROM video_groups", [])?;
         
         info!("[数据库] 所有电影数据已清空");
         
