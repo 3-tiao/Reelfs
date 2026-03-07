@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Movie , logger } from "../services/tauri";
-import { Film, RefreshCw, Eye, Layers } from "lucide-react";
-import { exists } from "@tauri-apps/api/fs";
-import { generateThumbnail } from "../services/thumbnail";
+import { Movie } from "../services/tauri";
+import { Film, Eye, Layers } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
 
@@ -15,7 +13,6 @@ export default function MovieCard({ movie }: MovieCardProps) {
   const navigate = useNavigate();
   const { showThumbnails } = useNsfwStore();
   const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,7 +26,7 @@ export default function MovieCard({ movie }: MovieCardProps) {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          loadOrGenerateThumbnail(() => isMounted);
+          loadThumbnail(() => isMounted);
           observer.disconnect();
         }
       },
@@ -46,57 +43,13 @@ export default function MovieCard({ movie }: MovieCardProps) {
     };
   }, [movie, showThumbnails]);
 
-  const loadOrGenerateThumbnail = async (checkMounted: () => boolean) => {
+  const loadThumbnail = async (checkMounted: () => boolean) => {
     if (movie.thumbnail_path) {
       const url = await getCachedThumbnail(movie.thumbnail_path);
       if (checkMounted() && url) {
         setImageSrc(url);
       }
-    } else {
-      await generateAndLoadThumbnail(checkMounted);
     }
-  };
-
-  const generateAndLoadThumbnail = async (checkMounted: () => boolean) => {
-    const posterPath = await getPosterPath(movie.file_path);
-    
-    if (!posterPath) {
-      return;
-    }
-    
-    try {
-      setIsGenerating(true);
-      
-      const thumbnailPath = `/Users/user/.reelfs/cache/thumbnails/${movie.id}.jpg`;
-      await generateThumbnail(posterPath, thumbnailPath, movie.id);
-      
-      const url = await getCachedThumbnail(thumbnailPath);
-      if (checkMounted() && url) {
-        setImageSrc(url);
-      }
-    } catch (error) {
-      logger.error('[MovieCard] 生成缩略图失败:', error);
-      const url = await getCachedThumbnail(posterPath);
-      if (checkMounted() && url) {
-        setImageSrc(url);
-      }
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const getPosterPath = async (videoPath: string): Promise<string | null> => {
-    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
-    const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg', 'fanart.jpg', 'fanart.png'];
-    
-    for (const name of posterNames) {
-      const posterPath = `${dir}/${name}`;
-      if (await exists(posterPath)) {
-        return posterPath;
-      }
-    }
-    
-    return null;
   };
 
   return (
@@ -113,13 +66,6 @@ export default function MovieCard({ movie }: MovieCardProps) {
             className="w-full h-full object-cover"
             loading="lazy"
           />
-        ) : isGenerating ? (
-          <div className="w-full h-full flex items-center justify-center bg-zinc-800/80">
-            <div className="text-center">
-              <RefreshCw className="w-12 h-12 text-teal-400 animate-spin mx-auto mb-2" />
-              <p className="text-zinc-400 text-sm">Generating...</p>
-            </div>
-          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Film className="w-16 h-16 text-zinc-600" />
