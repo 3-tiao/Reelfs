@@ -7,6 +7,7 @@ import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDataba
 import { open } from "@tauri-apps/api/dialog";
 import ScanProgress from "../components/ScanProgress";
 import { formatBytes } from "../lib/utils";
+import { toast } from "sonner";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -138,9 +139,9 @@ export default function Settings() {
           theme: config?.theme || "dark",
           default_player: config?.default_player || "system",
         });
-        alert("Settings saved successfully!");
+        toast.success("Settings saved successfully!");
       } catch (error) {
-        alert("Failed to save settings: " + error);
+        toast.error("Failed to save settings: " + error);
       }
     }
   };
@@ -152,7 +153,7 @@ export default function Settings() {
         setIsScanning(false);
       } catch (error) {
         console.error("停止扫描失败:", error);
-        alert("停止扫描失败: " + error);
+        toast.warning("停止扫描失败: " + error);
       }
     } else {
       try {
@@ -164,7 +165,7 @@ export default function Settings() {
         }, 1000);
       } catch (error) {
         console.error("开始扫描失败:", error);
-        alert("开始扫描失败: " + error);
+        toast.error("开始扫描失败: " + error);
       }
     }
   };
@@ -172,13 +173,13 @@ export default function Settings() {
   const handleRegenerateThumbnails = async () => {
     try {
       const result = await regenerateAllThumbnails();
-      alert(result);
+      toast.success(result);
       setTimeout(() => {
         loadStats();
       }, 1000);
     } catch (error) {
       console.error("重新生成缩略图失败:", error);
-      alert("重新生成缩略图失败: " + error);
+      toast.error("重新生成缩略图失败: " + error);
     }
   };
 
@@ -186,95 +187,106 @@ export default function Settings() {
     try {
       await resetDatabase();
       setShowResetConfirm(false);
-      alert("数据已重置，页面将刷新");
+      toast.success("数据已重置，页面将刷新");
       window.location.reload();
     } catch (error) {
       console.error("重置数据失败:", error);
-      alert("重置数据失败: " + error);
+      toast.error("重置数据失败: " + error);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="sticky top-0 z-10 bg-gray-900 border-b border-gray-800">
-        <div className="px-6 py-4">
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 selection:bg-teal-500/30">
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#09090b]/70 border-b border-zinc-800/50 shadow-2xl transition-all duration-300">
+        <div className="px-8 py-5 max-w-[1200px] mx-auto">
           <button
             onClick={() => navigate("/")}
-            className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 rounded-lg transition-colors"
+            className="group flex items-center gap-2 px-4 py-2 hover:bg-zinc-800/60 rounded-xl transition-all duration-300 border border-transparent hover:border-zinc-700/50"
           >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Home
+            <ArrowLeft className="w-5 h-5 text-zinc-400 group-hover:-translate-x-1 group-hover:text-teal-400 transition-all" />
+            <span className="font-medium text-zinc-300 group-hover:text-zinc-100">Back to Library</span>
           </button>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        <h1 className="text-3xl font-bold mb-8">Settings</h1>
+      <main className="max-w-[1200px] mx-auto px-8 py-10">
+        <h1 className="text-4xl font-bold mb-10 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-zinc-100 to-zinc-500">Preferences</h1>
 
         <div className="space-y-8">
-          <section className="bg-gray-900 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-              <SettingsIcon className="w-5 h-5" />
-              Scan Configuration
+          <section className="bg-zinc-900/40 backdrop-blur-md rounded-2xl p-8 border border-zinc-800/60 shadow-xl">
+            <h2 className="text-xl font-semibold mb-6 flex items-center gap-3 text-zinc-100">
+              <div className="p-2 bg-teal-500/10 rounded-lg border border-teal-500/20">
+                <SettingsIcon className="w-5 h-5 text-teal-400" />
+              </div>
+              Library Configuration
             </h2>
             
-            <div className="space-y-6">
+            <div className="space-y-8">
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-300">Path Configuration</h3>
-                <div className="flex gap-3 mb-4">
+                <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Media Folders</h3>
+                <div className="flex gap-4 mb-4 items-center">
                   <button
                     onClick={handleAddPath}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl transition-all duration-300 border border-zinc-700/50 hover:border-zinc-600 shadow-inner group"
                   >
-                    <Plus className="w-5 h-5" />
-                    Add Path
+                    <Plus className="w-4 h-4 text-teal-400 group-hover:scale-110 transition-transform" />
+                    <span>Add Directory</span>
                   </button>
-                  <div className="flex-1">
-                    <span className="text-gray-400 text-sm">Add or remove NAS paths</span>
-                  </div>
+                  <p className="text-zinc-500 text-sm">Select folders containing your movies.</p>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {nasPaths.length === 0 ? (
-                    <p className="text-gray-400 text-sm">No paths configured</p>
+                    <div className="p-8 border-2 border-dashed border-zinc-800/80 rounded-xl text-center text-zinc-500 text-sm">
+                      No media folders configured yet.
+                    </div>
                   ) : (
-                    nasPaths.map((path, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between bg-gray-800 rounded-lg p-3"
-                      >
-                        <span className="text-sm font-mono truncate flex-1">{path}</span>
-                        <button
-                          onClick={() => handleRemovePath(index)}
-                          className="ml-3 p-2 text-red-400 hover:bg-gray-700 rounded transition-colors"
+                     <div className="grid gap-3">
+                      {nasPaths.map((path, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-3 pr-2 group/path transition-all hover:bg-zinc-900/80 hover:border-zinc-700/80"
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            <FolderOpen className="w-4 h-4 text-teal-500/70 flex-shrink-0" />
+                            <span className="text-sm font-mono text-zinc-300 truncate">{path}</span>
+                          </div>
+                          <button
+                            onClick={() => handleRemovePath(index)}
+                            className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover/path:opacity-100"
+                            title="Remove folder"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <div className="flex gap-3 mb-4">
-                  <button
-                    onClick={handleSelectCacheDir}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                  >
-                    <FolderOpen className="w-5 h-5" />
-                    Select Cache Directory
-                  </button>
-                  <div className="flex-1">
-                    <span className="text-sm font-mono truncate block">{cacheDir || "Not configured"}</span>
+                <div className="mt-8 pt-6 border-t border-zinc-800/50 space-y-4">
+                  <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Cache Location</h3>
+                  <div className="flex gap-4 items-center">
+                    <button
+                      onClick={handleSelectCacheDir}
+                      className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl transition-all duration-300 border border-zinc-700/50 hover:border-zinc-600 shadow-inner group flex-shrink-0"
+                    >
+                      <Database className="w-4 h-4 text-teal-400" />
+                      <span>Set Cache Dir</span>
+                    </button>
+                    <div className="flex-1 bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-2.5 px-4 truncate max-w-full">
+                      <span className="text-sm font-mono text-zinc-400">{cacheDir || "Default system cache"}</span>
+                    </div>
                   </div>
                 </div>
               </div>
               
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-300">Scan Mode</h3>
-                <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="space-y-4 pt-6 mt-4 border-t border-zinc-800/50">
+                <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Scan Behavior</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                   <label 
-                    className={`relative flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-all border-2 ${
+                    className={`relative flex flex-col items-center justify-center gap-2 p-5 rounded-xl cursor-pointer transition-all duration-300 border-2 overflow-hidden group ${
                       scanMode === "incremental" 
-                        ? "bg-blue-600/20 border-blue-500 text-blue-400" 
-                        : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                        ? "bg-teal-500/10 border-teal-500/50 shadow-[0_0_20px_rgba(20,184,166,0.15)]" 
+                        : "bg-zinc-900/50 border-zinc-800/80 hover:bg-zinc-800 hover:border-zinc-700"
                     }`}
                   >
                     <input
@@ -285,19 +297,19 @@ export default function Settings() {
                       onChange={() => setScanMode("incremental")}
                       className="sr-only"
                     />
-                    <div className="text-center">
-                      <p className="font-semibold text-sm">增量扫描</p>
-                      <p className="text-xs opacity-75 mt-1">推荐</p>
+                    <div className="text-center relative z-10">
+                      <p className={`font-semibold text-lg transition-colors ${scanMode === "incremental" ? "text-teal-400" : "text-zinc-300"}`}>Incremental Scan</p>
+                      <p className="text-sm text-zinc-500 mt-1">Recommended</p>
                     </div>
                     {scanMode === "incremental" && (
-                      <div className="absolute top-2 right-2 w-2 h-2 bg-blue-400 rounded-full"></div>
+                      <div className="absolute top-3 right-3 w-2.5 h-2.5 bg-teal-400 rounded-full shadow-[0_0_8px_rgba(20,184,166,0.8)] animate-pulse"></div>
                     )}
                   </label>
                   <label 
-                    className={`relative flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-all border-2 ${
+                    className={`relative flex flex-col items-center justify-center gap-2 p-5 rounded-xl cursor-pointer transition-all duration-300 border-2 overflow-hidden group ${
                       scanMode === "full" 
-                        ? "bg-green-600/20 border-green-500 text-green-400" 
-                        : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                        ? "bg-purple-500/10 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.15)]" 
+                        : "bg-zinc-900/50 border-zinc-800/80 hover:bg-zinc-800 hover:border-zinc-700"
                     }`}
                   >
                     <input
@@ -308,142 +320,176 @@ export default function Settings() {
                       onChange={() => setScanMode("full")}
                       className="sr-only"
                     />
-                    <div className="text-center">
-                      <p className="font-semibold text-sm">完全重新校验</p>
-                      <p className="text-xs opacity-75 mt-1">耗时较长</p>
+                    <div className="text-center relative z-10">
+                      <p className={`font-semibold text-lg transition-colors ${scanMode === "full" ? "text-purple-400" : "text-zinc-300"}`}>Full Integrity Check</p>
+                      <p className="text-sm text-zinc-500 mt-1">Slower, more thorough</p>
                     </div>
                     {scanMode === "full" && (
-                      <div className="absolute top-2 right-2 w-2 h-2 bg-green-400 rounded-full"></div>
+                      <div className="absolute top-3 right-3 w-2.5 h-2.5 bg-purple-400 rounded-full shadow-[0_0_8px_rgba(168,85,247,0.8)] animate-pulse"></div>
                     )}
                   </label>
                 </div>
-                <div className="bg-gray-800/50 rounded-lg p-3 text-sm text-gray-400">
-                  {scanMode === "incremental" 
-                    ? "仅扫描新增或修改的文件，快速高效" 
-                    : "重新校验所有文件，确保数据完整性"}
+                
+                <div className="bg-zinc-950/40 rounded-xl p-4 text-sm text-zinc-400 border border-zinc-800/50 flex gap-3 items-start">
+                  <div className="mt-0.5 text-zinc-500"><SettingsIcon className="w-4 h-4"/></div>
+                  <p className="leading-relaxed">
+                    {scanMode === "incremental" 
+                      ? "Only scans newly added or recently modified files. This is the fastest method and is recommended for daily use." 
+                      : "Re-verifies all files against the database to ensure maximum data integrity. This will take significantly longer."}
+                  </p>
                 </div>
-                <label className="flex items-center gap-3 bg-gray-800 rounded-lg p-3 cursor-pointer hover:bg-gray-700 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={deleteInvalid}
-                    onChange={(e) => setDeleteInvalid(e.target.checked)}
-                    className="w-5 h-5 rounded"
-                  />
+                <label className="flex items-center gap-4 bg-zinc-900/50 rounded-xl p-4 cursor-pointer hover:bg-zinc-800 transition-colors border border-transparent hover:border-zinc-700/50 group mt-4">
+                  <div className="relative flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={deleteInvalid}
+                      onChange={(e) => setDeleteInvalid(e.target.checked)}
+                      className="peer sr-only"
+                    />
+                    <div className="w-6 h-6 rounded border-2 border-zinc-600 peer-checked:bg-teal-500 peer-checked:border-teal-500 transition-all flex items-center justify-center">
+                      <svg className={`w-4 h-4 text-white opacity-0 peer-checked:opacity-100 transition-opacity`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                  </div>
                   <div className="flex-1">
-                    <span className="text-white font-medium">删除已不存在的文件记录</span>
+                    <span className="text-zinc-200 font-medium group-hover:text-white transition-colors">Prune missing files</span>
+                    <p className="text-xs text-zinc-500 mt-0.5">Automatically remove database entries for files that no longer exist on disk.</p>
                   </div>
                 </label>
               </div>
               
-              <button
-                onClick={handleRegenerateThumbnails}
-                disabled={!stats || stats.total_movies === 0}
-                className="w-full flex items-center justify-center px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold transition-colors"
-              >
-                <RefreshCw className="w-5 h-5 mr-2" />
-                重新生成缩略图
-              </button>
+              <div className="grid sm:grid-cols-2 gap-4 mt-8">
+                <button
+                  onClick={handleRegenerateThumbnails}
+                  disabled={!stats || stats.total_movies === 0}
+                  className="w-full flex items-center justify-center px-6 py-4 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-900/50 disabled:text-zinc-600 disabled:border-transparent text-zinc-100 rounded-xl font-medium transition-all duration-300 border border-zinc-700/50 hover:border-zinc-500 shadow-sm"
+                >
+                  <RefreshCw className="w-5 h-5 mr-2" />
+                  Regenerate Thumbnails
+                </button>
+                
+                <button
+                  onClick={handleScan}
+                  disabled={!isScanning && nasPaths.length === 0}
+                  className={`w-full flex items-center justify-center px-6 py-4 rounded-xl font-medium transition-all duration-300 shadow-lg ${
+                    isScanning 
+                      ? "bg-red-500/20 hover:bg-red-500/30 text-red-500 border border-red-500/50" 
+                      : "bg-teal-600 hover:bg-teal-500 text-white border border-teal-500/50 disabled:bg-zinc-900/50 disabled:text-zinc-600 disabled:border-transparent disabled:shadow-none hover:shadow-teal-500/20"
+                  }`}
+                >
+                  {isScanning ? (
+                    <>
+                      <AlertTriangle className="w-5 h-5 mr-2 animate-pulse" />
+                      Stop Scan
+                    </>
+                  ) : (
+                    "Start Scan"
+                  )}
+                </button>
+              </div>
               
-              <button
-                onClick={handleScan}
-                disabled={!isScanning && nasPaths.length === 0}
-                className={`w-full flex items-center justify-center px-6 py-3 rounded-lg font-semibold transition-colors ${
-                  isScanning 
-                    ? "bg-red-600 hover:bg-red-700" 
-                    : "bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500"
-                }`}
-              >
-                {isScanning ? (
-                  <>
-                    <AlertTriangle className="w-5 h-5 mr-2" />
-                    停止扫描
-                  </>
-                ) : (
-                  "开始扫描"
-                )}
-              </button>
+              <div className="mt-8">
+                <ScanProgress inline={true} />
+              </div>
               
-              <ScanProgress inline={true} />
-              
-              <div className="pt-4 border-t border-gray-800">
+              <div className="pt-8 mt-8 border-t border-zinc-800/50">
                 <button
                   onClick={() => setShowResetConfirm(true)}
-                  className="w-full flex items-center justify-center px-6 py-3 bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-600/30 rounded-lg font-semibold transition-colors"
+                  className="w-full flex items-center justify-center px-6 py-4 bg-red-500/5 hover:bg-red-500/10 text-red-400 border border-red-500/20 hover:border-red-500/40 rounded-xl font-medium transition-all duration-300"
                 >
-                  <AlertTriangle className="w-5 h-5 mr-2" />
-                  重置数据
+                  <Trash2 className="w-5 h-5 mr-2" />
+                  Erase All Data
                 </button>
-                <p className="text-xs text-gray-500 mt-2 text-center">
-                  此操作将删除所有电影数据，不可恢复
+                <p className="text-xs text-zinc-600 mt-3 text-center uppercase tracking-wider font-medium">
+                  This action is irreversible and will delete your entire database.
                 </p>
               </div>
             </div>
           </section>
           
-          <section className="bg-gray-900 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Database className="w-5 h-5" />
-              System Information
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gray-800 rounded-lg p-4">
-                <p className="text-gray-400 text-sm mb-1">Total Movies</p>
-                <p className="text-2xl font-bold">{stats?.total_movies || 0}</p>
+          <div className="grid md:grid-cols-2 gap-8">
+            <section className="bg-zinc-900/40 backdrop-blur-md rounded-2xl p-8 border border-zinc-800/60 shadow-xl">
+              <h2 className="text-xl font-semibold mb-6 flex items-center gap-3 text-zinc-100">
+                <div className="p-2 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                  <Database className="w-5 h-5 text-purple-400" />
+                </div>
+                Database Stats
+              </h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-center">
+                  <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">Total Movies</p>
+                  <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats?.total_movies || 0}</p>
+                </div>
+                <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-center">
+                  <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">Db Size</p>
+                  <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats ? formatBytes(stats.db_size) : "0 B"}</p>
+                </div>
+                <div className="col-span-2 bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex justify-between items-center">
+                  <div>
+                    <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1">Cache Size</p>
+                    <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
+                  </div>
+                  <Database className="w-8 h-8 text-zinc-800" />
+                </div>
               </div>
-              <div className="bg-gray-800 rounded-lg p-4">
-                <p className="text-gray-400 text-sm mb-1">Database Size</p>
-                <p className="text-2xl font-bold">{stats ? formatBytes(stats.db_size) : "0 B"}</p>
+              
+              <div className="mt-8">
+                <button
+                  onClick={() => navigate("/video-groups")}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:border-purple-500/50 rounded-xl font-medium transition-all duration-300"
+                >
+                  <Film className="w-5 h-5" />
+                  Manage Video Groups
+                </button>
               </div>
-              <div className="bg-gray-800 rounded-lg p-4">
-                <p className="text-gray-400 text-sm mb-1">Cache Size</p>
-                <p className="text-2xl font-bold">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
-              </div>
-            </div>
-            
-            <div className="mt-6">
-              <button
-                onClick={() => navigate("/video-groups")}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition-colors"
-              >
-                <Film className="w-5 h-5" />
-                视频组管理
-              </button>
-            </div>
-          </section>
+            </section>
 
-          <section className="bg-gray-900 rounded-lg p-6">
-            <button
-              onClick={handleSave}
-              className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold text-lg transition-colors"
-            >
-              Save Settings
-            </button>
-          </section>
+            <section className="bg-zinc-900/40 backdrop-blur-md rounded-2xl p-8 border border-zinc-800/60 shadow-xl flex flex-col justify-between">
+              <div>
+                <h2 className="text-xl font-semibold mb-6 flex items-center gap-3 text-zinc-100">
+                  <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                    <CheckCircle className="w-5 h-5 text-amber-400" />
+                  </div>
+                  Save Changes
+                </h2>
+                <p className="text-zinc-400 mb-6 leading-relaxed text-sm">
+                  Make sure to save your preferences. Modifying scan directories will require a new scan to take effect.
+                </p>
+              </div>
+              <button
+                onClick={handleSave}
+                className="w-full px-6 py-4 bg-zinc-100 hover:bg-white text-zinc-900 rounded-xl font-semibold text-lg transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:scale-[1.02]"
+              >
+                Apply Preferences
+              </button>
+            </section>
+          </div>
         </div>
       </main>
 
       {showResetConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-lg p-6 max-w-md mx-4">
-            <div className="flex items-center gap-3 mb-4">
-              <AlertTriangle className="w-6 h-6 text-red-400" />
-              <h3 className="text-xl font-semibold">确认重置数据？</h3>
+        <div className="fixed inset-0 bg-[#09090b]/80 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-8 max-w-md mx-4 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 bg-red-500/10 rounded-xl">
+                <AlertTriangle className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="text-xl font-semibold text-zinc-100">Confirm Reset</h3>
             </div>
-            <p className="text-gray-400 mb-6">
-              此操作将删除所有电影数据和缩略图，此操作不可恢复。
+            <p className="text-zinc-400 mb-8 leading-relaxed">
+              This action will permanently delete all movie data, watch history, and generated thumbnails. This action cannot be reversed.
             </p>
             <div className="flex gap-3">
               <button 
                 onClick={() => setShowResetConfirm(false)}
-                className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-medium transition-colors"
               >
-                取消
+                Cancel
               </button>
               <button 
                 onClick={handleResetData}
-                className="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-colors shadow-lg shadow-red-500/20"
               >
-                确认重置
+                Erase Data
               </button>
             </div>
           </div>
@@ -451,33 +497,37 @@ export default function Settings() {
       )}
 
       {showScanResult && scanResult && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-lg p-6 max-w-md mx-4">
-            <div className="flex items-center gap-3 mb-4">
-              <CheckCircle className="w-6 h-6 text-green-400" />
-              <h3 className="text-xl font-semibold">扫描完成</h3>
+        <div className="fixed inset-0 bg-[#09090b]/80 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-8 max-w-md mx-4 shadow-2xl animate-in zoom-in-95 duration-200 w-full">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-teal-500/10 rounded-xl">
+                <CheckCircle className="w-6 h-6 text-teal-500" />
+              </div>
+              <h3 className="text-xl font-semibold text-zinc-100">Scan Complete</h3>
             </div>
-            <div className="space-y-3 mb-6">
-              <div className="flex justify-between items-center py-2 border-b border-gray-800">
-                <span className="text-gray-400">新增电影</span>
-                <span className="text-green-400 font-semibold text-lg">+{scanResult.new_movies}</span>
+            
+            <div className="space-y-4 mb-8 bg-zinc-950/50 rounded-xl p-5 border border-zinc-800/50">
+              <div className="flex justify-between items-center pb-4 border-b border-zinc-800/80">
+                <span className="text-zinc-500 font-medium">New Media Found</span>
+                <span className="text-teal-400 font-bold text-xl">+{scanResult.new_movies}</span>
               </div>
               {scanResult.deleted_movies > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-800">
-                  <span className="text-gray-400">删除失效记录</span>
-                  <span className="text-red-400 font-semibold text-lg">-{scanResult.deleted_movies}</span>
+                <div className="flex justify-between items-center py-4 border-b border-zinc-800/80">
+                  <span className="text-zinc-500 font-medium">Invalid Entries Pruned</span>
+                  <span className="text-red-400 font-bold text-xl">-{scanResult.deleted_movies}</span>
                 </div>
               )}
-              <div className="flex justify-between items-center py-2">
-                <span className="text-gray-400">总电影数</span>
-                <span className="text-blue-400 font-semibold text-lg">{scanResult.total_movies}</span>
+              <div className="flex justify-between items-center pt-4">
+                <span className="text-zinc-500 font-medium">Total Media in Library</span>
+                <span className="text-zinc-100 font-bold text-xl">{scanResult.total_movies}</span>
               </div>
             </div>
+            
             <button 
               onClick={() => setShowScanResult(false)}
-              className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors font-semibold"
+              className="w-full py-4 bg-zinc-100 hover:bg-white text-zinc-900 rounded-xl font-bold transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]"
             >
-              确定
+              Finish
             </button>
           </div>
         </div>

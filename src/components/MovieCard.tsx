@@ -115,9 +115,9 @@ export default function MovieCard({ movie }: MovieCardProps) {
     <div
       ref={cardRef}
       onClick={() => movie.group_id ? navigate(`/video-group/${movie.group_id}`) : navigate(`/movie/${movie.id}`)}
-      className="group cursor-pointer transition-transform duration-200 hover:scale-105"
+      className="group cursor-pointer transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1"
     >
-      <div className="relative aspect-[2/3] bg-zinc-800/80 backdrop-blur-sm rounded-lg overflow-hidden shadow-lg border border-zinc-700/50">
+      <div className="relative aspect-[2/3] bg-zinc-800/80 backdrop-blur-sm rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-teal-500/10 border border-zinc-700/50 group-hover:border-teal-500/30 transition-all duration-300">
         {imageSrc ? (
           <img
             src={imageSrc}
@@ -138,16 +138,22 @@ export default function MovieCard({ movie }: MovieCardProps) {
           </div>
         )}
         
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <div className="absolute bottom-0 left-0 right-0 p-4">
+        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-900/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end">
+          <div className="p-4 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
             {movie.rating && (
-              <div className="text-teal-400 text-sm font-semibold mb-1">
+              <div className="text-teal-400 text-sm font-semibold mb-1.5 flex items-center gap-1">
                 ⭐ {movie.rating.toFixed(1)}
               </div>
             )}
             {movie.plot && (
-              <p className="text-white text-xs line-clamp-3">{movie.plot}</p>
+              <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3 mb-2">{movie.plot}</p>
             )}
+            <div className="flex items-center gap-2 mt-2 text-white font-medium text-sm">
+              <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center">
+                <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+              </div>
+              Play
+            </div>
           </div>
         </div>
         

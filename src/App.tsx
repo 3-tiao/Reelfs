@@ -5,10 +5,12 @@ import ActorDetail from "./pages/ActorDetail";
 import VideoGroupDetail from "./pages/VideoGroupDetail";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
+import { Toaster } from 'sonner';
 
 function App() {
   return (
     <BrowserRouter>
+      <Toaster theme="dark" position="top-center" richColors />
       <div className="min-h-screen bg-gray-950 text-white">
         <Routes>
           <Route path="/" element={<Home />} />

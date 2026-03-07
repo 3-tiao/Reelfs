@@ -99,57 +99,69 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 to-zinc-900">
       <ScrollProgressVertical progress={scrollProgress} onSeek={handleSeek} />
       
-      <header className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <SearchBar onSearch={handleSearch} />
-              <FilterSortBar onFilterChange={handleFilterChange} />
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-zinc-950/70 border-b border-zinc-800/50 shadow-2xl transition-all duration-300">
+        <div className="px-6 py-4 max-w-[1600px] mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
+                <span className="text-white font-bold text-xl">R</span>
+              </div>
+              <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-zinc-100 to-zinc-400 tracking-tight">Reelfs</h1>
+              <span className="text-zinc-500 text-sm font-medium ml-2 px-2.5 py-0.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 hidden sm:inline-block">NAS Movie Browser</span>
             </div>
             
-            <div className="flex items-center gap-2">
-              <div className="flex items-center bg-zinc-800 rounded-lg p-1">
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <div className="flex-1 md:w-[320px]">
+                <SearchBar onSearch={handleSearch} />
+              </div>
+              
+              <div className="flex items-center gap-1.5 bg-zinc-900/60 p-1.5 rounded-xl border border-zinc-800/60 shadow-inner">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 rounded-lg transition-all ${
+                  className={`p-2 rounded-lg transition-all duration-300 ${
                     viewMode === 'grid' 
-                      ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/25' 
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-700/50'
+                      ? 'bg-zinc-800 text-teal-400 shadow-md scale-105' 
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
                   }`}
-                  title="网格视图"
+                  title="Grid View"
                 >
                   <Grid className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 rounded-lg transition-all ${
+                  className={`p-2 rounded-lg transition-all duration-300 ${
                     viewMode === 'list' 
-                      ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/25' 
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-700/50'
+                      ? 'bg-zinc-800 text-teal-400 shadow-md scale-105' 
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
                   }`}
-                  title="列表视图"
+                  title="List View"
                 >
                   <List className="w-4 h-4" />
                 </button>
               </div>
+
+              <div className="w-px h-8 bg-zinc-800/50 mx-1 hidden md:block"></div>
               
+              <FilterSortBar onFilterChange={handleFilterChange} />
+
               <button
                 onClick={toggleShowThumbnails}
-                className={`p-2.5 rounded-lg transition-all border ${
+                className={`p-2.5 rounded-xl transition-all duration-300 border shadow-sm flex-shrink-0 ${
                   showThumbnails 
-                    ? "bg-teal-600/20 text-teal-400 hover:bg-teal-600/30 border-teal-500/30" 
-                    : "bg-red-600/20 text-red-400 hover:bg-red-600/30 border-red-500/30"
+                    ? 'bg-zinc-800 text-teal-400 border-zinc-700 hover:bg-zinc-700' 
+                    : 'bg-zinc-900/80 text-zinc-500 border-zinc-800/80 hover:text-zinc-300 hover:bg-zinc-800'
                 }`}
-                title={showThumbnails ? "显示缩略图" : "隐藏缩略图 (NSFW)"}
+                title={showThumbnails ? "Hide NSFW Thumbnails" : "Show NSFW Thumbnails"}
               >
-                {showThumbnails ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                {showThumbnails ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
               </button>
-              
+
               <button
                 onClick={() => navigate("/settings")}
-                className="p-2.5 hover:bg-zinc-800 rounded-lg transition-colors"
+                className="p-2.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-all duration-300 border border-zinc-800/80 flex-shrink-0 shadow-sm hover:shadow-md hover:border-zinc-700"
+                title="Settings"
               >
-                <SettingsIcon className="w-4 h-4 text-zinc-400 hover:text-white" />
+                <SettingsIcon className="w-5 h-5" />
               </button>
             </div>
           </div>
