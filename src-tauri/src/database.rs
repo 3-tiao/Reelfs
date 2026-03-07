@@ -699,41 +699,41 @@ impl Database {
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(min_y) = min_year {
-            where_clauses.push("year >= ?".to_string());
+            where_clauses.push("m.year >= ?".to_string());
             params.push(Box::new(min_y));
         }
 
         if let Some(max_y) = max_year {
-            where_clauses.push("year <= ?".to_string());
+            where_clauses.push("m.year <= ?".to_string());
             params.push(Box::new(max_y));
         }
 
         if let Some(min_r) = min_rating {
-            where_clauses.push("rating >= ?".to_string());
+            where_clauses.push("m.rating >= ?".to_string());
             params.push(Box::new(min_r));
         }
 
         if let Some(max_r) = max_rating {
-            where_clauses.push("rating <= ?".to_string());
+            where_clauses.push("m.rating <= ?".to_string());
             params.push(Box::new(max_r));
         }
 
         if let Some(ref actors_str) = actors {
             if !actors_str.is_empty() {
-                where_clauses.push("actors LIKE ?".to_string());
+                where_clauses.push("m.actors LIKE ?".to_string());
                 params.push(Box::new(format!("%{}%", actors_str)));
             }
         }
 
         if let Some(ref genres_str) = genres {
             if !genres_str.is_empty() {
-                where_clauses.push("genres LIKE ?".to_string());
+                where_clauses.push("m.genres LIKE ?".to_string());
                 params.push(Box::new(format!("%{}%", genres_str)));
             }
         }
 
         if let Some(watched) = is_watched {
-            where_clauses.push("is_watched = ?".to_string());
+            where_clauses.push("m.is_watched = ?".to_string());
             params.push(Box::new(if watched { 1 } else { 0 }));
         }
 
