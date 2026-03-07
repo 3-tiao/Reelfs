@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getVideoGroupDetail, VideoGroupWithParts, playMovie, showInFileManager } from "../services/tauri";
-import { Play, ArrowLeft, Star, Film, FolderOpen } from "lucide-react";
+import { Play, ArrowLeft, Film, FolderOpen } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 import { formatBytes, formatDuration } from "../lib/utils";
+import DetailBackground from "../components/DetailBackground";
+import MetadataChips from "../components/MetadataChips";
+import CastList from "../components/CastList";
+import InteractiveRating from "../components/InteractiveRating";
 
 export default function VideoGroupDetail() {
   const { id } = useParams<{ id: string }>();
@@ -135,16 +139,7 @@ export default function VideoGroupDetail() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 text-white">
       {/* Background */}
-      {fanartSrc && (
-        <div className="absolute inset-0 z-0 overflow-hidden">
-          <img
-            src={fanartSrc}
-            alt=""
-            className="w-full h-full object-cover opacity-30 scale-105"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-zinc-900/60 via-zinc-950/85 to-zinc-950"></div>
-        </div>
-      )}
+      <DetailBackground fanartSrc={fanartSrc} />
 
       {/* Content */}
       <div className="relative z-10">
@@ -196,33 +191,9 @@ export default function VideoGroupDetail() {
                 </button>
               </div>
 
-              {displayRating !== undefined && displayRating !== null && (
-                <div>
-                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-3 font-medium">Rating</h3>
-                  <div className="flex items-center gap-1">
-                    <div className="flex items-center gap-1 text-teal-400">
-                      <Star className="w-5 h-5" fill="currentColor" />
-                      <span className="font-medium text-lg ml-1">{displayRating.toFixed(1)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <InteractiveRating rating={displayRating} />
 
-              {displayGenres && (
-                <div>
-                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-3 font-medium">Genres</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {displayGenres.split(",").map((genre, i) => (
-                      <span
-                        key={i}
-                        className="px-4 py-1.5 bg-zinc-800/60 border border-zinc-700/50 rounded-lg text-sm text-zinc-200"
-                      >
-                        {genre.trim()}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <MetadataChips title="Genres" items={displayGenres} />
 
               {displayPlot && (
                 <div>
@@ -238,22 +209,7 @@ export default function VideoGroupDetail() {
                 </div>
               )}
 
-              {displayActors && (
-                <div>
-                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-2 font-medium">Cast</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {displayActors.split(",").map((actor, i) => (
-                      <button
-                        key={i}
-                        onClick={() => navigate(`/actor/${encodeURIComponent(actor.trim())}`)}
-                        className="px-3 py-1 bg-zinc-800/60 hover:bg-teal-600/30 border border-zinc-700/50 hover:border-teal-500/50 rounded-lg text-sm text-zinc-200 hover:text-teal-300 transition-all duration-200"
-                      >
-                        {actor.trim()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <CastList actors={displayActors} />
 
               {/* Parts Information */}
               <div className="pt-6 border-t border-zinc-800/50">

@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Film, FolderOpen, Star, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Play, Film, FolderOpen, Eye, EyeOff } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus } from "../services/tauri";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 import { formatBytes, formatDuration } from "../lib/utils";
+import DetailBackground from "../components/DetailBackground";
+import MetadataChips from "../components/MetadataChips";
+import CastList from "../components/CastList";
+import InteractiveRating from "../components/InteractiveRating";
 
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
@@ -189,16 +193,7 @@ export default function MovieDetail() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 text-white">
       {/* Background */}
-      {fanartSrc && (
-        <div className="absolute inset-0 z-0 overflow-hidden">
-          <img
-            src={fanartSrc}
-            alt=""
-            className="w-full h-full object-cover opacity-30 scale-105"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-zinc-900/60 via-zinc-950/85 to-zinc-950"></div>
-        </div>
-      )}
+      <DetailBackground fanartSrc={fanartSrc} />
 
       {/* Content */}
       <div className="relative z-10">
@@ -272,96 +267,14 @@ export default function MovieDetail() {
                   )}
                 </button>
               </div>
-              <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-3 font-medium">Rating</h3>
-              {movie.rating === undefined || movie.rating === null ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <button
-                        key={value}
-                        onClick={() => handleRating(value)}
-                        disabled={isRating}
-                        className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 ${
-                          isRating
-                            ? 'bg-zinc-700 cursor-not-allowed'
-                            : 'bg-zinc-800 hover:bg-teal-600 hover:scale-110'
-                        }`}
-                      >
-                        <Star
-                          className={`w-5 h-5 ${
-                            isRating ? 'text-zinc-500' : 'text-zinc-400'
-                          }`}
-                          fill={isRating ? 'none' : 'currentColor'}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => handleRating(null)}
-                    disabled={isRating}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
-                      isRating
-                        ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-red-600 hover:text-white'
-                    }`}
-                  >
-                    清除
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <button
-                        key={value}
-                        onClick={() => handleRating(value)}
-                        disabled={isRating}
-                        className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 ${
-                          isRating
-                            ? 'bg-zinc-700 cursor-not-allowed'
-                            : value <= Math.round(movie.rating!)
-                            ? 'bg-teal-600 hover:bg-teal-500 hover:scale-110'
-                            : 'bg-zinc-800 hover:bg-teal-600 hover:scale-110'
-                        }`}
-                      >
-                        <Star
-                          className={`w-5 h-5 ${
-                            isRating ? 'text-zinc-500' : value <= Math.round(movie.rating!) ? 'text-white' : 'text-zinc-400'
-                          }`}
-                          fill={isRating ? 'none' : value <= Math.round(movie.rating!) ? 'currentColor' : 'none'}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => handleRating(null)}
-                    disabled={isRating}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
-                      isRating
-                        ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-red-600 hover:text-white'
-                    }`}
-                  >
-                    清除
-                  </button>
-                </div>
-              )}
+              
+              <InteractiveRating 
+                rating={movie.rating} 
+                isRating={isRating} 
+                onRate={handleRating} 
+              />
 
-              {movie.genres && (
-                <div>
-                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-3 font-medium">Genres</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {movie.genres.split(",").map((genre, index) => (
-                      <span
-                        key={index}
-                        className="px-4 py-1.5 bg-zinc-800/60 border border-zinc-700/50 rounded-lg text-sm text-zinc-200"
-                      >
-                        {genre.trim()}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <MetadataChips title="Genres" items={movie.genres} />
 
               {movie.plot && (
                 <div>
@@ -377,22 +290,7 @@ export default function MovieDetail() {
                 </div>
               )}
 
-              {movie.actors && (
-                <div>
-                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-2 font-medium">Cast</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {movie.actors.split(",").map((actor, index) => (
-                      <button
-                        key={index}
-                        onClick={() => navigate(`/actor/${encodeURIComponent(actor.trim())}`)}
-                        className="px-3 py-1 bg-zinc-800/60 hover:bg-teal-600/30 border border-zinc-700/50 hover:border-teal-500/50 rounded-lg text-sm text-zinc-200 hover:text-teal-300 transition-all duration-200"
-                      >
-                        {actor.trim()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <CastList actors={movie.actors} />
 
               <div className="pt-6 border-t border-zinc-800/50">
                 <div className="flex items-center justify-between mb-4">
