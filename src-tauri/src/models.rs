@@ -62,6 +62,13 @@ pub struct ScanStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanResult {
+    pub new_movies: i64,
+    pub deleted_movies: i64,
+    pub total_movies: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stats {
     pub total_movies: i64,
     pub total_size: i64,

@@ -153,18 +153,18 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
     <div
       ref={itemRef}
       onClick={() => navigate(`/movie/${movie.id}`)}
-      className="flex items-center gap-4 px-4 py-3 hover:bg-gray-800/50 cursor-pointer transition-colors border-b border-gray-800/50 group"
+      className="flex items-center gap-4 px-4 py-3 hover:bg-zinc-800/50 cursor-pointer transition-colors border-b border-zinc-800/50 group"
       style={{ height: '72px' }}
     >
-      <div className="flex-shrink-0 w-8 text-center text-gray-500 text-sm">
+      <div className="flex-shrink-0 w-8 text-center text-zinc-500 text-sm">
         {index + 1}
       </div>
       
-      <div className="flex-shrink-0 w-12 h-16 bg-gray-800 rounded overflow-hidden">
+      <div className="flex-shrink-0 w-12 h-16 bg-zinc-800/80 backdrop-blur-sm rounded overflow-hidden">
         {showThumbnails ? (
           isLoading ? (
             <div className="w-full h-full flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
+              <RefreshCw className="w-6 h-6 text-teal-400 animate-spin" />
             </div>
           ) : imageSrc ? (
             <img
@@ -174,24 +174,24 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              <Film className="w-6 h-6 text-gray-600" />
+              <Film className="w-6 h-6 text-zinc-600" />
             </div>
           )
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Film className="w-6 h-6 text-gray-600" />
+            <Film className="w-6 h-6 text-zinc-600" />
           </div>
         )}
       </div>
       
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-white truncate font-medium">{movie.title}</span>
+          <span className="text-zinc-100 truncate font-medium">{movie.title}</span>
           {movie.is_watched === 1 && (
-            <Eye className="w-4 h-4 text-green-500 flex-shrink-0" />
+            <Eye className="w-4 h-4 text-teal-500 flex-shrink-0" />
           )}
         </div>
-        <div className="flex items-center gap-4 text-sm text-gray-400 mt-1">
+        <div className="flex items-center gap-4 text-sm text-zinc-400 mt-1">
           {movie.actors && (
             <span className="truncate max-w-[200px]">{movie.actors.split(',')[0]}</span>
           )}
@@ -207,9 +207,9 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
         </div>
       </div>
       
-      <div className="flex items-center gap-4 flex-shrink-0">
+      <div className="flex items-center gap-4 flex-shrink-0 pr-4">
         {movie.rating && (
-          <div className="flex items-center gap-1 text-yellow-400">
+          <div className="flex items-center gap-1 text-teal-400">
             <Star className="w-4 h-4" fill="currentColor" />
             <span className="text-sm">{movie.rating.toFixed(1)}</span>
           </div>
@@ -220,7 +220,7 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
             e.stopPropagation();
             navigate(`/movie/${movie.id}`);
           }}
-          className="opacity-0 group-hover:opacity-100 p-2 bg-blue-600 rounded-lg hover:bg-blue-500 transition-all"
+          className="opacity-0 group-hover:opacity-100 p-2 bg-gradient-to-r from-teal-500 to-teal-600 rounded-lg hover:from-teal-400 hover:to-teal-500 transition-all"
         >
           <Play className="w-4 h-4 text-white" fill="currentColor" />
         </button>

@@ -3,7 +3,7 @@ use tauri::Window;
 use log::{info, debug, warn, error};
 use rayon::prelude::*;
 use crate::database::Database;
-use crate::models::{AppConfig, ScanStatus, ImportStage};
+use crate::models::{AppConfig, ScanStatus, ImportStage, ScanResult};
 use crate::indexer;
 use crate::thumbnail;
 
@@ -84,22 +84,23 @@ impl ImportManager {
         Ok(())
     }
 
-    fn run_import_process(&self, cache_dir: &str) -> Result<(), String> {
+    fn run_import_process(&self, cache_dir: &str) -> Result<ScanResult, String> {
         let scan_start_time = std::time::Instant::now();
         let total_paths = self.config.nas_paths.len();
         info!("[导入管理器] 准备导入 {} 个路径", total_paths);
 
         let new_file_ids = self.scan_directories()?;
 
-        if self.delete_invalid {
-            self.delete_invalid_records()?;
-        }
+        let deleted_count = if self.delete_invalid {
+            self.delete_invalid_records()?
+        } else {
+            0
+        };
 
         if !new_file_ids.is_empty() {
             self.set_stage(ImportStage::Importing, "导入文件信息中...");
             self.import_files()?;
 
-            // 将缩略图生成放到后台线程
             let db = Arc::clone(&self.db);
             let scan_status = Arc::clone(&self.scan_status);
             let window = self.window.clone();
@@ -189,12 +190,23 @@ impl ImportManager {
             }
         }
 
-        self.set_complete_state();
+        let total_movies = {
+            let db = self.db.lock().unwrap();
+            db.get_total_count().unwrap_or(0)
+        };
+
+        let result = ScanResult {
+            new_movies: new_file_ids.len() as i64,
+            deleted_movies: deleted_count as i64,
+            total_movies,
+        };
+
+        self.set_complete_state(&result);
 
         let elapsed = scan_start_time.elapsed();
         info!("[导入管理器] 导入完成: {} 个文件，耗时: {}ms", new_file_ids.len(), elapsed.as_millis());
 
-        Ok(())
+        Ok(result)
     }
 
     fn scan_directories(&self) -> Result<Vec<i64>, String> {
@@ -235,7 +247,12 @@ impl ImportManager {
                 let flag = self.stop_scan_flag.lock().unwrap();
                 if *flag {
                     info!("[导入管理器] 扫描已停止");
-                    self.set_complete_state();
+                    let result = ScanResult {
+                        new_movies: new_file_ids.len() as i64,
+                        deleted_movies: 0,
+                        total_movies: 0,
+                    };
+                    self.set_complete_state(&result);
                     return Ok(new_file_ids);
                 }
             }
@@ -324,7 +341,12 @@ impl ImportManager {
             let flag = self.stop_scan_flag.lock().unwrap();
             if *flag {
                 info!("[导入管理器] 扫描已停止");
-                self.set_complete_state();
+                let result = ScanResult {
+                    new_movies: new_file_ids.len() as i64,
+                    deleted_movies: 0,
+                    total_movies: 0,
+                };
+                self.set_complete_state(&result);
                 return Ok(new_file_ids);
             }
         }
@@ -402,11 +424,11 @@ impl ImportManager {
         status.current_file = None;
     }
 
-    fn set_complete_state(&self) {
+    fn set_complete_state(&self, result: &ScanResult) {
         let mut status = self.scan_status.lock().unwrap();
         status.is_scanning = false;
         status.current_file = None;
-        let _ = self.window.emit("scan-complete", ());
+        let _ = self.window.emit("scan-complete", result);
     }
 
     fn set_error_state(&self) {

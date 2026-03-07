@@ -84,8 +84,8 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950">
-      <header className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
+    <div className="min-h-screen bg-gradient-to-b from-zinc-950 to-zinc-900">
+      <header className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -94,13 +94,13 @@ export default function Home() {
             </div>
             
             <div className="flex items-center gap-2">
-              <div className="flex items-center bg-gray-800 rounded-lg p-1">
+              <div className="flex items-center bg-zinc-800 rounded-lg p-1">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 rounded-lg transition-colors ${
+                  className={`p-2 rounded-lg transition-all ${
                     viewMode === 'grid' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-400 hover:text-white'
+                      ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/25' 
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-700/50'
                   }`}
                   title="网格视图"
                 >
@@ -108,10 +108,10 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 rounded-lg transition-colors ${
+                  className={`p-2 rounded-lg transition-all ${
                     viewMode === 'list' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-400 hover:text-white'
+                      ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/25' 
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-700/50'
                   }`}
                   title="列表视图"
                 >
@@ -121,10 +121,10 @@ export default function Home() {
               
               <button
                 onClick={toggleShowThumbnails}
-                className={`p-2.5 rounded-lg transition-colors ${
+                className={`p-2.5 rounded-lg transition-all border ${
                   showThumbnails 
-                    ? "bg-green-600/20 text-green-400 hover:bg-green-600/30" 
-                    : "bg-red-600/20 text-red-400 hover:bg-red-600/30"
+                    ? "bg-teal-600/20 text-teal-400 hover:bg-teal-600/30 border-teal-500/30" 
+                    : "bg-red-600/20 text-red-400 hover:bg-red-600/30 border-red-500/30"
                 }`}
                 title={showThumbnails ? "显示缩略图" : "隐藏缩略图 (NSFW)"}
               >
@@ -133,9 +133,9 @@ export default function Home() {
               
               <button
                 onClick={() => navigate("/settings")}
-                className="p-2.5 hover:bg-gray-800 rounded-lg transition-colors"
+                className="p-2.5 hover:bg-zinc-800 rounded-lg transition-colors"
               >
-                <SettingsIcon className="w-4 h-4 text-gray-400 hover:text-white" />
+                <SettingsIcon className="w-4 h-4 text-zinc-400 hover:text-white" />
               </button>
             </div>
           </div>
@@ -144,7 +144,7 @@ export default function Home() {
       
       <main className="p-4">
         {isUsingFilters && (
-          <div className="mb-4 text-gray-400 text-sm">
+          <div className="mb-4 text-zinc-400 text-sm">
             筛选结果: {movies.length} 个电影
           </div>
         )}
@@ -152,8 +152,8 @@ export default function Home() {
         {isLoading ? (
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-              <p className="text-gray-400">Loading movies...</p>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-400 mx-auto mb-4"></div>
+              <p className="text-zinc-400">Loading movies...</p>
             </div>
           </div>
         ) : (
@@ -175,7 +175,7 @@ export default function Home() {
             )}
             {isLoadingMore && (
               <div className="flex items-center justify-center py-4">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-400"></div>
               </div>
             )}
           </>

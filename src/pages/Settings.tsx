@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle, CheckCircle } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
-import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase, stopScan, onScanComplete } from "../services/tauri";
+import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase, stopScan, onScanComplete, ScanResult } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
 import ScanProgress from "../components/ScanProgress";
 
@@ -16,6 +16,8 @@ export default function Settings() {
   const [deleteInvalid, setDeleteInvalid] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [showScanResult, setShowScanResult] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -23,8 +25,10 @@ export default function Settings() {
   }, [loadConfig]);
 
   useEffect(() => {
-    const unlistenPromise = onScanComplete(() => {
+    const unlistenPromise = onScanComplete((result) => {
       setIsScanning(false);
+      setScanResult(result);
+      setShowScanResult(true);
       loadStats();
     });
 
@@ -435,6 +439,39 @@ export default function Settings() {
                 确认重置
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showScanResult && scanResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg p-6 max-w-md mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <CheckCircle className="w-6 h-6 text-green-400" />
+              <h3 className="text-xl font-semibold">扫描完成</h3>
+            </div>
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between items-center py-2 border-b border-gray-800">
+                <span className="text-gray-400">新增电影</span>
+                <span className="text-green-400 font-semibold text-lg">+{scanResult.new_movies}</span>
+              </div>
+              {scanResult.deleted_movies > 0 && (
+                <div className="flex justify-between items-center py-2 border-b border-gray-800">
+                  <span className="text-gray-400">删除失效记录</span>
+                  <span className="text-red-400 font-semibold text-lg">-{scanResult.deleted_movies}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center py-2">
+                <span className="text-gray-400">总电影数</span>
+                <span className="text-blue-400 font-semibold text-lg">{scanResult.total_movies}</span>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowScanResult(false)}
+              className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors font-semibold"
+            >
+              确定
+            </button>
           </div>
         </div>
       )}

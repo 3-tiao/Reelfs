@@ -197,7 +197,7 @@ export default function MovieDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-gray-950 text-white">
+    <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 text-white">
       {/* Background */}
       {fanartSrc && (
         <div className="absolute inset-0 z-0 overflow-hidden">
@@ -206,7 +206,7 @@ export default function MovieDetail() {
             alt=""
             className="w-full h-full object-cover opacity-30 scale-105"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-gray-900/60 via-gray-950/85 to-gray-950"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-900/60 via-zinc-950/85 to-zinc-950"></div>
         </div>
       )}
 
@@ -214,7 +214,7 @@ export default function MovieDetail() {
       <div className="relative z-10">
         <button
           onClick={() => navigate("/")}
-          className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-gray-800/80 hover:bg-gray-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-gray-700/50 shadow-lg z-50"
+          className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-zinc-700/50 shadow-lg z-50"
         >
           <ArrowLeft className="w-5 h-5" />
           Back
@@ -224,7 +224,7 @@ export default function MovieDetail() {
           <div className="flex flex-col lg:flex-row gap-10">
             {/* Poster */}
             <div className="flex-shrink-0 mx-auto lg:mx-0">
-              <div className="w-72 aspect-[2/3] bg-gray-800/50 rounded-2xl overflow-hidden shadow-2xl border border-gray-700/50 backdrop-blur-sm">
+              <div className="w-72 aspect-[2/3] bg-zinc-800/50 rounded-2xl overflow-hidden shadow-2xl border border-zinc-700/50 backdrop-blur-sm">
                 {posterSrc ? (
                   <img
                     src={posterSrc}
@@ -232,8 +232,8 @@ export default function MovieDetail() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
-                    <Film className="w-20 h-20 text-gray-600" />
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
+                    <Film className="w-20 h-20 text-zinc-600" />
                   </div>
                 )}
               </div>
@@ -242,18 +242,18 @@ export default function MovieDetail() {
             {/* Info */}
             <div className="flex-1 space-y-6">
               <div>
-                <h1 className="text-4xl lg:text-5xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                <h1 className="text-4xl lg:text-5xl font-bold mb-3 bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent">
                   {movie.title}
                 </h1>
                 {movie.year && (
-                  <p className="text-gray-400 text-lg">{movie.year}</p>
+                  <p className="text-zinc-400 text-lg">{movie.year}</p>
                 )}
               </div>
 
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={handlePlay}
-                  className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 rounded-xl font-semibold text-lg transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40"
+                  className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 rounded-xl font-semibold text-lg transition-all duration-200 shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40"
                 >
                   <Play className="w-6 h-6" fill="currentColor" />
                   {history && history.last_position > 0
@@ -263,10 +263,10 @@ export default function MovieDetail() {
                 
                 <button
                   onClick={handleToggleWatched}
-                  className={`flex items-center gap-2 px-6 py-4 rounded-xl font-semibold transition-all duration-200 ${
+                  className={`flex items-center gap-2 px-6 py-4 rounded-xl font-semibold transition-all duration-200 border ${
                     movie.is_watched === 1
-                      ? "bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30"
-                      : "bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700"
+                      ? "bg-teal-600/20 text-teal-400 hover:bg-teal-600/30 border-teal-500/30"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border-zinc-700"
                   }`}
                 >
                   {movie.is_watched === 1 ? (
@@ -282,7 +282,7 @@ export default function MovieDetail() {
                   )}
                 </button>
               </div>
-              <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-3 font-medium">Rating</h3>
+              <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-3 font-medium">Rating</h3>
               {movie.rating === undefined || movie.rating === null ? (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1">
@@ -293,13 +293,13 @@ export default function MovieDetail() {
                         disabled={isRating}
                         className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 ${
                           isRating
-                            ? 'bg-gray-700 cursor-not-allowed'
-                            : 'bg-gray-800 hover:bg-yellow-600 hover:scale-110'
+                            ? 'bg-zinc-700 cursor-not-allowed'
+                            : 'bg-zinc-800 hover:bg-teal-600 hover:scale-110'
                         }`}
                       >
                         <Star
                           className={`w-5 h-5 ${
-                            isRating ? 'text-gray-500' : 'text-gray-400'
+                            isRating ? 'text-zinc-500' : 'text-zinc-400'
                           }`}
                           fill={isRating ? 'none' : 'currentColor'}
                         />
@@ -311,8 +311,8 @@ export default function MovieDetail() {
                     disabled={isRating}
                     className={`px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
                       isRating
-                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                        : 'bg-gray-800 text-gray-400 hover:bg-red-600 hover:text-white'
+                        ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-red-600 hover:text-white'
                     }`}
                   >
                     清除
@@ -328,15 +328,15 @@ export default function MovieDetail() {
                         disabled={isRating}
                         className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 ${
                           isRating
-                            ? 'bg-gray-700 cursor-not-allowed'
+                            ? 'bg-zinc-700 cursor-not-allowed'
                             : value <= Math.round(movie.rating!)
-                            ? 'bg-yellow-600 hover:bg-yellow-500 hover:scale-110'
-                            : 'bg-gray-800 hover:bg-yellow-600 hover:scale-110'
+                            ? 'bg-teal-600 hover:bg-teal-500 hover:scale-110'
+                            : 'bg-zinc-800 hover:bg-teal-600 hover:scale-110'
                         }`}
                       >
                         <Star
                           className={`w-5 h-5 ${
-                            isRating ? 'text-gray-500' : value <= Math.round(movie.rating!) ? 'text-white' : 'text-gray-400'
+                            isRating ? 'text-zinc-500' : value <= Math.round(movie.rating!) ? 'text-white' : 'text-zinc-400'
                           }`}
                           fill={isRating ? 'none' : value <= Math.round(movie.rating!) ? 'currentColor' : 'none'}
                         />
@@ -348,8 +348,8 @@ export default function MovieDetail() {
                     disabled={isRating}
                     className={`px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
                       isRating
-                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                        : 'bg-gray-800 text-gray-400 hover:bg-red-600 hover:text-white'
+                        ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-red-600 hover:text-white'
                     }`}
                   >
                     清除
@@ -359,12 +359,12 @@ export default function MovieDetail() {
 
               {movie.genres && (
                 <div>
-                  <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-3 font-medium">Genres</h3>
+                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-3 font-medium">Genres</h3>
                   <div className="flex flex-wrap gap-2">
                     {movie.genres.split(",").map((genre, index) => (
                       <span
                         key={index}
-                        className="px-4 py-1.5 bg-gray-800/60 border border-gray-700/50 rounded-lg text-sm text-gray-200"
+                        className="px-4 py-1.5 bg-zinc-800/60 border border-zinc-700/50 rounded-lg text-sm text-zinc-200"
                       >
                         {genre.trim()}
                       </span>
@@ -375,77 +375,85 @@ export default function MovieDetail() {
 
               {movie.plot && (
                 <div>
-                  <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-3 font-medium">Plot</h3>
-                  <p className="text-gray-200 leading-relaxed text-lg">{movie.plot}</p>
+                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-3 font-medium">Plot</h3>
+                  <p className="text-zinc-200 leading-relaxed text-lg">{movie.plot}</p>
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {movie.director && (
-                  <div>
-                    <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2 font-medium">Director</h3>
-                    <p className="text-white text-lg">{movie.director}</p>
-                  </div>
-                )}
+              {movie.director && (
+                <div>
+                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-2 font-medium">Director</h3>
+                  <p className="text-zinc-100 text-lg">{movie.director}</p>
+                </div>
+              )}
 
-                {movie.actors && (
-                  <div>
-                    <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2 font-medium">Cast</h3>
-                    <p className="text-white text-lg">{movie.actors}</p>
+              {movie.actors && (
+                <div>
+                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-2 font-medium">Cast</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {movie.actors.split(",").map((actor, index) => (
+                      <button
+                        key={index}
+                        onClick={() => navigate(`/actor/${encodeURIComponent(actor.trim())}`)}
+                        className="px-3 py-1 bg-zinc-800/60 hover:bg-teal-600/30 border border-zinc-700/50 hover:border-teal-500/50 rounded-lg text-sm text-zinc-200 hover:text-teal-300 transition-all duration-200"
+                      >
+                        {actor.trim()}
+                      </button>
+                    ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              <div className="pt-6 border-t border-gray-800/50">
+              <div className="pt-6 border-t border-zinc-800/50">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-gray-400 text-sm uppercase tracking-wider font-medium">File Info</h3>
+                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider font-medium">File Info</h3>
                   <button
                     onClick={handleShowInFileManager}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-800/60 hover:bg-gray-700/80 backdrop-blur-sm rounded-lg font-medium text-sm transition-all duration-200 border border-gray-700/50"
+                    className="flex items-center gap-2 px-4 py-2 bg-zinc-800/60 hover:bg-zinc-700/80 backdrop-blur-sm rounded-lg font-medium text-sm transition-all duration-200 border border-zinc-700/50"
                   >
                     <FolderOpen className="w-4 h-4" />
                     Show in File Manager
                   </button>
                 </div>
-                <div className="space-y-3 text-sm bg-gray-800/30 rounded-xl p-4 border border-gray-700/30">
+                <div className="space-y-3 text-sm bg-zinc-800/30 rounded-xl p-4 border border-zinc-700/30">
                   <div className="flex items-start gap-3">
-                    <span className="text-gray-500 min-w-[60px]">Path:</span>
-                    <span className="text-gray-300 font-mono text-xs break-all">{movie.file_path}</span>
+                    <span className="text-zinc-500 min-w-[60px]">Path:</span>
+                    <span className="text-zinc-300 font-mono text-xs break-all">{movie.file_path}</span>
                   </div>
                   {movie.file_size && (
                     <div className="flex items-center gap-3">
-                      <span className="text-gray-500 min-w-[60px]">Size:</span>
-                      <span className="text-gray-300 font-medium">
+                      <span className="text-zinc-500 min-w-[60px]">Size:</span>
+                      <span className="text-zinc-300 font-medium">
                         {(movie.file_size / 1024 / 1024 / 1024).toFixed(2)} GB
                       </span>
                     </div>
                   )}
                   {movie.duration_seconds && (
                     <div className="flex items-center gap-3">
-                      <span className="text-gray-500 min-w-[60px]">Duration:</span>
-                      <span className="text-gray-300 font-medium">
+                      <span className="text-zinc-500 min-w-[60px]">Duration:</span>
+                      <span className="text-zinc-300 font-medium">
                         {formatDuration(movie.duration_seconds)}
                       </span>
                     </div>
                   )}
                   {movie.width && movie.height && (
                     <div className="flex items-center gap-3">
-                      <span className="text-gray-500 min-w-[60px]">Resolution:</span>
-                      <span className="text-gray-300 font-medium">
+                      <span className="text-zinc-500 min-w-[60px]">Resolution:</span>
+                      <span className="text-zinc-300 font-medium">
                         {movie.width}×{movie.height}
                       </span>
                     </div>
                   )}
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-500 min-w-[60px]">Added:</span>
-                    <span className="text-gray-300 font-medium">
+                    <span className="text-zinc-500 min-w-[60px]">Added:</span>
+                    <span className="text-zinc-300 font-medium">
                       {formatDate(movie.added_at)}
                     </span>
                   </div>
                   {movie.last_accessed && (
                     <div className="flex items-center gap-3">
-                      <span className="text-gray-500 min-w-[60px]">Last Accessed:</span>
-                      <span className="text-gray-300 font-medium">
+                      <span className="text-zinc-500 min-w-[60px]">Last Accessed:</span>
+                      <span className="text-zinc-300 font-medium">
                         {formatDate(movie.last_accessed)}
                       </span>
                     </div>

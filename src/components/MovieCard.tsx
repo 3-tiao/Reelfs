@@ -117,7 +117,7 @@ export default function MovieCard({ movie }: MovieCardProps) {
       onClick={() => navigate(`/movie/${movie.id}`)}
       className="group cursor-pointer transition-transform duration-200 hover:scale-105"
     >
-      <div className="relative aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden shadow-lg">
+      <div className="relative aspect-[2/3] bg-zinc-800/80 backdrop-blur-sm rounded-lg overflow-hidden shadow-lg border border-zinc-700/50">
         {imageSrc ? (
           <img
             src={imageSrc}
@@ -126,22 +126,22 @@ export default function MovieCard({ movie }: MovieCardProps) {
             loading="lazy"
           />
         ) : isGenerating ? (
-          <div className="w-full h-full flex items-center justify-center bg-gray-800">
+          <div className="w-full h-full flex items-center justify-center bg-zinc-800/80">
             <div className="text-center">
-              <RefreshCw className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-2" />
-              <p className="text-gray-400 text-sm">Generating...</p>
+              <RefreshCw className="w-12 h-12 text-teal-400 animate-spin mx-auto mb-2" />
+              <p className="text-zinc-400 text-sm">Generating...</p>
             </div>
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Film className="w-16 h-16 text-gray-600" />
+            <Film className="w-16 h-16 text-zinc-600" />
           </div>
         )}
         
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <div className="absolute bottom-0 left-0 right-0 p-4">
             {movie.rating && (
-              <div className="text-yellow-400 text-sm font-semibold mb-1">
+              <div className="text-teal-400 text-sm font-semibold mb-1">
                 ⭐ {movie.rating.toFixed(1)}
               </div>
             )}
@@ -152,16 +152,16 @@ export default function MovieCard({ movie }: MovieCardProps) {
         </div>
         
         {movie.is_watched === 1 && (
-          <div className="absolute top-2 right-2 bg-green-500/80 rounded-full p-1">
+          <div className="absolute top-2 right-2 bg-teal-500/80 rounded-full p-1 backdrop-blur-sm">
             <Eye className="w-4 h-4 text-white" />
           </div>
         )}
       </div>
       
       <div className="mt-2 px-1">
-        <h3 className="text-white font-medium text-sm truncate">{movie.title}</h3>
+        <h3 className="text-zinc-100 font-medium text-sm truncate">{movie.title}</h3>
         {movie.year && (
-          <p className="text-gray-400 text-xs">{movie.year}</p>
+          <p className="text-zinc-400 text-xs">{movie.year}</p>
         )}
       </div>
     </div>

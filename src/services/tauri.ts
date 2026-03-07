@@ -47,6 +47,12 @@ export interface ScanStatus {
   current_file?: string;
 }
 
+export interface ScanResult {
+  new_movies: number;
+  deleted_movies: number;
+  total_movies: number;
+}
+
 export interface Stats {
   total_movies: number;
   total_size: number;
@@ -145,9 +151,9 @@ export const onScanProgress = (callback: (status: ScanStatus) => void) => {
   });
 };
 
-export const onScanComplete = (callback: () => void) => {
-  return listen("scan-complete", () => {
-    callback();
+export const onScanComplete = (callback: (result: ScanResult) => void) => {
+  return listen<ScanResult>("scan-complete", (event) => {
+    callback(event.payload);
   });
 };
 

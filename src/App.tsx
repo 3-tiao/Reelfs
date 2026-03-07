@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import MovieDetail from "./pages/MovieDetail";
+import ActorDetail from "./pages/ActorDetail";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
 
@@ -11,6 +12,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/movie/:id" element={<MovieDetail />} />
+          <Route path="/actor/:name" element={<ActorDetail />} />
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
