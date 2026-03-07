@@ -743,14 +743,70 @@ async fn auto_detect_video_groups(
     Ok(candidates)
 }
 
+use log4rs::{
+    append::{
+        console::{ConsoleAppender, Target},
+        rolling_file::{
+            policy::compound::{
+                roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
+            },
+            RollingFileAppender,
+        },
+    },
+    config::{Appender, Config as LogConfig, Root},
+    encode::pattern::PatternEncoder,
+};
+
+fn init_logger() {
+    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
+    let log_dir = format!("{}/.reelfs/logs", home);
+    let log_file = format!("{}/reelfs.log", log_dir);
+    
+    // Ensure log directory exists
+    let _ = fs::create_dir_all(&log_dir);
+
+    let pattern = "{d(%Y-%m-%d %H:%M:%S)} {l} {t} - {m}{n}";
+
+    // Console appender
+    let stdout = ConsoleAppender::builder()
+        .target(Target::Stdout)
+        .encoder(Box::new(PatternEncoder::new(pattern)))
+        .build();
+
+    // 10MB per file, keep 5 old files max
+    let window_size = 5;
+    let fixed_window_roller = FixedWindowRoller::builder()
+        .build(&format!("{}/reelfs.{{}}.log", log_dir), window_size)
+        .unwrap();
+
+    let size_trigger = SizeTrigger::new(10 * 1024 * 1024); // 10 MB
+
+    let compound_policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(fixed_window_roller));
+
+    let file_appender = RollingFileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(pattern)))
+        .build(log_file, Box::new(compound_policy))
+        .unwrap();
+
+    let config = LogConfig::builder()
+        .appender(Appender::builder().build("stdout", Box::new(stdout)))
+        .appender(Appender::builder().build("file", Box::new(file_appender)))
+        .build(
+            Root::builder()
+                .appender("stdout")
+                .appender("file")
+                .build(log::LevelFilter::Info),
+        )
+        .unwrap();
+
+    let _ = log4rs::init_config(config);
+}
+
 fn main() {
     let start_time = std::time::Instant::now();
     
-    // 初始化日志系统
-    env_logger::Builder::from_default_env()
-        .format_timestamp_secs()
-        .filter_level(log::LevelFilter::Info)
-        .init();
+    // 初始化日志系统 (Rolling File + Console)
+    init_logger();
     
     info!("[应用启动] 开始初始化应用");
     
