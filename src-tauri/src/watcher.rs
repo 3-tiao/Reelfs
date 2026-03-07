@@ -30,6 +30,8 @@ pub fn start_watcher(
     }
     
     std::thread::spawn(move || {
+        // watcher must live as long as this thread to keep receiving events
+        let _watcher = watcher;
         info!("[文件监听] 监听线程启动");
         
         let db = match Database::new(&db_path) {
@@ -56,8 +58,6 @@ pub fn start_watcher(
             }
         }
     });
-    
-    std::mem::forget(watcher);
     
     Ok(())
 }

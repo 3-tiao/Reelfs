@@ -232,8 +232,20 @@ impl Database {
         
         for movie in movies {
             let result = tx.execute(
-                "INSERT OR REPLACE INTO movies (file_path, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height, last_checked_at, scan_state)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height, last_checked_at, scan_state)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                 ON CONFLICT(file_path) DO UPDATE SET
+                    title = excluded.title,
+                    year = excluded.year,
+                    plot = excluded.plot,
+                    rating = COALESCE(movies.rating, excluded.rating),
+                    genres = excluded.genres,
+                    director = excluded.director,
+                    actors = excluded.actors,
+                    file_size = excluded.file_size,
+                    last_checked_at = excluded.last_checked_at,
+                    scan_state = excluded.scan_state,
+                    updated_at = CURRENT_TIMESTAMP",
                 params![
                     &movie.0, &movie.1, movie.2, &movie.3, movie.4, 
                     &movie.5, &movie.6, &movie.7,
@@ -552,20 +564,43 @@ impl Database {
         
         let existing = self.get_play_history(movie_id)?;
 
-        if let Some(history) = existing {
+        if let Some(_history) = existing {
             self.conn.execute(
-                "UPDATE play_history SET last_position = ?1, last_played = CURRENT_TIMESTAMP, play_count = ?2 
-                 WHERE movie_id = ?3",
-                params![position, history.play_count + 1, movie_id],
+                "UPDATE play_history SET last_position = ?1, last_played = CURRENT_TIMESTAMP 
+                 WHERE movie_id = ?2",
+                params![position, movie_id],
             )?;
-            debug!("[数据库] 播放历史更新成功: movie_id={}, play_count={}", 
-                   movie_id, history.play_count + 1);
+            debug!("[数据库] 播放历史更新成功: movie_id={}", movie_id);
         } else {
             self.conn.execute(
                 "INSERT INTO play_history (movie_id, last_position) VALUES (?1, ?2)",
                 params![movie_id, position],
             )?;
             debug!("[数据库] 播放历史插入成功: movie_id={}", movie_id);
+        }
+
+        Ok(())
+    }
+
+    pub fn increment_play_count(&self, movie_id: i64) -> Result<()> {
+        debug!("[数据库] 增加播放次数: movie_id={}", movie_id);
+        
+        let existing = self.get_play_history(movie_id)?;
+
+        if let Some(history) = existing {
+            self.conn.execute(
+                "UPDATE play_history SET play_count = ?1, last_played = CURRENT_TIMESTAMP 
+                 WHERE movie_id = ?2",
+                params![history.play_count + 1, movie_id],
+            )?;
+            debug!("[数据库] 播放次数更新成功: movie_id={}, play_count={}", 
+                   movie_id, history.play_count + 1);
+        } else {
+            self.conn.execute(
+                "INSERT INTO play_history (movie_id, last_position, play_count) VALUES (?1, 0, 1)",
+                params![movie_id],
+            )?;
+            debug!("[数据库] 播放历史创建成功: movie_id={}, play_count=1", movie_id);
         }
 
         Ok(())
@@ -610,24 +645,33 @@ impl Database {
     pub fn delete_invalid_records(&self) -> Result<usize> {
         info!("[数据库] 开始删除失效记录");
         
-        let mut stmt = self.conn.prepare("SELECT id, file_path FROM movies")?;
-        let mut rows = stmt.query([])?;
-        let mut invalid_count = 0;
-        
-        while let Ok(Some(row)) = rows.next() {
-            let id: i64 = row.get(0)?;
-            let file_path: String = row.get(1)?;
+        // Phase 1: collect invalid IDs (read-only)
+        let mut invalid_ids: Vec<i64> = Vec::new();
+        {
+            let mut stmt = self.conn.prepare("SELECT id, file_path FROM movies")?;
+            let mut rows = stmt.query([])?;
             
-            let path = std::path::Path::new(&file_path);
-            if !path.exists() {
-                debug!("[数据库] 删除失效记录: id={}, file_path={}", id, file_path);
-                self.conn.execute("DELETE FROM movies WHERE id = ?1", params![id])?;
-                invalid_count += 1;
+            while let Ok(Some(row)) = rows.next() {
+                let id: i64 = row.get(0)?;
+                let file_path: String = row.get(1)?;
+                
+                let path = std::path::Path::new(&file_path);
+                if !path.exists() {
+                    debug!("[数据库] 发现失效记录: id={}, file_path={}", id, file_path);
+                    invalid_ids.push(id);
+                }
             }
         }
         
-        drop(rows);
-        drop(stmt);
+        // Phase 2: batch delete in a transaction
+        let invalid_count = invalid_ids.len();
+        if !invalid_ids.is_empty() {
+            let tx = self.conn.unchecked_transaction()?;
+            for id in &invalid_ids {
+                tx.execute("DELETE FROM movies WHERE id = ?1", params![id])?;
+            }
+            tx.commit()?;
+        }
         
         info!("[数据库] 删除失效记录完成: {} 条", invalid_count);
         
