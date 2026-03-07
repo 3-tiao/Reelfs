@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import MovieDetail from "./pages/MovieDetail";
 import ActorDetail from "./pages/ActorDetail";
+import VideoGroupDetail from "./pages/VideoGroupDetail";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
 
@@ -13,6 +14,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/movie/:id" element={<MovieDetail />} />
           <Route path="/actor/:name" element={<ActorDetail />} />
+          <Route path="/video-group/:id" element={<VideoGroupDetail />} />
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>

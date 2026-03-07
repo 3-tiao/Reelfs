@@ -22,6 +22,7 @@ pub struct Movie {
     pub last_checked_at: Option<String>,
     pub scan_state: Option<String>,
     pub is_watched: Option<i32>,
+    pub group_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,4 +102,43 @@ impl Default for AppConfig {
             default_player: "system".to_string(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoGroup {
+    pub id: i64,
+    pub title: String,
+    pub year: Option<i32>,
+    pub plot: Option<String>,
+    pub rating: Option<f64>,
+    pub genres: Option<String>,
+    pub director: Option<String>,
+    pub actors: Option<String>,
+    pub poster_path: Option<String>,
+    pub total_duration: Option<i64>,
+    pub part_count: i32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoPart {
+    pub id: i64,
+    pub group_id: i64,
+    pub movie_id: i64,
+    pub part_number: i32,
+    pub part_title: Option<String>,
+    pub duration_seconds: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoGroupWithParts {
+    pub group: VideoGroup,
+    pub parts: Vec<VideoPartWithMovie>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoPartWithMovie {
+    pub part: VideoPart,
+    pub movie: Movie,
 }

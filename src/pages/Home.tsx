@@ -16,7 +16,6 @@ export default function Home() {
     movies, 
     isLoading, 
     isLoadingMore,
-    hasMore,
     fetchMovies, 
     loadMore,
     searchMovies, 

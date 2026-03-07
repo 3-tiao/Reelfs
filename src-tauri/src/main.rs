@@ -7,10 +7,14 @@ mod import_manager;
 mod models;
 mod player;
 mod thumbnail;
+mod video_group;
+mod video_group_detector;
 mod watcher;
 
 use database::Database;
-use models::{AppConfig, Movie, PlayHistory, ScanStatus, Stats};
+use models::{AppConfig, Movie, PlayHistory, ScanStatus, Stats, VideoGroup, VideoGroupWithParts, VideoPart};
+use video_group::VideoGroupManager;
+use video_group_detector::{detect_video_groups, VideoGroupCandidate};
 use std::sync::{Arc, Mutex};
 use std::fs;
 use std::path::Path;
@@ -599,6 +603,146 @@ fn load_config() -> AppConfig {
     AppConfig::default()
 }
 
+#[tauri::command]
+async fn get_video_groups(
+    state: tauri::State<'_, AppState>,
+    offset: i32,
+    limit: i32,
+) -> Result<Vec<VideoGroup>, String> {
+    info!("[API] get_video_groups 调用: offset={}, limit={}", offset, limit);
+    
+    let db = state.db.lock().unwrap();
+    let manager = VideoGroupManager::new(db.get_connection());
+    
+    let groups = manager.get_all_video_groups(offset, limit)
+        .map_err(|e| {
+            error!("[API] get_video_groups 失败: {}", e);
+            format!("Database error: {}", e)
+        })?;
+    
+    info!("[API] get_video_groups 返回: {} 个视频组", groups.len());
+    Ok(groups)
+}
+
+#[tauri::command]
+async fn get_video_group_detail(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<VideoGroupWithParts, String> {
+    info!("[API] get_video_group_detail 调用: id={}", id);
+    
+    let db = state.db.lock().unwrap();
+    let manager = VideoGroupManager::new(db.get_connection());
+    
+    let group = manager.get_video_group_with_parts(id)
+        .map_err(|e| {
+            error!("[API] get_video_group_detail 失败: {}", e);
+            format!("Database error: {}", e)
+        })?
+        .ok_or_else(|| format!("Video group not found: {}", id))?;
+    
+    info!("[API] get_video_group_detail 返回: {} 个片段", group.parts.len());
+    Ok(group)
+}
+
+#[tauri::command]
+async fn create_video_group(
+    state: tauri::State<'_, AppState>,
+    title: String,
+    year: Option<i32>,
+    plot: Option<String>,
+    rating: Option<f64>,
+    genres: Option<String>,
+    director: Option<String>,
+    actors: Option<String>,
+    poster_path: Option<String>,
+) -> Result<i64, String> {
+    info!("[API] create_video_group 调用: title={}", title);
+    
+    let db = state.db.lock().unwrap();
+    let manager = VideoGroupManager::new(db.get_connection());
+    
+    let id = manager.create_video_group(
+        &title,
+        year,
+        plot.as_deref(),
+        rating,
+        genres.as_deref(),
+        director.as_deref(),
+        actors.as_deref(),
+        poster_path.as_deref(),
+    ).map_err(|e| {
+        error!("[API] create_video_group 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+    
+    info!("[API] create_video_group 成功: id={}", id);
+    Ok(id)
+}
+
+#[tauri::command]
+async fn add_video_part(
+    state: tauri::State<'_, AppState>,
+    group_id: i64,
+    movie_id: i64,
+    part_number: i32,
+    part_title: Option<String>,
+) -> Result<i64, String> {
+    info!("[API] add_video_part 调用: group_id={}, movie_id={}, part_number={}", 
+          group_id, movie_id, part_number);
+    
+    let db = state.db.lock().unwrap();
+    let manager = VideoGroupManager::new(db.get_connection());
+    
+    let id = manager.add_video_part(
+        group_id,
+        movie_id,
+        part_number,
+        part_title.as_deref(),
+    ).map_err(|e| {
+        error!("[API] add_video_part 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+    
+    info!("[API] add_video_part 成功: part_id={}", id);
+    Ok(id)
+}
+
+#[tauri::command]
+async fn delete_video_group(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<(), String> {
+    info!("[API] delete_video_group 调用: id={}", id);
+    
+    let db = state.db.lock().unwrap();
+    let manager = VideoGroupManager::new(db.get_connection());
+    
+    manager.delete_video_group(id).map_err(|e| {
+        error!("[API] delete_video_group 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+    
+    info!("[API] delete_video_group 成功");
+    Ok(())
+}
+
+#[tauri::command]
+async fn auto_detect_video_groups(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<VideoGroupCandidate>, String> {
+    info!("[API] auto_detect_video_groups 调用");
+    
+    let db = state.db.lock().unwrap();
+    let movies = db.get_movies(0, 10000)
+        .map_err(|e| format!("Database error: {}", e))?;
+    
+    let candidates = detect_video_groups(&movies);
+    
+    info!("[API] auto_detect_video_groups 返回: {} 个候选组", candidates.len());
+    Ok(candidates)
+}
+
 fn main() {
     let start_time = std::time::Instant::now();
     
@@ -672,6 +816,12 @@ fn main() {
             stop_scan,
             get_and_update_video_info,
             set_watched_status,
+            get_video_groups,
+            get_video_group_detail,
+            create_video_group,
+            add_video_part,
+            delete_video_group,
+            auto_detect_video_groups,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

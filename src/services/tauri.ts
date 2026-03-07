@@ -22,6 +22,7 @@ export interface Movie {
   last_checked_at?: string;
   scan_state?: string;
   is_watched?: number;
+  group_id?: number;
 }
 
 export interface PlayHistory {
@@ -115,6 +116,104 @@ export const updatePlayProgress = async (id: number, position: number): Promise<
 
 export const setWatchedStatus = async (id: number, isWatched: boolean): Promise<void> => {
   return await invoke("set_watched_status", { id, isWatched });
+};
+
+export interface VideoGroup {
+  id: number;
+  title: string;
+  year?: number;
+  plot?: string;
+  rating?: number;
+  genres?: string;
+  director?: string;
+  actors?: string;
+  poster_path?: string;
+  total_duration?: number;
+  part_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoPart {
+  id: number;
+  group_id: number;
+  movie_id: number;
+  part_number: number;
+  part_title?: string;
+  duration_seconds?: number;
+}
+
+export interface VideoPartWithMovie {
+  part: VideoPart;
+  movie: Movie;
+}
+
+export interface VideoGroupWithParts {
+  group: VideoGroup;
+  parts: VideoPartWithMovie[];
+}
+
+export interface MovieWithPart {
+  movie: Movie;
+  part_number: number;
+  part_title: string;
+}
+
+export interface VideoGroupCandidate {
+  title: string;
+  movies: MovieWithPart[];
+}
+
+export const getVideoGroups = async (offset: number, limit: number): Promise<VideoGroup[]> => {
+  return await invoke<VideoGroup[]>("get_video_groups", { offset, limit });
+};
+
+export const getVideoGroupDetail = async (id: number): Promise<VideoGroupWithParts> => {
+  return await invoke<VideoGroupWithParts>("get_video_group_detail", { id });
+};
+
+export const createVideoGroup = async (
+  title: string,
+  year?: number,
+  plot?: string,
+  rating?: number,
+  genres?: string,
+  director?: string,
+  actors?: string,
+  poster_path?: string
+): Promise<number> => {
+  return await invoke<number>("create_video_group", {
+    title,
+    year,
+    plot,
+    rating,
+    genres,
+    director,
+    actors,
+    poster_path,
+  });
+};
+
+export const addVideoPart = async (
+  groupId: number,
+  movieId: number,
+  partNumber: number,
+  partTitle?: string
+): Promise<number> => {
+  return await invoke<number>("add_video_part", {
+    groupId,
+    movieId,
+    partNumber,
+    partTitle,
+  });
+};
+
+export const deleteVideoGroup = async (id: number): Promise<void> => {
+  return await invoke("delete_video_group", { id });
+};
+
+export const autoDetectVideoGroups = async (): Promise<VideoGroupCandidate[]> => {
+  return await invoke<VideoGroupCandidate[]>("auto_detect_video_groups");
 };
 
 export const getStats = async (): Promise<Stats> => {

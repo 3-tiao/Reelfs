@@ -6,6 +6,8 @@ use crate::database::Database;
 use crate::models::{AppConfig, ScanStatus, ImportStage, ScanResult};
 use crate::indexer;
 use crate::thumbnail;
+use crate::video_group_detector::{detect_video_groups, VideoGroupCandidate};
+use crate::video_group::VideoGroupManager;
 
 pub struct ImportManager {
     db: Arc<Mutex<Database>>,
@@ -89,13 +91,21 @@ impl ImportManager {
         let total_paths = self.config.nas_paths.len();
         info!("[导入管理器] 准备导入 {} 个路径", total_paths);
 
-        let new_file_ids = self.scan_directories()?;
-
-        let deleted_count = if self.delete_invalid {
+        // 如果是完全重新校验模式，先清空数据库
+        let deleted_count = if self.scan_mode == "full" {
+            info!("[导入管理器] 完全重新校验模式，清空数据库");
+            let db = self.db.lock().unwrap();
+            let count = db.get_total_count().unwrap_or(0);
+            db.clear_all_movies().map_err(|e| format!("清空数据库失败: {}", e))?;
+            info!("[导入管理器] 已删除 {} 条旧记录", count);
+            count as usize
+        } else if self.delete_invalid {
             self.delete_invalid_records()?
         } else {
             0
         };
+
+        let new_file_ids = self.scan_directories()?;
 
         if !new_file_ids.is_empty() {
             self.set_stage(ImportStage::Importing, "导入文件信息中...");
@@ -194,6 +204,9 @@ impl ImportManager {
             let db = self.db.lock().unwrap();
             db.get_total_count().unwrap_or(0)
         };
+
+        info!("[导入管理器] 开始自动检测视频组");
+        self.auto_detect_and_create_video_groups()?;
 
         let result = ScanResult {
             new_movies: new_file_ids.len() as i64,
@@ -414,6 +427,70 @@ impl ImportManager {
         status.stage = stage;
         status.stage_message = message.to_string();
         let _ = self.window.emit("scan-progress", status.clone());
+    }
+
+    fn auto_detect_and_create_video_groups(&self) -> Result<(), String> {
+        info!("[视频组检测] 开始自动检测");
+        
+        let movies = {
+            let db = self.db.lock().unwrap();
+            db.get_movies(0, 10000).map_err(|e| format!("获取电影列表失败: {}", e))?
+        };
+        
+        info!("[视频组检测] 共 {} 个电影需要检测", movies.len());
+        
+        let candidates = detect_video_groups(&movies);
+        
+        info!("[视频组检测] 检测到 {} 个候选视频组", candidates.len());
+        
+        if candidates.is_empty() {
+            return Ok(());
+        }
+        
+        let db = self.db.lock().unwrap();
+        let conn = db.get_connection();
+        let group_manager = VideoGroupManager::new(conn);
+        
+        for candidate in candidates {
+            info!("[视频组检测] 创建视频组: {}", candidate.title);
+            
+            match group_manager.create_video_group(
+                &candidate.title,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ) {
+                Ok(group_id) => {
+                    info!("[视频组检测] 视频组创建成功: {} (ID: {})", candidate.title, group_id);
+                    
+                    for movie_with_part in candidate.movies {
+                        match group_manager.add_video_part(
+                            group_id,
+                            movie_with_part.movie.id,
+                            movie_with_part.part_number,
+                            Some(&movie_with_part.part_title),
+                        ) {
+                            Ok(_) => {
+                                info!("[视频组检测] 添加视频部分成功: {} - 第{}部分", 
+                                      candidate.title, movie_with_part.part_number);
+                            }
+                            Err(e) => {
+                                error!("[视频组检测] 添加视频部分失败: {} - {}", candidate.title, e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("[视频组检测] 创建视频组失败: {} - {}", candidate.title, e);
+                }
+            }
+        }
+        
+        Ok(())
     }
 
     fn reset_progress(&self) {

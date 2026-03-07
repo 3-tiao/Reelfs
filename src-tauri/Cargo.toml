@@ -26,6 +26,7 @@ log = "0.4"
 env_logger = "0.11"
 chrono = { version = "0.4", features = ["serde"] }
 mp4 = "0.14"
+regex = "1.10"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
