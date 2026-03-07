@@ -96,7 +96,7 @@ export default function MovieDetail() {
 
   const getPosterPath = async (videoPath: string): Promise<string | null> => {
     const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
-    const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg'];
+    const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg', 'fanart.jpg', 'fanart.png'];
     
     for (const name of posterNames) {
       const posterPath = `${dir}/${name}`;

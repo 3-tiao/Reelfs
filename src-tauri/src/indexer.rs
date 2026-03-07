@@ -13,7 +13,7 @@ const VIDEO_EXTENSIONS: [&str; 8] = ["mkv", "mp4", "avi", "mov", "wmv", "flv", "
 pub fn get_poster_path(video_path: &Path) -> Option<String> {
     let parent = video_path.parent()?;
     
-    let poster_names = vec!["poster.jpg", "poster.png", "folder.jpg", "cover.jpg"];
+    let poster_names = vec!["poster.jpg", "poster.png", "folder.jpg", "cover.jpg", "fanart.jpg", "fanart.png"];
     
     for name in poster_names {
         let poster_path = parent.join(name);
