@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon, Eye, EyeOff, Grid, List } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
@@ -8,6 +8,7 @@ import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
 import MovieList, { MovieListRef } from "../components/MovieList";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
+import ScrollProgressVertical from "../components/ScrollProgressVertical";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -30,6 +31,7 @@ export default function Home() {
   const { viewMode, setViewMode } = useViewStore();
   const movieGridRef = useRef<MovieGridRef>(null);
   const movieListRef = useRef<MovieListRef>(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
   
   // 保存滚动位置
   const lastSavedPositionRef = useRef(0);
@@ -38,12 +40,23 @@ export default function Home() {
     const ref = viewMode === 'grid' ? movieGridRef.current : movieListRef.current;
     if (ref) {
       const position = ref.getScrollPosition();
+      const progress = ref.getScrollPercentage();
+      setScrollProgress(progress);
+      
       if (Math.abs(position - lastSavedPositionRef.current) > 100) {
         lastSavedPositionRef.current = position;
         setScrollPosition(position);
       }
     }
   }, [viewMode, setScrollPosition]);
+
+  const handleSeek = useCallback((percentage: number) => {
+    const ref = viewMode === 'grid' ? movieGridRef.current : movieListRef.current;
+    if (ref) {
+      ref.scrollToPercentage(percentage);
+      setScrollProgress(percentage);
+    }
+  }, [viewMode]);
   
   useEffect(() => {
     // 只在 movies 为空时才加载数据
@@ -85,6 +98,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 to-zinc-900">
+      <ScrollProgressVertical progress={scrollProgress} onSeek={handleSeek} />
+      
       <header className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">

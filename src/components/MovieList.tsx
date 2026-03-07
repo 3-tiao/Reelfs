@@ -17,6 +17,7 @@ export interface MovieListRef {
   scrollToPercentage: (percentage: number) => void;
   getScrollPosition: () => number;
   scrollToPosition: (scrollTop: number) => void;
+  getScrollPercentage: () => number;
 }
 
 interface MovieListItemProps {
@@ -265,6 +266,13 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
       if (listRef.current) {
         listRef.current.scrollTo(scrollTop);
       }
+    },
+    getScrollPercentage: () => {
+      const totalHeight = movies.length * 72;
+      const clientHeight = window.innerHeight - 180;
+      const scrollHeight = totalHeight - clientHeight;
+      if (scrollHeight <= 0) return 0;
+      return Math.min(100, (currentScrollTopRef.current / scrollHeight) * 100);
     },
   }));
 

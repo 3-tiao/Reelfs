@@ -13,6 +13,7 @@ export interface MovieGridRef {
   scrollToPercentage: (percentage: number) => void;
   getScrollPosition: () => number;
   scrollToPosition: (scrollTop: number) => void;
+  getScrollPercentage: () => number;
 }
 
 export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll, onLoadMore }, ref) {
@@ -65,6 +66,13 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
       if (gridRef.current) {
         gridRef.current.scrollTo({ scrollLeft: 0, scrollTop });
       }
+    },
+    getScrollPercentage: () => {
+      const totalHeight = rowCount * (cardHeight + gap);
+      const clientHeight = dimensions.height;
+      const scrollHeight = totalHeight - clientHeight;
+      if (scrollHeight <= 0) return 0;
+      return Math.min(100, (currentScrollTopRef.current / scrollHeight) * 100);
     },
   }));
 
