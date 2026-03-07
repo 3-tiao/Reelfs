@@ -3,17 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Star, Eye, EyeOff } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus } from "../services/tauri";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
-
-const formatDuration = (seconds: number): string => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  } else {
-    return `${minutes}m`;
-  }
-};
+import { formatBytes, formatDuration } from "../lib/utils";
 
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
@@ -424,7 +414,7 @@ export default function MovieDetail() {
                     <div className="flex items-center gap-3">
                       <span className="text-zinc-500 min-w-[60px]">Size:</span>
                       <span className="text-zinc-300 font-medium">
-                        {(movie.file_size / 1024 / 1024 / 1024).toFixed(2)} GB
+                        {formatBytes(movie.file_size)}
                       </span>
                     </div>
                   )}

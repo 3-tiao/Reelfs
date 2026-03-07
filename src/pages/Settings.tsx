@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle, CheckCircle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle, CheckCircle, Film } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useMovieStore } from "../stores/movieStore";
 import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase, stopScan, onScanComplete, ScanResult } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
 import ScanProgress from "../components/ScanProgress";
+import { formatBytes } from "../lib/utils";
 
 export default function Settings() {
   const navigate = useNavigate();
   const { config, loadConfig, saveConfig } = useSettingsStore();
+  const { reset: resetMovies, fetchMovies } = useMovieStore();
   const [nasPaths, setNasPaths] = useState<string[]>([]);
   const [cacheDir, setCacheDir] = useState<string>("");
   const [stats, setStats] = useState<Stats | null>(null);
@@ -30,6 +33,8 @@ export default function Settings() {
       setScanResult(result);
       setShowScanResult(true);
       loadStats();
+      resetMovies();
+      fetchMovies(0);
     });
 
     return () => {
@@ -187,14 +192,6 @@ export default function Settings() {
       console.error("重置数据失败:", error);
       alert("重置数据失败: " + error);
     }
-  };
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   return (
@@ -401,6 +398,16 @@ export default function Settings() {
                 <p className="text-gray-400 text-sm mb-1">Cache Size</p>
                 <p className="text-2xl font-bold">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
               </div>
+            </div>
+            
+            <div className="mt-6">
+              <button
+                onClick={() => navigate("/video-groups")}
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition-colors"
+              >
+                <Film className="w-5 h-5" />
+                视频组管理
+              </button>
             </div>
           </section>
 
