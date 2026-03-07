@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Eye, EyeOff } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus, logger } from "../services/tauri";
-import { readBinaryFile, exists } from "@tauri-apps/api/fs";
+import { exists } from "@tauri-apps/api/fs";
 import { formatBytes, formatDuration } from "../lib/utils";
+import { getCachedThumbnail } from "../lib/thumbnailCache";
 import DetailBackground from "../components/DetailBackground";
 import MetadataChips from "../components/MetadataChips";
 import CastList from "../components/CastList";
@@ -117,15 +118,8 @@ export default function MovieDetail() {
   };
 
   const loadImage = async (path: string, setter: (src: string | null) => void) => {
-    try {
-      const data = await readBinaryFile(path);
-      const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      setter(url);
-    } catch (error) {
-      logger.error("Failed to load image:", path, error);
-      setter(null);
-    }
+    const url = await getCachedThumbnail(path);
+    setter(url);
   };
 
   const handlePlay = async () => {
