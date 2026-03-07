@@ -297,42 +297,6 @@ impl<'a> VideoGroupManager<'a> {
         Ok(parts)
     }
 
-    fn get_movie(&self, id: i64) -> Result<Option<Movie>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
-                    thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
-             FROM movies WHERE id = ?1"
-        )?;
-        
-        let result = stmt.query_row(params![id], |row| {
-            Ok(Movie {
-                id: row.get(0)?,
-                file_path: row.get(1)?,
-                title: row.get(2)?,
-                year: row.get(3)?,
-                plot: row.get(4)?,
-                rating: row.get(5)?,
-                genres: row.get(6)?,
-                director: row.get(7)?,
-                actors: row.get(8)?,
-                thumbnail_path: row.get(9)?,
-                file_size: row.get(10)?,
-                duration_seconds: row.get(11)?,
-                width: row.get(12)?,
-                height: row.get(13)?,
-                added_at: row.get(14)?,
-                updated_at: row.get(15)?,
-                last_accessed: row.get(16)?,
-                last_checked_at: row.get(17)?,
-                scan_state: row.get(18)?,
-                is_watched: row.get(19)?,
-                group_id: row.get(20)?,
-            })
-        }).optional()?;
-        
-        Ok(result)
-    }
 
     pub fn get_all_video_groups(&self, offset: i32, limit: i32) -> Result<Vec<VideoGroup>> {
         debug!("[VideoGroup] 获取视频组列表: offset={}, limit={}", offset, limit);
@@ -387,29 +351,4 @@ impl<'a> VideoGroupManager<'a> {
         Ok(())
     }
 
-    pub fn remove_video_part(&self, group_id: i64, part_id: i64) -> Result<()> {
-        info!("[VideoGroup] 移除视频片段: group_id={}, part_id={}", group_id, part_id);
-        
-        let movie_id: i64 = self.conn.query_row(
-            "SELECT movie_id FROM video_parts WHERE id = ?1",
-            params![part_id],
-            |row| row.get(0),
-        )?;
-        
-        self.conn.execute(
-            "UPDATE movies SET group_id = NULL WHERE id = ?1",
-            params![movie_id],
-        )?;
-        
-        self.conn.execute(
-            "DELETE FROM video_parts WHERE id = ?1",
-            params![part_id],
-        )?;
-        
-        self.update_group_stats(group_id)?;
-        
-        info!("[VideoGroup] 视频片段移除成功");
-        
-        Ok(())
-    }
 }

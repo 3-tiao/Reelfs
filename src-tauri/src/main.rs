@@ -743,6 +743,19 @@ async fn auto_detect_video_groups(
     Ok(candidates)
 }
 
+#[tauri::command]
+async fn frontend_log(level: String, message: String) -> Result<(), String> {
+    match level.as_str() {
+        "error" => error!("[前端] {}", message),
+        "warn"  => warn!("[前端] {}", message),
+        "info"  => info!("[前端] {}", message),
+        "debug" => debug!("[前端] {}", message),
+        "trace" => log::trace!("[前端] {}", message),
+        _       => info!("[前端] {}", message),
+    }
+    Ok(())
+}
+
 use log4rs::{
     append::{
         console::{ConsoleAppender, Target},
@@ -878,6 +891,7 @@ fn main() {
             add_video_part,
             delete_video_group,
             auto_detect_video_groups,
+            frontend_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
