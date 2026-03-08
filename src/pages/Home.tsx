@@ -100,7 +100,7 @@ export default function Home() {
       <ScrollProgressVertical progress={scrollProgress} onSeek={handleSeek} />
       
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-zinc-950/70 border-b border-zinc-800/50 shadow-2xl transition-all duration-300">
-        <div className="px-6 py-4 max-w-[1600px] mx-auto">
+        <div className="px-4 py-4 w-full">
           <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
             <div className="flex items-center gap-2 w-full md:w-auto">
               <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-zinc-100 to-zinc-400 tracking-tight">Reelfs</h1>
