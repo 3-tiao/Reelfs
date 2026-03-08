@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle, CheckCircle, Film } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderOpen, Database, Settings as SettingsIcon, RefreshCw, AlertTriangle, CheckCircle } from "lucide-react";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useMovieStore } from "../stores/movieStore";
 import { startInitialScan, getStats, Stats, regenerateAllThumbnails, resetDatabase, stopScan, onScanComplete, ScanResult, logger } from "../services/tauri";
@@ -126,25 +126,7 @@ export default function Settings() {
     }
   };
 
-  const handleSave = async () => {
-    if (config) {
-      try {
-        await saveConfig({
-          ...config,
-          nas_paths: nasPaths,
-          cache_dir: cacheDir,
-          db_path: config?.db_path || "",
-          scan_on_startup: config?.scan_on_startup || false,
-          auto_generate_thumbnails: config?.auto_generate_thumbnails || false,
-          theme: config?.theme || "dark",
-          default_player: config?.default_player || "system",
-        });
-        toast.success("Settings saved successfully!");
-      } catch (error) {
-        toast.error("Failed to save settings: " + error);
-      }
-    }
-  };
+
 
   const handleScan = async () => {
     if (isScanning) {
@@ -406,7 +388,7 @@ export default function Settings() {
             </div>
           </section>
           
-          <div className="grid md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 gap-8">
             <section className="bg-zinc-900/40 backdrop-blur-md rounded-2xl p-8 border border-zinc-800/60 shadow-xl">
               <h2 className="text-xl font-semibold mb-6 flex items-center gap-3 text-zinc-100">
                 <div className="p-2 bg-purple-500/10 rounded-lg border border-purple-500/20">
@@ -414,7 +396,7 @@ export default function Settings() {
                 </div>
                 Database Stats
               </h2>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-center">
                   <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">Total Movies</p>
                   <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats?.total_movies || 0}</p>
@@ -423,7 +405,7 @@ export default function Settings() {
                   <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">Db Size</p>
                   <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats ? formatBytes(stats.db_size) : "0 B"}</p>
                 </div>
-                <div className="col-span-2 bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex justify-between items-center">
+                <div className="col-span-2 md:col-span-1 bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex justify-between items-center">
                   <div>
                     <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1">Cache Size</p>
                     <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
@@ -431,36 +413,6 @@ export default function Settings() {
                   <Database className="w-8 h-8 text-zinc-800" />
                 </div>
               </div>
-              
-              <div className="mt-8">
-                <button
-                  onClick={() => navigate("/video-groups")}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:border-purple-500/50 rounded-xl font-medium transition-all duration-300"
-                >
-                  <Film className="w-5 h-5" />
-                  Manage Video Groups
-                </button>
-              </div>
-            </section>
-
-            <section className="bg-zinc-900/40 backdrop-blur-md rounded-2xl p-8 border border-zinc-800/60 shadow-xl flex flex-col justify-between">
-              <div>
-                <h2 className="text-xl font-semibold mb-6 flex items-center gap-3 text-zinc-100">
-                  <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                    <CheckCircle className="w-5 h-5 text-amber-400" />
-                  </div>
-                  Save Changes
-                </h2>
-                <p className="text-zinc-400 mb-6 leading-relaxed text-sm">
-                  Make sure to save your preferences. Modifying scan directories will require a new scan to take effect.
-                </p>
-              </div>
-              <button
-                onClick={handleSave}
-                className="w-full px-6 py-4 bg-zinc-100 hover:bg-white text-zinc-900 rounded-xl font-semibold text-lg transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:scale-[1.02]"
-              >
-                Apply Preferences
-              </button>
             </section>
           </div>
         </div>
