@@ -289,53 +289,77 @@ async fn generate_thumbnail(
     movie_id: i64,
 ) -> Result<String, String> {
     info!("[缩略图生成] 开始生成缩略图: movie_id={}", movie_id);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let config = state.config.lock().map_err(|e| format!("Config lock error: {}", e))?;
-    
-    let movie = db.get_movie_by_id(movie_id)
-        .map_err(|e| {
-            error!("[缩略图生成] 获取电影信息失败: {}", e);
-            format!("Movie not found: {}", e)
-        })?;
-    
-    if let Some(thumbnail) = &movie.thumbnail_path {
-        if Path::new(thumbnail).exists() {
-            debug!("[缩略图生成] 使用缓存: {}", thumbnail);
-            return Ok(thumbnail.clone());
+
+    // --- Phase 1: Gather required data, then immediately release locks ---
+    let (file_path, existing_thumbnail, thumbnail_path) = {
+        let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+        let config = state.config.lock().map_err(|e| format!("Config lock error: {}", e))?;
+
+        let movie = db.get_movie_by_id(movie_id)
+            .map_err(|e| {
+                error!("[缩略图生成] 获取电影信息失败: {}", e);
+                format!("Movie not found: {}", e)
+            })?;
+
+        let thumb_path = thumbnail::get_thumbnail_path(&config.cache_dir, movie_id);
+        (movie.file_path, movie.thumbnail_path, thumb_path)
+        // db and config locks are released HERE
+    };
+
+    // Return early if cached thumbnail already exists on disk
+    if let Some(ref t) = existing_thumbnail {
+        if Path::new(t).exists() {
+            debug!("[缩略图生成] 使用缓存: {}", t);
+            return Ok(t.clone());
         }
     }
-    
-    let video_path = Path::new(&movie.file_path);
+    if Path::new(&thumbnail_path).exists() {
+        debug!("[缩略图生成] 缩略图文件已存在: {}", thumbnail_path);
+        return Ok(thumbnail_path);
+    }
+
+    // --- Phase 2: Find poster path (sync filesystem check, no lock held) ---
+    let video_path = Path::new(&file_path);
     let poster = indexer::get_poster_path(video_path);
-    
-    if let Some(poster) = poster {
-        let thumbnail_path = thumbnail::get_thumbnail_path(&config.cache_dir, movie_id);
-        
-        debug!("[缩略图生成] 源文件: {}", poster);
-        debug!("[缩略图生成] 目标文件: {}", thumbnail_path);
-        
-        thumbnail::generate_thumbnail(&poster, &thumbnail_path)
-            .map_err(|e| {
-                error!("[缩略图生成] 生成缩略图失败: {}", e);
-                format!("Failed to generate thumbnail: {}", e)
-            })?;
-        
+
+    let poster = match poster {
+        Some(p) => p,
+        None => {
+            warn!("[缩略图生成] 无海报可用，无法生成缩略图");
+            return Err("No poster available for thumbnail generation".to_string());
+        }
+    };
+
+    debug!("[缩略图生成] 源文件: {}", poster);
+    debug!("[缩略图生成] 目标文件: {}", thumbnail_path);
+
+    // --- Phase 3: Do image processing in a blocking thread (no lock held) ---
+    let poster_clone = poster.clone();
+    let output_clone = thumbnail_path.clone();
+    tokio::task::spawn_blocking(move || {
+        thumbnail::generate_thumbnail(&poster_clone, &output_clone)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking error: {}", e))?
+    .map_err(|e| {
+        error!("[缩略图生成] 图像处理失败: {}", e);
+        format!("Failed to generate thumbnail: {}", e)
+    })?;
+
+    // --- Phase 4: Update DB (brief lock re-acquisition) ---
+    {
+        let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
         db.update_thumbnail_path(movie_id, &thumbnail_path)
             .map_err(|e| {
                 error!("[缩略图生成] 更新缩略图路径失败: {}", e);
                 format!("Failed to update thumbnail path: {}", e)
             })?;
-        
-        info!("[缩略图生成] 缩略图生成成功: {}", thumbnail_path);
-        
-        return Ok(thumbnail_path);
     }
-    
-    warn!("[缩略图生成] 无海报可用，无法生成缩略图");
-    
-    Err("No poster available for thumbnail generation".to_string())
+
+    info!("[缩略图生成] 缩略图生成成功: {}", thumbnail_path);
+    Ok(thumbnail_path)
 }
+
 
 #[tauri::command]
 async fn regenerate_all_thumbnails(
@@ -749,6 +773,11 @@ async fn auto_detect_video_groups(
 }
 
 #[tauri::command]
+async fn check_file_exists(path: String) -> bool {
+    std::path::Path::new(&path).exists()
+}
+
+#[tauri::command]
 async fn frontend_log(level: String, message: String) -> Result<(), String> {
     match level.as_str() {
         "error" => error!("[前端] {}", message),
@@ -897,6 +926,7 @@ fn main() {
             delete_video_group,
             auto_detect_video_groups,
             frontend_log,
+            check_file_exists,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

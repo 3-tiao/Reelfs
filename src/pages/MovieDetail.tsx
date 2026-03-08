@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Eye, EyeOff } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus, logger } from "../services/tauri";
-import { exists } from "@tauri-apps/api/fs";
 import { formatBytes, formatDuration } from "../lib/utils";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { findPosterAndFanart } from "../lib/imageUtils";
 import DetailBackground from "../components/DetailBackground";
 import MetadataChips from "../components/MetadataChips";
 import CastList from "../components/CastList";
@@ -52,14 +52,15 @@ export default function MovieDetail() {
       setHistory(historyData);
       setIsLoading(false);
 
-      const posterPath = await getPosterPath(movieData.file_path);
-      if (posterPath) {
-        loadImage(posterPath, setPosterSrc);
-      }
-      const fanartPath = await getFanartPath(movieData.file_path);
-      if (fanartPath) {
-        loadImage(fanartPath, setFanartSrc);
-      }
+      // 并行查找 poster 和 fanart，与主数据渲染完全解耦
+      findPosterAndFanart(movieData.file_path).then(({ posterPath, fanartPath }) => {
+        if (posterPath) {
+          getCachedThumbnail(posterPath, true).then((url) => url && setPosterSrc(url));
+        }
+        if (fanartPath) {
+          getCachedThumbnail(fanartPath, true).then((url) => url && setFanartSrc(url));
+        }
+      });
 
       if (!movieData.duration_seconds && !movieData.width && !movieData.height) {
         logger.info("[MovieDetail] 视频信息不存在，异步获取中...");
@@ -87,39 +88,6 @@ export default function MovieDetail() {
       logger.error("Failed to load movie details:", error);
       setIsLoading(false);
     }
-  };
-
-  const getPosterPath = async (videoPath: string): Promise<string | null> => {
-    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
-    const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg', 'fanart.jpg', 'fanart.png'];
-    
-    for (const name of posterNames) {
-      const posterPath = `${dir}/${name}`;
-      if (await exists(posterPath)) {
-        return posterPath;
-      }
-    }
-    
-    return null;
-  };
-
-  const getFanartPath = async (videoPath: string): Promise<string | null> => {
-    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
-    const fanartNames = ['fanart.jpg', 'fanart.png', 'backdrop.jpg', 'background.jpg'];
-    
-    for (const name of fanartNames) {
-      const fanartPath = `${dir}/${name}`;
-      if (await exists(fanartPath)) {
-        return fanartPath;
-      }
-    }
-    
-    return null;
-  };
-
-  const loadImage = async (path: string, setter: (src: string | null) => void) => {
-    const url = await getCachedThumbnail(path);
-    setter(url);
   };
 
   const handlePlay = async () => {

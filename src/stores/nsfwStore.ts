@@ -9,11 +9,11 @@ interface NsfwStore {
 export const useNsfwStore = create<NsfwStore>()(
   persist(
     (set) => ({
-      showThumbnails: false,
+      showThumbnails: true,
       toggleShowThumbnails: () => set((state) => ({ showThumbnails: !state.showThumbnails })),
     }),
     {
-      name: "nsfw-storage",
+      name: "nsfw-storage-v2",
     }
   )
 );

@@ -8,6 +8,8 @@ import { logger } from "../services/tauri";
 const cache = new Map<string, string>();
 const inflight = new Map<string, Promise<string | null>>();
 
+// Concurrency limit for homepage bulk thumbnail loading (low-priority).
+// Detail-page images (poster/fanart) bypass this limit via priority flag.
 const MAX_CONCURRENT = 6;
 let activeCount = 0;
 const queue: Array<() => void> = [];
@@ -33,7 +35,31 @@ function releaseSlot() {
   }
 }
 
-export async function getCachedThumbnail(path: string): Promise<string | null> {
+async function readAsBlob(path: string): Promise<string | null> {
+  try {
+    const data = await readBinaryFile(path);
+    const blob = new Blob([data as BlobPart], { type: "image/jpeg" });
+    const url = URL.createObjectURL(blob);
+    cache.set(path, url);
+    return url;
+  } catch (error) {
+    logger.error("[ThumbnailCache] 加载失败:", path, String(error));
+    return null;
+  }
+}
+
+/**
+ * Get (or load) a cached Blob URL for the given file path.
+ *
+ * @param path - Absolute file path to read.
+ * @param highPriority - When true (e.g., detail-page poster/fanart), the read
+ *   bypasses the concurrency queue so it is never blocked by bulk homepage
+ *   thumbnail loads. Default is false (low-priority, queued).
+ */
+export async function getCachedThumbnail(
+  path: string,
+  highPriority = false
+): Promise<string | null> {
   // Return cached Blob URL if available
   const cached = cache.get(path);
   if (cached) {
@@ -46,22 +72,25 @@ export async function getCachedThumbnail(path: string): Promise<string | null> {
     return existing;
   }
 
-  const promise = (async () => {
-    await acquireSlot();
-    try {
-      const data = await readBinaryFile(path);
-      const blob = new Blob([data as BlobPart], { type: "image/jpeg" });
-      const url = URL.createObjectURL(blob);
-      cache.set(path, url);
-      return url;
-    } catch (error) {
-      logger.error("[ThumbnailCache] 加载失败:", path, String(error));
-      return null;
-    } finally {
-      releaseSlot();
+  let promise: Promise<string | null>;
+
+  if (highPriority) {
+    // High-priority: read immediately without waiting for the slot queue
+    promise = readAsBlob(path).finally(() => {
       inflight.delete(path);
-    }
-  })();
+    });
+  } else {
+    // Low-priority (bulk homepage thumbnails): go through the concurrency limiter
+    promise = (async () => {
+      await acquireSlot();
+      try {
+        return await readAsBlob(path);
+      } finally {
+        releaseSlot();
+        inflight.delete(path);
+      }
+    })();
+  }
 
   inflight.set(path, promise);
   return promise;

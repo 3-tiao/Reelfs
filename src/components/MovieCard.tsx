@@ -4,6 +4,7 @@ import { Movie } from "../services/tauri";
 import { Film, Eye, Layers } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
 
 interface MovieCardProps {
   movie: Movie;
@@ -45,10 +46,18 @@ export default function MovieCard({ movie }: MovieCardProps) {
 
   const loadThumbnail = async (checkMounted: () => boolean) => {
     if (movie.thumbnail_path) {
+      // Thumbnail file already exists — load from cache or read from disk
       const url = await getCachedThumbnail(movie.thumbnail_path);
       if (checkMounted() && url) {
         setImageSrc(url);
       }
+    } else {
+      // No thumbnail yet — enqueue background generation via Rust
+      enqueueThumbnailGen(movie.id, (url) => {
+        if (checkMounted()) {
+          setImageSrc(url);
+        }
+      });
     }
   };
 

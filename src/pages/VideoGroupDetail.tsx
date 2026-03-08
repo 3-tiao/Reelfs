@@ -3,8 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { getVideoGroupDetail, VideoGroupWithParts, playMovie, showInFileManager, logger } from "../services/tauri";
 import { Play, ArrowLeft, Film, FolderOpen } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
-import { readBinaryFile, exists } from "@tauri-apps/api/fs";
 import { formatBytes, formatDuration } from "../lib/utils";
+import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { findPosterAndFanart } from "../lib/imageUtils";
 import DetailBackground from "../components/DetailBackground";
 import MetadataChips from "../components/MetadataChips";
 import CastList from "../components/CastList";
@@ -43,50 +44,13 @@ export default function VideoGroupDetail() {
     }
   };
 
-  const getPosterPath = async (videoPath: string): Promise<string | null> => {
-    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
-    const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg', 'fanart.jpg', 'fanart.png'];
-    for (const name of posterNames) {
-      const posterPath = `${dir}/${name}`;
-      if (await exists(posterPath)) {
-        return posterPath;
-      }
-    }
-    return null;
-  };
-
-  const getFanartPath = async (videoPath: string): Promise<string | null> => {
-    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
-    const fanartNames = ['fanart.jpg', 'fanart.png', 'backdrop.jpg', 'background.jpg'];
-    for (const name of fanartNames) {
-      const fanartPath = `${dir}/${name}`;
-      if (await exists(fanartPath)) {
-        return fanartPath;
-      }
-    }
-    return null;
-  };
-
-  const loadImage = async (path: string, setter: (src: string | null) => void) => {
-    try {
-      const data = await readBinaryFile(path);
-      const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      setter(url);
-    } catch (error) {
-      logger.error("Failed to load image:", path, error);
-      setter(null);
-    }
-  };
-
   const loadImagesFromFirstPart = async (firstPartFilePath: string) => {
-    const posterPath = await getPosterPath(firstPartFilePath);
+    const { posterPath, fanartPath } = await findPosterAndFanart(firstPartFilePath);
     if (posterPath) {
-      loadImage(posterPath, setPosterSrc);
+      getCachedThumbnail(posterPath, true).then((url) => url && setPosterSrc(url));
     }
-    const fanartPath = await getFanartPath(firstPartFilePath);
     if (fanartPath) {
-      loadImage(fanartPath, setFanartSrc);
+      getCachedThumbnail(fanartPath, true).then((url) => url && setFanartSrc(url));
     }
   };
 

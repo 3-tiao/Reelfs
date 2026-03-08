@@ -26,9 +26,14 @@ export default function FilterSortBar({ onFilterChange }: FilterSortBarProps) {
   const filterMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchAvailableGenres();
-    fetchAvailableActors();
-  }, [fetchAvailableGenres, fetchAvailableActors]);
+    // 只在 store 中数据为空时才查询，避免每次路由切换都触发全表扫描
+    if (availableGenres.length === 0) {
+      fetchAvailableGenres();
+    }
+    if (availableActors.length === 0) {
+      fetchAvailableActors();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

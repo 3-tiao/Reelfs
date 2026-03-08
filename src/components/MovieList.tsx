@@ -1,11 +1,11 @@
 import { useRef, useCallback, forwardRef, useImperativeHandle, useState, useEffect, memo } from "react";
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
 import { useNavigate } from "react-router-dom";
-import { Movie , logger } from "../services/tauri";
-import { Film, Eye, Calendar, Star, Play, RefreshCw } from "lucide-react";
+import { Movie } from "../services/tauri";
+import { Film, Eye, Calendar, Star, Play } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
-import { generateThumbnail } from "../services/thumbnail";
-import { exists, readBinaryFile } from "@tauri-apps/api/fs";
+import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
 
 interface MovieListProps {
   movies: Movie[];
@@ -28,116 +28,33 @@ interface MovieListItemProps {
   navigate: (path: string) => void;
 }
 
-const imageCache = new Map<number, string>();
-
 const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
-  const [imageSrc, setImageSrc] = useState<string | null>(() => {
-    const cached = imageCache.get(movie.id);
-    return cached || null;
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const hasLoadedRef = useRef(false);
-
-  const getPosterPath = async (videoPath: string): Promise<string | null> => {
-    const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
-    const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg', 'fanart.jpg', 'fanart.png'];
-    
-    for (const name of posterNames) {
-      const posterPath = `${dir}/${name}`;
-      if (await exists(posterPath)) {
-        return posterPath;
-      }
-    }
-    
-    return null;
-  };
-
-  const loadLocalImage = async (path: string) => {
-    try {
-      logger.info('[MovieListItem] 开始加载图片:', path);
-      
-      const data = await readBinaryFile(path);
-      logger.info('[MovieListItem] 文件读取成功，大小:', data.length, 'bytes');
-      
-      const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      logger.info('[MovieListItem] Blob URL 创建成功:', url);
-      
-      imageCache.set(movie.id, url);
-      setImageSrc(url);
-      logger.info('[MovieListItem] 图片加载完成');
-    } catch (error) {
-      logger.error('[MovieListItem] 加载图片失败:', path, error);
-    }
-  };
-
-  const generateAndLoadThumbnail = async () => {
-    const posterPath = await getPosterPath(movie.file_path);
-    
-    if (!posterPath) {
-      logger.error('[MovieListItem] 没有海报路径，无法生成缩略图');
-      return;
-    }
-    
-    try {
-      setIsLoading(true);
-      logger.info('[MovieListItem] 开始生成缩略图:', { id: movie.id, title: movie.title });
-      
-      const thumbnailPath = `/Users/user/.reelfs/cache/thumbnails/${movie.id}.jpg`;
-      await generateThumbnail(posterPath, thumbnailPath, movie.id);
-      
-      await loadLocalImage(thumbnailPath);
-    } catch (error) {
-      logger.error('[MovieListItem] 生成缩略图失败:', error);
-      await loadLocalImage(posterPath);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadOrGenerateThumbnail = async () => {
-    if (hasLoadedRef.current || !showThumbnails) {
-      return;
-    }
-
-    hasLoadedRef.current = true;
-
-    const cachedImage = imageCache.get(movie.id);
-    if (cachedImage) {
-      logger.info('[MovieListItem] 使用缓存的图片:', movie.id);
-      setImageSrc(cachedImage);
-      return;
-    }
-
-    if (movie.thumbnail_path) {
-      await loadLocalImage(movie.thumbnail_path);
-      return;
-    }
-
-    await generateAndLoadThumbnail();
-  };
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!showThumbnails) {
       setImageSrc(null);
-      hasLoadedRef.current = false;
       return;
     }
 
-    const cachedImage = imageCache.get(movie.id);
-    if (cachedImage) {
-      logger.info('[MovieListItem] 使用缓存的图片:', movie.id);
-      setImageSrc(cachedImage);
-      hasLoadedRef.current = true;
-      return;
-    }
+    let isMounted = true;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          loadOrGenerateThumbnail();
           observer.disconnect();
+          if (movie.thumbnail_path) {
+            // Thumbnail already exists — load from global cache
+            getCachedThumbnail(movie.thumbnail_path).then((url) => {
+              if (isMounted && url) setImageSrc(url);
+            });
+          } else {
+            // No thumbnail — enqueue Rust generation
+            enqueueThumbnailGen(movie.id, (url) => {
+              if (isMounted) setImageSrc(url);
+            });
+          }
         }
       },
       { rootMargin: "100px" }
@@ -147,8 +64,11 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
       observer.observe(itemRef.current);
     }
 
-    return () => observer.disconnect();
-  }, [showThumbnails, movie.id]);
+    return () => {
+      isMounted = false;
+      observer.disconnect();
+    };
+  }, [movie.id, movie.thumbnail_path, showThumbnails]);
 
   return (
     <div
@@ -162,22 +82,12 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
       </div>
       
       <div className="flex-shrink-0 w-12 h-16 bg-zinc-800/80 backdrop-blur-sm rounded overflow-hidden">
-        {showThumbnails ? (
-          isLoading ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-teal-400 animate-spin" />
-            </div>
-          ) : imageSrc ? (
-            <img
-              src={imageSrc}
-              alt={movie.title}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <Film className="w-6 h-6 text-zinc-600" />
-            </div>
-          )
+        {showThumbnails && imageSrc ? (
+          <img
+            src={imageSrc}
+            alt={movie.title}
+            className="w-full h-full object-cover"
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Film className="w-6 h-6 text-zinc-600" />
