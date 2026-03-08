@@ -195,6 +195,34 @@ export default function Settings() {
         <h1 className="text-4xl font-bold mb-10 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-zinc-100 to-zinc-500">Preferences</h1>
 
         <div className="space-y-8">
+          <div className="grid grid-cols-1 gap-8 mb-8">
+            <section className="bg-zinc-900/40 backdrop-blur-md rounded-2xl p-8 border border-zinc-800/60 shadow-xl">
+              <h2 className="text-xl font-semibold mb-6 flex items-center gap-3 text-zinc-100">
+                <div className="p-2 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                  <Database className="w-5 h-5 text-purple-400" />
+                </div>
+                Database Stats
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-center">
+                  <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">Total Movies</p>
+                  <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats?.total_movies || 0}</p>
+                </div>
+                <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-center">
+                  <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">Db Size</p>
+                  <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats ? formatBytes(stats.db_size) : "0 B"}</p>
+                </div>
+                <div className="col-span-2 md:col-span-1 bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex justify-between items-center">
+                  <div>
+                    <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1">Cache Size</p>
+                    <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
+                  </div>
+                  <Database className="w-8 h-8 text-zinc-800" />
+                </div>
+              </div>
+            </section>
+          </div>
+
           <section className="bg-zinc-900/40 backdrop-blur-md rounded-2xl p-8 border border-zinc-800/60 shadow-xl">
             <h2 className="text-xl font-semibold mb-6 flex items-center gap-3 text-zinc-100">
               <div className="p-2 bg-teal-500/10 rounded-lg border border-teal-500/20">
@@ -387,34 +415,7 @@ export default function Settings() {
               </div>
             </div>
           </section>
-          
-          <div className="grid grid-cols-1 gap-8">
-            <section className="bg-zinc-900/40 backdrop-blur-md rounded-2xl p-8 border border-zinc-800/60 shadow-xl">
-              <h2 className="text-xl font-semibold mb-6 flex items-center gap-3 text-zinc-100">
-                <div className="p-2 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                  <Database className="w-5 h-5 text-purple-400" />
-                </div>
-                Database Stats
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-center">
-                  <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">Total Movies</p>
-                  <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats?.total_movies || 0}</p>
-                </div>
-                <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-center">
-                  <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">Db Size</p>
-                  <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats ? formatBytes(stats.db_size) : "0 B"}</p>
-                </div>
-                <div className="col-span-2 md:col-span-1 bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-5 flex justify-between items-center">
-                  <div>
-                    <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1">Cache Size</p>
-                    <p className="text-3xl font-light text-zinc-100 tracking-tight">{stats ? formatBytes(stats.cache_size) : "0 B"}</p>
-                  </div>
-                  <Database className="w-8 h-8 text-zinc-800" />
-                </div>
-              </div>
-            </section>
-          </div>
+
         </div>
       </main>
 
