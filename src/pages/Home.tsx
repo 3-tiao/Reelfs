@@ -100,7 +100,7 @@ export default function Home() {
       <ScrollProgressVertical progress={scrollProgress} onSeek={handleSeek} />
       
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-zinc-950/70 border-b border-zinc-800/50 shadow-2xl transition-all duration-300">
-        <div className="px-4 py-4 w-full">
+        <div className="px-8 py-4 w-full">
           <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
             <div className="flex items-center gap-2 w-full md:w-auto">
               <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-zinc-100 to-zinc-400 tracking-tight">Reelfs</h1>
@@ -113,7 +113,9 @@ export default function Home() {
               </div>
               <FilterSortBar onFilterChange={handleFilterChange} />
               
-              <div className="flex items-center gap-4 ml-4">
+              <div className="flex-1 hidden md:block"></div>
+
+              <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5 bg-zinc-900/60 p-1.5 rounded-xl border border-zinc-800/60 shadow-inner">
                   <button
                     onClick={() => setViewMode('grid')}
@@ -152,23 +154,21 @@ export default function Home() {
                 >
                   {showThumbnails ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
                 </button>
+
+                <button
+                  onClick={() => navigate("/settings")}
+                  className="p-2.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-all duration-300 border border-zinc-800/80 flex-shrink-0 shadow-sm hover:shadow-md hover:border-zinc-700"
+                  title="Settings"
+                >
+                  <SettingsIcon className="w-5 h-5" />
+                </button>
               </div>
-
-              <div className="flex-1 hidden md:block"></div>
-
-              <button
-                onClick={() => navigate("/settings")}
-                className="p-2.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-all duration-300 border border-zinc-800/80 flex-shrink-0 shadow-sm hover:shadow-md hover:border-zinc-700"
-                title="Settings"
-              >
-                <SettingsIcon className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </div>
       </header>
       
-      <main className="p-4">
+      <main className="px-8 py-4">
         {isUsingFilters && (
           <div className="mb-4 text-zinc-400 text-sm">
             筛选结果: {movies.length} 个电影
