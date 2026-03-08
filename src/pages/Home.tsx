@@ -102,12 +102,9 @@ export default function Home() {
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-zinc-950/70 border-b border-zinc-800/50 shadow-2xl transition-all duration-300">
         <div className="px-6 py-4 max-w-[1600px] mx-auto">
           <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
-                <span className="text-white font-bold text-xl">R</span>
-              </div>
+            <div className="flex items-center gap-2 w-full md:w-auto">
               <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-zinc-100 to-zinc-400 tracking-tight">Reelfs</h1>
-              <span className="text-zinc-500 text-sm font-medium ml-2 px-2.5 py-0.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 hidden sm:inline-block">NAS Movie Browser</span>
+              <span className="text-zinc-500 text-xs font-medium ml-1 flex-shrink-0 px-2 py-0.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 hidden lg:inline-block">NAS Movie Browser</span>
             </div>
             
             <div className="flex items-center gap-4 w-full md:w-auto flex-1">
@@ -116,9 +113,7 @@ export default function Home() {
               </div>
               <FilterSortBar onFilterChange={handleFilterChange} />
               
-              <div className="flex-1 hidden md:block"></div>
-
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 ml-4">
                 <div className="flex items-center gap-1.5 bg-zinc-900/60 p-1.5 rounded-xl border border-zinc-800/60 shadow-inner">
                   <button
                     onClick={() => setViewMode('grid')}
@@ -157,15 +152,17 @@ export default function Home() {
                 >
                   {showThumbnails ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
                 </button>
-
-                <button
-                  onClick={() => navigate("/settings")}
-                  className="p-2.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-all duration-300 border border-zinc-800/80 flex-shrink-0 shadow-sm hover:shadow-md hover:border-zinc-700"
-                  title="Settings"
-                >
-                  <SettingsIcon className="w-5 h-5" />
-                </button>
               </div>
+
+              <div className="flex-1 hidden md:block"></div>
+
+              <button
+                onClick={() => navigate("/settings")}
+                className="p-2.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-all duration-300 border border-zinc-800/80 flex-shrink-0 shadow-sm hover:shadow-md hover:border-zinc-700"
+                title="Settings"
+              >
+                <SettingsIcon className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
