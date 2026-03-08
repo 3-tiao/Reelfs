@@ -34,7 +34,7 @@ export default function Search() {
             Back
           </button>
           <div className="flex justify-center">
-            <SearchBar onSearch={handleSearch} placeholder="Search for movies..." />
+            <SearchBar onSearch={handleSearch} placeholder="Search for movies..." initialValue={useMovieStore.getState().searchQuery} />
           </div>
         </div>
       </header>

@@ -109,7 +109,7 @@ export default function Home() {
             
             <div className="flex items-center gap-4 w-full md:w-auto flex-1">
               <div className="w-full md:w-[320px]">
-                <SearchBar onSearch={handleSearch} />
+                <SearchBar onSearch={handleSearch} initialValue={useMovieStore.getState().searchQuery} />
               </div>
               <FilterSortBar onFilterChange={handleFilterChange} />
               

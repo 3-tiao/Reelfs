@@ -4,11 +4,12 @@ import { X } from "lucide-react";
 interface SearchBarProps {
   onSearch: (query: string) => void;
   placeholder?: string;
+  initialValue?: string;
 }
 
-export default function SearchBar({ onSearch, placeholder = "Search movies..." }: SearchBarProps) {
-  const [query, setQuery] = useState("");
-  const lastSearchRef = useRef("");
+export default function SearchBar({ onSearch, placeholder = "Search movies...", initialValue = "" }: SearchBarProps) {
+  const [query, setQuery] = useState(initialValue);
+  const lastSearchRef = useRef(initialValue);
 
   useEffect(() => {
     if (query === lastSearchRef.current) {

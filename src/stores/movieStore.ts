@@ -15,6 +15,7 @@ interface MovieStore {
   availableActors: string[];
   isUsingFilters: boolean;
   scrollPosition: number;
+  searchQuery: string;
 
   fetchMovies: (offset: number) => Promise<void>;
   loadMore: () => Promise<void>;
@@ -44,6 +45,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   availableActors: [],
   isUsingFilters: false,
   scrollPosition: 0,
+  searchQuery: "",
 
   fetchMovies: async (offset: number) => {
     set({ isLoading: true, error: null });
@@ -90,7 +92,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   },
 
   searchMovies: async (query: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, searchQuery: query });
     try {
       const movies = await searchMovies(query);
       set({ movies, isLoading: false });
@@ -108,7 +110,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   },
 
   reset: () => {
-    set({ movies: [], currentPage: 0, totalCount: 0, isLoading: false, error: null });
+    set({ movies: [], currentPage: 0, totalCount: 0, isLoading: false, error: null, searchQuery: "" });
   },
 
   setFilters: (filters: Filters) => {
@@ -133,7 +135,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   },
 
   clearFilters: () => {
-    set({ filters: {}, isUsingFilters: false });
+    set({ filters: {}, isUsingFilters: false, searchQuery: "" });
   },
 
   fetchAvailableGenres: async () => {
