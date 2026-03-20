@@ -17,8 +17,8 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
       setStatus(newStatus);
     });
 
-    const unlistenComplete = onScanComplete(() => {
-      logger.info('[ScanProgress] 收到扫描完成事件');
+    const unlistenComplete = onScanComplete((completion) => {
+      logger.info('[ScanProgress] 收到扫描完成事件:', completion);
       setStatus(null);
     });
 

@@ -70,6 +70,13 @@ pub struct ScanResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanCompletion {
+    pub status: String,
+    pub result: Option<ScanResult>,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stats {
     pub total_movies: i64,
     pub total_size: i64,
@@ -141,4 +148,11 @@ pub struct VideoGroupWithParts {
 pub struct VideoPartWithMovie {
     pub part: VideoPart,
     pub movie: Movie,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActorInfo {
+    pub name: String,
+    pub movie_count: i64,
+    pub representative_thumbnail: Option<String>,
 }

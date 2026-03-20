@@ -7,6 +7,80 @@ pub struct Database {
     conn: Connection,
 }
 
+fn map_movie_row(row: &rusqlite::Row<'_>) -> Result<Movie> {
+    Ok(Movie {
+        id: row.get(0)?,
+        file_path: row.get(1)?,
+        title: row.get(2)?,
+        year: row.get(3)?,
+        plot: row.get(4)?,
+        rating: row.get(5)?,
+        genres: row.get(6)?,
+        director: row.get(7)?,
+        actors: row.get(8)?,
+        thumbnail_path: row.get(9)?,
+        file_size: row.get(10)?,
+        duration_seconds: row.get(11)?,
+        width: row.get(12)?,
+        height: row.get(13)?,
+        added_at: row.get(14)?,
+        updated_at: row.get(15)?,
+        last_accessed: row.get(16)?,
+        last_checked_at: row.get(17)?,
+        scan_state: row.get(18)?,
+        is_watched: row.get(19)?,
+        group_id: row.get(20)?,
+    })
+}
+
+fn build_fts_query(query: &str) -> Option<String> {
+    let tokens: Vec<String> = query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(|token| format!("{}*", token))
+        .collect();
+
+    if tokens.is_empty() {
+        None
+    } else {
+        Some(tokens.join(" "))
+    }
+}
+
+fn normalize_search_query(query: &str) -> Option<String> {
+    let normalized = query.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn escape_like_pattern(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+fn resolve_sort_clause(sort_by: Option<&str>, sort_order: Option<&str>) -> (&'static str, &'static str) {
+    let sort_column = match sort_by.unwrap_or("added_at") {
+        "title" => "COALESCE(vg.title, m.title)",
+        "year" => "COALESCE(vg.year, m.year)",
+        "rating" => "COALESCE(vg.rating, m.rating)",
+        "duration_seconds" => "COALESCE(vg.total_duration, m.duration_seconds)",
+        "last_accessed" => "m.last_accessed",
+        _ => "m.added_at",
+    };
+
+    let sort_direction = match sort_order.unwrap_or("DESC").to_ascii_uppercase().as_str() {
+        "ASC" => "ASC",
+        _ => "DESC",
+    };
+
+    (sort_column, sort_direction)
+}
+
 impl Database {
     pub fn new(db_path: &str) -> Result<Self> {
         info!("[数据库] 初始化数据库: {}", db_path);
@@ -286,34 +360,39 @@ impl Database {
              WHERE m.group_id IS NULL OR m.id = (
                  SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
              )
-             ORDER BY m.added_at DESC LIMIT ?1 OFFSET ?2"
+             ORDER BY m.added_at DESC, m.id DESC LIMIT ?1 OFFSET ?2"
         )?;
 
-        let movies = stmt.query_map(params![limit, offset], |row| {
-            Ok(Movie {
-                id: row.get(0)?,
-                file_path: row.get(1)?,
-                title: row.get(2)?,
-                year: row.get(3)?,
-                plot: row.get(4)?,
-                rating: row.get(5)?,
-                genres: row.get(6)?,
-                director: row.get(7)?,
-                actors: row.get(8)?,
-                thumbnail_path: row.get(9)?,
-                file_size: row.get(10)?,
-                duration_seconds: row.get(11)?,
-                width: row.get(12)?,
-                height: row.get(13)?,
-                added_at: row.get(14)?,
-                updated_at: row.get(15)?,
-                last_accessed: row.get(16)?,
-                last_checked_at: row.get(17)?,
-                scan_state: row.get(18)?,
-                is_watched: row.get(19)?,
-                group_id: row.get(20)?,
-            })
-        })?;
+        let movies = stmt.query_map(params![limit, offset], map_movie_row)?;
+
+        movies.collect()
+    }
+
+    pub fn get_all_movies(&self) -> Result<Vec<Movie>> {
+        debug!("[数据库] 获取全部电影列表");
+
+        let mut stmt = self.conn.prepare(
+            "SELECT m.id, m.file_path,
+                    COALESCE(vg.title, m.title) as title,
+                    COALESCE(vg.year, m.year) as year,
+                    COALESCE(vg.plot, m.plot) as plot,
+                    COALESCE(vg.rating, m.rating) as rating,
+                    COALESCE(vg.genres, m.genres) as genres,
+                    COALESCE(vg.director, m.director) as director,
+                    COALESCE(vg.actors, m.actors) as actors,
+                    COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path,
+                    m.file_size,
+                    COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
+             FROM movies m
+             LEFT JOIN video_groups vg ON m.group_id = vg.id
+             WHERE m.group_id IS NULL OR m.id = (
+                 SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
+             )
+             ORDER BY m.added_at DESC, m.id DESC"
+        )?;
+
+        let movies = stmt.query_map([], map_movie_row)?;
 
         movies.collect()
     }
@@ -327,31 +406,7 @@ impl Database {
                     width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
              FROM movies WHERE id = ?1",
             params![id],
-            |row| {
-                Ok(Movie {
-                    id: row.get(0)?,
-                    file_path: row.get(1)?,
-                    title: row.get(2)?,
-                    year: row.get(3)?,
-                    plot: row.get(4)?,
-                    rating: row.get(5)?,
-                    genres: row.get(6)?,
-                    director: row.get(7)?,
-                    actors: row.get(8)?,
-                    thumbnail_path: row.get(9)?,
-                    file_size: row.get(10)?,
-                    duration_seconds: row.get(11)?,
-                    width: row.get(12)?,
-                    height: row.get(13)?,
-                    added_at: row.get(14)?,
-                    updated_at: row.get(15)?,
-                    last_accessed: row.get(16)?,
-                    last_checked_at: row.get(17)?,
-                    scan_state: row.get(18)?,
-                    is_watched: row.get(19)?,
-                    group_id: row.get(20)?,
-                })
-            }
+            map_movie_row,
         );
         
         match &movie {
@@ -371,31 +426,7 @@ impl Database {
                     width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
              FROM movies WHERE file_path = ?1",
             params![file_path],
-            |row| {
-                Ok(Movie {
-                    id: row.get(0)?,
-                    file_path: row.get(1)?,
-                    title: row.get(2)?,
-                    year: row.get(3)?,
-                    plot: row.get(4)?,
-                    rating: row.get(5)?,
-                    genres: row.get(6)?,
-                    director: row.get(7)?,
-                    actors: row.get(8)?,
-                    thumbnail_path: row.get(9)?,
-                    file_size: row.get(10)?,
-                    duration_seconds: row.get(11)?,
-                    width: row.get(12)?,
-                    height: row.get(13)?,
-                    added_at: row.get(14)?,
-                    updated_at: row.get(15)?,
-                    last_accessed: row.get(16)?,
-                    last_checked_at: row.get(17)?,
-                    scan_state: row.get(18)?,
-                    is_watched: row.get(19)?,
-                    group_id: row.get(20)?,
-                })
-            }
+            map_movie_row,
         );
         
         match movie {
@@ -414,12 +445,19 @@ impl Database {
         }
     }
 
-    pub fn search_movies(&self, query: &str) -> Result<Vec<Movie>> {
-        debug!("[数据库] 搜索: query={}", query);
+    pub fn search_movies(&self, query: &str, offset: i32, limit: i32) -> Result<Vec<Movie>> {
+        debug!("[数据库] 搜索: query={}, offset={}, limit={}", query, offset, limit);
         
         let start_time = std::time::Instant::now();
-        
-        let pattern = format!("%{}%", query);
+
+        let Some(fts_query) = build_fts_query(query) else {
+            debug!("[数据库] 搜索关键字为空，直接返回空结果");
+            return Ok(Vec::new());
+        };
+
+        let normalized_query = normalize_search_query(query).unwrap_or_default();
+        let title_prefix_pattern = format!("{}%", escape_like_pattern(&normalized_query));
+        let contains_pattern = format!("%{}%", escape_like_pattern(&normalized_query));
         
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.file_path, 
@@ -434,40 +472,32 @@ impl Database {
                     m.file_size, 
                     COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
                     m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
-             FROM movies m
+             FROM movie_fts
+             JOIN movies m ON m.id = movie_fts.rowid
              LEFT JOIN video_groups vg ON m.group_id = vg.id
-             WHERE (m.title LIKE ?1 OR m.file_path LIKE ?1 OR m.actors LIKE ?1 OR m.director LIKE ?1)
+             WHERE movie_fts MATCH ?1
                AND (m.group_id IS NULL OR m.id = (
-                   SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
-               ))
-             ORDER BY m.added_at DESC"
+                     SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
+                 ))
+             ORDER BY
+                CASE
+                    WHEN lower(COALESCE(vg.title, m.title)) = ?2 THEN 0
+                    WHEN lower(COALESCE(vg.title, m.title)) LIKE ?3 ESCAPE '\\' THEN 1
+                    WHEN lower(COALESCE(vg.title, m.title)) LIKE ?4 ESCAPE '\\' THEN 2
+                    WHEN lower(COALESCE(vg.actors, m.actors, '')) LIKE ?4 ESCAPE '\\' THEN 3
+                    WHEN lower(COALESCE(vg.director, m.director, '')) LIKE ?4 ESCAPE '\\' THEN 4
+                    ELSE 5
+                END,
+                bm25(movie_fts, 8.0, 1.0, 3.0, 2.0),
+                m.added_at DESC,
+                m.id DESC
+             LIMIT ?5 OFFSET ?6"
         )?;
 
-        let movies = stmt.query_map(params![pattern], |row| {
-            Ok(Movie {
-                id: row.get(0)?,
-                file_path: row.get(1)?,
-                title: row.get(2)?,
-                year: row.get(3)?,
-                plot: row.get(4)?,
-                rating: row.get(5)?,
-                genres: row.get(6)?,
-                director: row.get(7)?,
-                actors: row.get(8)?,
-                thumbnail_path: row.get(9)?,
-                file_size: row.get(10)?,
-                duration_seconds: row.get(11)?,
-                width: row.get(12)?,
-                height: row.get(13)?,
-                added_at: row.get(14)?,
-                updated_at: row.get(15)?,
-                last_accessed: row.get(16)?,
-                last_checked_at: row.get(17)?,
-                scan_state: row.get(18)?,
-                is_watched: row.get(19)?,
-                group_id: row.get(20)?,
-            })
-        })?;
+        let movies = stmt.query_map(
+            params![fts_query, normalized_query, title_prefix_pattern, contains_pattern, limit, offset],
+            map_movie_row,
+        )?;
 
         let result: Result<Vec<Movie>, rusqlite::Error> = movies.collect();
         
@@ -488,6 +518,17 @@ impl Database {
         
         info!("[数据库] 缩略图路径更新成功: movie_id={}", movie_id);
         
+        Ok(())
+    }
+
+    pub fn clear_all_thumbnail_paths(&self) -> Result<()> {
+        info!("[数据库] 清空所有缩略图路径");
+
+        self.conn.execute(
+            "UPDATE movies SET thumbnail_path = NULL, updated_at = CURRENT_TIMESTAMP",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -682,6 +723,7 @@ impl Database {
         &self,
         offset: i32,
         limit: i32,
+        search_query: Option<String>,
         min_year: Option<i32>,
         max_year: Option<i32>,
         min_rating: Option<f64>,
@@ -692,43 +734,97 @@ impl Database {
         sort_order: Option<String>,
         is_watched: Option<bool>,
     ) -> Result<Vec<Movie>> {
-        debug!("[数据库] 获取筛选电影列表: offset={}, limit={}, filters={:?}, sort={:?} {:?}",
-               offset, limit, (min_year, max_year, min_rating, max_rating, &actors, &genres, is_watched), sort_by, sort_order);
+        debug!("[数据库] 获取筛选电影列表: offset={}, limit={}, query={:?}, filters={:?}, sort={:?} {:?}",
+               offset, limit, &search_query, (min_year, max_year, min_rating, max_rating, &actors, &genres, is_watched), sort_by, sort_order);
 
         let mut where_clauses = Vec::new();
+        let mut joins = vec!["LEFT JOIN video_groups vg ON m.group_id = vg.id".to_string()];
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut order_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut order_clause = String::new();
+
+        let normalized_search_query = search_query
+            .as_deref()
+            .and_then(normalize_search_query);
+
+        if let Some(query) = normalized_search_query.as_deref() {
+            if let Some(fts_query) = build_fts_query(query) {
+                joins.insert(0, "JOIN movie_fts ON movie_fts.rowid = m.id".to_string());
+                where_clauses.push("movie_fts MATCH ?".to_string());
+                params.push(Box::new(fts_query));
+
+                let exact_match = query.to_string();
+                let title_prefix_pattern = format!("{}%", escape_like_pattern(query));
+                let contains_pattern = format!("%{}%", escape_like_pattern(query));
+                let relevance_clause = "CASE
+                    WHEN lower(COALESCE(vg.title, m.title)) = ? THEN 0
+                    WHEN lower(COALESCE(vg.title, m.title)) LIKE ? ESCAPE '\\' THEN 1
+                    WHEN lower(COALESCE(vg.title, m.title)) LIKE ? ESCAPE '\\' THEN 2
+                    WHEN lower(COALESCE(vg.actors, m.actors, '')) LIKE ? ESCAPE '\\' THEN 3
+                    WHEN lower(COALESCE(vg.director, m.director, '')) LIKE ? ESCAPE '\\' THEN 4
+                    ELSE 5
+                END";
+                let bm25_clause = "bm25(movie_fts, 8.0, 1.0, 3.0, 2.0)";
+                let (sorted_col, sort_dir) = resolve_sort_clause(sort_by.as_deref(), sort_order.as_deref());
+                let prefers_relevance = sort_by.as_deref().map(|value| value == "added_at").unwrap_or(true);
+
+                if prefers_relevance {
+                    order_clause = format!(
+                        "{}, {}, {} {}, m.id DESC",
+                        relevance_clause,
+                        bm25_clause,
+                        sorted_col,
+                        sort_dir
+                    );
+                } else {
+                    order_clause = format!(
+                        "{} {}, {}, {}, m.id DESC",
+                        sorted_col,
+                        sort_dir,
+                        relevance_clause,
+                        bm25_clause
+                    );
+                }
+
+                order_params.push(Box::new(exact_match));
+                order_params.push(Box::new(title_prefix_pattern.clone()));
+                order_params.push(Box::new(contains_pattern.clone()));
+                order_params.push(Box::new(contains_pattern.clone()));
+                order_params.push(Box::new(contains_pattern));
+            }
+        }
 
         if let Some(min_y) = min_year {
-            where_clauses.push("m.year >= ?".to_string());
+            where_clauses.push("COALESCE(vg.year, m.year) >= ?".to_string());
             params.push(Box::new(min_y));
         }
 
         if let Some(max_y) = max_year {
-            where_clauses.push("m.year <= ?".to_string());
+            where_clauses.push("COALESCE(vg.year, m.year) <= ?".to_string());
             params.push(Box::new(max_y));
         }
 
         if let Some(min_r) = min_rating {
-            where_clauses.push("m.rating >= ?".to_string());
+            where_clauses.push("COALESCE(vg.rating, m.rating) >= ?".to_string());
             params.push(Box::new(min_r));
         }
 
         if let Some(max_r) = max_rating {
-            where_clauses.push("m.rating <= ?".to_string());
+            where_clauses.push("COALESCE(vg.rating, m.rating) <= ?".to_string());
             params.push(Box::new(max_r));
         }
 
         if let Some(ref actors_str) = actors {
             if !actors_str.is_empty() {
-                where_clauses.push("m.actors LIKE ?".to_string());
-                params.push(Box::new(format!("%{}%", actors_str)));
+                where_clauses.push("COALESCE(vg.actors, m.actors, '') LIKE ? ESCAPE '\\'".to_string());
+                params.push(Box::new(format!("%{}%", escape_like_pattern(actors_str))));
             }
         }
 
         if let Some(ref genres_str) = genres {
             if !genres_str.is_empty() {
-                where_clauses.push("m.genres LIKE ?".to_string());
-                params.push(Box::new(format!("%{}%", genres_str)));
+                where_clauses.push("COALESCE(vg.genres, m.genres, '') LIKE ? ESCAPE '\\'".to_string());
+                params.push(Box::new(format!("%{}%", escape_like_pattern(genres_str))));
             }
         }
 
@@ -747,13 +843,12 @@ impl Database {
              ))", where_clauses.join(" AND "))
         };
 
-        let sort_column = sort_by.unwrap_or_else(|| "added_at".to_string());
-        // Map sort column to alias/table prefix
-        let sorted_col = match sort_column.as_str() {
-            "title" | "year" | "rating" | "duration_seconds" => format!("COALESCE(vg.{}, m.{})", sort_column, sort_column),
-            _ => format!("m.{}", sort_column),
-        };
-        let sort_dir = sort_order.unwrap_or_else(|| "DESC".to_string());
+        let (sorted_col, sort_dir) = resolve_sort_clause(sort_by.as_deref(), sort_order.as_deref());
+        if order_clause.is_empty() {
+            order_clause = format!("{} {}, m.id DESC", sorted_col, sort_dir);
+        }
+
+        let join_clause = joins.join("\n             ");
 
         let query = format!(
             "SELECT m.id, m.file_path, 
@@ -766,16 +861,17 @@ impl Database {
                     COALESCE(vg.actors, m.actors) as actors, 
                     COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path, 
                     m.file_size, 
-                    COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
-                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
-             FROM movies m
-             LEFT JOIN video_groups vg ON m.group_id = vg.id
+                     COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
+                     m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
+              FROM movies m
              {}
-             ORDER BY {} {}
-             LIMIT ? OFFSET ?",
-            where_clause, sorted_col, sort_dir
+              {}
+             ORDER BY {}
+              LIMIT ? OFFSET ?",
+             join_clause, where_clause, order_clause
         );
 
+        params.extend(order_params);
         params.push(Box::new(limit));
         params.push(Box::new(offset));
 
@@ -783,31 +879,7 @@ impl Database {
 
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
-        let movies = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok(Movie {
-                id: row.get(0)?,
-                file_path: row.get(1)?,
-                title: row.get(2)?,
-                year: row.get(3)?,
-                plot: row.get(4)?,
-                rating: row.get(5)?,
-                genres: row.get(6)?,
-                director: row.get(7)?,
-                actors: row.get(8)?,
-                thumbnail_path: row.get(9)?,
-                file_size: row.get(10)?,
-                duration_seconds: row.get(11)?,
-                width: row.get(12)?,
-                height: row.get(13)?,
-                added_at: row.get(14)?,
-                updated_at: row.get(15)?,
-                last_accessed: row.get(16)?,
-                last_checked_at: row.get(17)?,
-                scan_state: row.get(18)?,
-                is_watched: row.get(19)?,
-                group_id: row.get(20)?,
-            })
-        })?;
+        let movies = stmt.query_map(param_refs.as_slice(), map_movie_row)?;
 
         let result: Result<Vec<Movie>, rusqlite::Error> = movies.collect();
         
@@ -877,6 +949,60 @@ impl Database {
         debug!("[数据库] 获取演员成功: {} 个演员", all_actors.len());
 
         Ok(all_actors)
+    }
+
+    pub fn get_actors_with_counts(&self) -> Result<Vec<crate::models::ActorInfo>> {
+        debug!("[数据库] 获取演员及作品数量");
+
+        let mut stmt = self.conn.prepare(
+            "SELECT actors, thumbnail_path, rating FROM movies WHERE actors IS NOT NULL AND actors != '' ORDER BY rating DESC NULLS LAST, added_at DESC"
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let actors_str: String = row.get(0)?;
+            let thumbnail: Option<String> = row.get(1)?;
+            Ok((actors_str, thumbnail))
+        })?;
+
+        use std::collections::HashMap;
+        let mut actor_map: HashMap<String, (i64, Option<String>)> = HashMap::new();
+
+        for row_result in rows {
+            if let Ok((actors_str, thumbnail)) = row_result {
+                for actor in actors_str.split(',') {
+                    let actor = actor.trim().to_string();
+                    if actor.is_empty() {
+                        continue;
+                    }
+                    let entry = actor_map.entry(actor).or_insert((0, None));
+                    entry.0 += 1;
+                    // Keep the first (highest-rated) thumbnail as representative
+                    if entry.1.is_none() {
+                        entry.1 = thumbnail.clone();
+                    }
+                }
+            }
+        }
+
+        let mut actors: Vec<crate::models::ActorInfo> = actor_map
+            .into_iter()
+            .map(|(name, (movie_count, representative_thumbnail))| {
+                crate::models::ActorInfo {
+                    name,
+                    movie_count,
+                    representative_thumbnail,
+                }
+            })
+            .collect();
+
+        // Sort by movie count descending, then name ascending
+        actors.sort_by(|a, b| {
+            b.movie_count.cmp(&a.movie_count).then(a.name.cmp(&b.name))
+        });
+
+        debug!("[数据库] 获取演员成功: {} 个演员", actors.len());
+
+        Ok(actors)
     }
 
     pub fn clear_all_movies(&self) -> Result<()> {

@@ -108,7 +108,7 @@ export default function VideoGroupDetail() {
       {/* Content */}
       <div className="relative z-10">
         <button
-          onClick={() => navigate("/")}
+          onClick={() => navigate(-1)}
           className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-zinc-700/50 shadow-lg z-50"
         >
           <ArrowLeft className="w-5 h-5" />

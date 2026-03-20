@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, Eye, Layers } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
+import { useMovieStore } from "../stores/movieStore";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
 import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
+import { getSearchSecondaryText } from "../lib/search";
+import HighlightedText from "./HighlightedText";
 
 interface MovieCardProps {
   movie: Movie;
@@ -13,8 +16,10 @@ interface MovieCardProps {
 export default function MovieCard({ movie }: MovieCardProps) {
   const navigate = useNavigate();
   const { showThumbnails } = useNsfwStore();
+  const searchQuery = useMovieStore((state) => state.searchQuery);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const searchSecondaryText = searchQuery ? getSearchSecondaryText(movie, searchQuery) : null;
 
   useEffect(() => {
     if (!showThumbnails) {
@@ -48,9 +53,22 @@ export default function MovieCard({ movie }: MovieCardProps) {
     if (movie.thumbnail_path) {
       // Thumbnail file already exists — load from cache or read from disk
       const url = await getCachedThumbnail(movie.thumbnail_path);
-      if (checkMounted() && url) {
-        setImageSrc(url);
+      if (url) {
+        if (checkMounted()) {
+          setImageSrc(url);
+        }
+        return;
       }
+
+      if (!checkMounted()) {
+        return;
+      }
+
+      enqueueThumbnailGen(movie.id, (generatedUrl) => {
+        if (checkMounted()) {
+          setImageSrc(generatedUrl);
+        }
+      });
     } else {
       // No thumbnail yet — enqueue background generation via Rust
       enqueueThumbnailGen(movie.id, (url) => {
@@ -89,7 +107,13 @@ export default function MovieCard({ movie }: MovieCardProps) {
               </div>
             )}
             {movie.plot && (
-              <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3 mb-2">{movie.plot}</p>
+              <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3 mb-2">
+                <HighlightedText
+                  text={movie.plot}
+                  query={searchQuery}
+                  highlightClassName="bg-teal-500/25 text-teal-100 rounded px-0.5"
+                />
+              </p>
             )}
             <div className="flex items-center gap-2 mt-2 text-white font-medium text-sm">
               <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center">
@@ -120,8 +144,18 @@ export default function MovieCard({ movie }: MovieCardProps) {
       </div>
       
       <div className="mt-2 px-1">
-        <h3 className="text-zinc-100 font-medium text-sm truncate">{movie.title}</h3>
-        {movie.year && (
+        <h3 className="text-zinc-100 font-medium text-sm truncate">
+          <HighlightedText text={movie.title} query={searchQuery} />
+        </h3>
+        {searchSecondaryText ? (
+          <p className="text-teal-200/80 text-xs truncate mt-0.5">
+            <HighlightedText
+              text={searchSecondaryText}
+              query={searchQuery}
+              highlightClassName="bg-teal-500/20 text-teal-100 rounded px-0.5"
+            />
+          </p>
+        ) : movie.year && (
           <p className="text-zinc-400 text-xs">{movie.year}</p>
         )}
       </div>

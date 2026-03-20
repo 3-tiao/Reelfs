@@ -12,14 +12,24 @@ export default function SearchBar({ onSearch, placeholder = "Search movies...", 
   const lastSearchRef = useRef(initialValue);
 
   useEffect(() => {
+    setQuery(initialValue);
+    lastSearchRef.current = initialValue;
+  }, [initialValue]);
+
+  const commitSearch = (value: string) => {
+    lastSearchRef.current = value;
+    onSearch(value);
+  };
+
+  useEffect(() => {
     if (query === lastSearchRef.current) {
       return;
     }
-
-    lastSearchRef.current = query;
     
     const timer = setTimeout(() => {
-      onSearch(query);
+      if (query !== lastSearchRef.current) {
+        commitSearch(query);
+      }
     }, 300);
 
     return () => clearTimeout(timer);
@@ -27,6 +37,7 @@ export default function SearchBar({ onSearch, placeholder = "Search movies...", 
 
   const handleClear = () => {
     setQuery("");
+    commitSearch("");
   };
 
   return (
@@ -38,6 +49,13 @@ export default function SearchBar({ onSearch, placeholder = "Search movies...", 
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            commitSearch(query);
+          } else if (e.key === "Escape" && query) {
+            handleClear();
+          }
+        }}
         placeholder={placeholder}
         className="w-full h-full bg-zinc-900/60 text-white pl-11 pr-10 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/50 border border-zinc-800/60 hover:border-zinc-700/80 transition-all duration-300 placeholder:text-zinc-500 shadow-inner"
       />

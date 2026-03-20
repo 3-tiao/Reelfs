@@ -3,7 +3,7 @@ use tauri::Window;
 use log::{info, debug, warn, error};
 use rayon::prelude::*;
 use crate::database::Database;
-use crate::models::{AppConfig, ScanStatus, ImportStage, ScanResult};
+use crate::models::{AppConfig, ScanCompletion, ScanStatus, ImportStage, ScanResult};
 use crate::indexer;
 use crate::thumbnail;
 use crate::video_group_detector::detect_video_groups;
@@ -79,7 +79,7 @@ impl ImportManager {
             
             if let Err(e) = manager.run_import_process(&cache_dir) {
                 error!("[导入管理器] 导入过程失败: {}", e);
-                manager.set_error_state();
+                manager.set_error_state(&e);
             }
         });
 
@@ -94,9 +94,14 @@ impl ImportManager {
         // 如果是完全重新校验模式，先清空数据库
         let deleted_count = if self.scan_mode == "full" {
             info!("[导入管理器] 完全重新校验模式，清空数据库");
-            let db = self.db.lock().unwrap();
-            let count = db.get_total_count().unwrap_or(0);
-            db.clear_all_movies().map_err(|e| format!("清空数据库失败: {}", e))?;
+            let count = {
+                let db = self.db.lock().unwrap();
+                let count = db.get_total_count().unwrap_or(0);
+                db.clear_all_movies().map_err(|e| format!("清空数据库失败: {}", e))?;
+                count
+            };
+            thumbnail::clear_cache(&self.config.cache_dir)
+                .map_err(|e| format!("清理缩略图缓存失败: {}", e))?;
             info!("[导入管理器] 已删除 {} 条旧记录", count);
             count as usize
         } else if self.delete_invalid {
@@ -107,91 +112,17 @@ impl ImportManager {
 
         let new_file_ids = self.scan_directories()?;
 
+        if self.stop_requested() {
+            let result = self.build_scan_result(new_file_ids.len(), deleted_count);
+            self.set_cancelled_state(&result, "扫描已停止");
+            return Ok(result);
+        }
+
         if !new_file_ids.is_empty() {
             self.set_stage(ImportStage::Importing, "导入文件信息中...");
             self.import_files()?;
 
-            let db = Arc::clone(&self.db);
-            let scan_status = Arc::clone(&self.scan_status);
-            let window = self.window.clone();
-            let cache_dir = cache_dir.to_string();
-            let scan_mode = self.scan_mode.clone();
-            let new_file_ids_clone = new_file_ids.clone();
-            
-            std::thread::spawn(move || {
-                info!("[后台任务] 开始生成缩略图");
-                
-                let movies_without_thumbnails: Vec<(i64, String, String)> = {
-                    let db = db.lock().unwrap();
-                    
-                    if scan_mode == "incremental" && !new_file_ids_clone.is_empty() {
-                        info!("[后台任务] 增量扫描模式，只为新文件生成缩略图");
-                        new_file_ids_clone.iter()
-                            .filter_map(|&id| {
-                                if let Ok(movie) = db.get_movie_by_id(id) {
-                                    if movie.thumbnail_path.is_none() {
-                                        Some((movie.id, movie.title, movie.file_path))
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect()
-                    } else if scan_mode == "full" {
-                        info!("[后台任务] 完全重新校验模式，为所有文件生成缩略图");
-                        let all_movies = db.get_movies(0, 1000);
-                        drop(db);
-
-                        all_movies.unwrap_or_default()
-                            .into_iter()
-                            .filter(|m| m.thumbnail_path.is_none())
-                            .map(|m| (m.id, m.title, m.file_path))
-                            .collect()
-                    } else {
-                        info!("[后台任务] 增量扫描模式，没有新文件需要生成缩略图");
-                        Vec::new()
-                    }
-                };
-
-                let total_thumbnails = movies_without_thumbnails.len();
-                let mut thumbnail_count = 0;
-
-                for (movie_id, title, file_path) in &movies_without_thumbnails {
-                    let video_path = std::path::Path::new(file_path);
-                    let poster = crate::indexer::get_poster_path(video_path);
-                    
-                    if let Some(poster) = poster {
-                        let thumbnail_path = thumbnail::get_thumbnail_path(&cache_dir, *movie_id);
-
-                        debug!("[后台任务] 处理缩略图: id={}, title={}", movie_id, title);
-
-                        match thumbnail::generate_thumbnail(&poster, &thumbnail_path) {
-                            Ok(_) => {
-                                let db = db.lock().unwrap();
-                                let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
-                                thumbnail_count += 1;
-                                debug!("[后台任务] 缩略图成功: id={}", movie_id);
-
-                                {
-                                    let mut status = scan_status.lock().unwrap();
-                                    status.stage = ImportStage::GeneratingThumbnails;
-                                    status.stage_message = format!("生成缩略图中... ({}/{})", thumbnail_count, total_thumbnails);
-                                    status.current_file = Some(format!("生成缩略图: {}", title));
-                                }
-
-                                let _ = window.emit("scan-progress", scan_status.lock().unwrap().clone());
-                            }
-                            Err(e) => {
-                                error!("[后台任务] 缩略图失败: id={}, error={}", movie_id, e);
-                            }
-                        }
-                    }
-                }
-
-                info!("[后台任务] 缩略图生成完成: {}/{} 个", thumbnail_count, total_thumbnails);
-            });
+            self.generate_thumbnails(cache_dir, &new_file_ids)?;
         } else {
             info!("[导入管理器] 没有新文件需要导入");
             if self.scan_mode == "incremental" {
@@ -200,19 +131,16 @@ impl ImportManager {
             }
         }
 
-        let total_movies = {
-            let db = self.db.lock().unwrap();
-            db.get_total_count().unwrap_or(0)
-        };
+        if self.stop_requested() {
+            let result = self.build_scan_result(new_file_ids.len(), deleted_count);
+            self.set_cancelled_state(&result, "扫描已停止");
+            return Ok(result);
+        }
 
         info!("[导入管理器] 开始自动检测视频组");
         self.auto_detect_and_create_video_groups()?;
 
-        let result = ScanResult {
-            new_movies: new_file_ids.len() as i64,
-            deleted_movies: deleted_count as i64,
-            total_movies,
-        };
+        let result = self.build_scan_result(new_file_ids.len(), deleted_count);
 
         self.set_complete_state(&result);
 
@@ -220,6 +148,66 @@ impl ImportManager {
         info!("[导入管理器] 导入完成: {} 个文件，耗时: {}ms", new_file_ids.len(), elapsed.as_millis());
 
         Ok(result)
+    }
+
+    fn generate_thumbnails(&self, cache_dir: &str, movie_ids: &[i64]) -> Result<(), String> {
+        info!("[导入管理器] 开始生成缩略图");
+
+        let movies_without_thumbnails: Vec<(i64, String, String)> = {
+            let db = self.db.lock().unwrap();
+
+            movie_ids.iter()
+                .filter_map(|&id| db.get_movie_by_id(id).ok())
+                .filter(|movie| movie.thumbnail_path.is_none())
+                .map(|movie| (movie.id, movie.title, movie.file_path))
+                .collect()
+        };
+
+        let total_thumbnails = movies_without_thumbnails.len();
+        let mut thumbnail_count = 0;
+
+        for (movie_id, title, file_path) in &movies_without_thumbnails {
+            if self.stop_requested() {
+                info!("[导入管理器] 缩略图生成已停止");
+                break;
+            }
+
+            let video_path = std::path::Path::new(file_path);
+            let poster = crate::indexer::get_poster_path(video_path);
+
+            if let Some(poster) = poster {
+                let thumbnail_path = thumbnail::get_thumbnail_path(cache_dir, *movie_id);
+
+                debug!("[导入管理器] 处理缩略图: id={}, title={}", movie_id, title);
+
+                match thumbnail::generate_thumbnail(&poster, &thumbnail_path) {
+                    Ok(_) => {
+                        let db = self.db.lock().unwrap();
+                        let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
+                        thumbnail_count += 1;
+                        debug!("[导入管理器] 缩略图成功: id={}", movie_id);
+
+                        {
+                            let mut status = self.scan_status.lock().unwrap();
+                            status.stage = ImportStage::GeneratingThumbnails;
+                            status.stage_message = format!("生成缩略图中... ({}/{})", thumbnail_count, total_thumbnails);
+                            status.total_files = total_thumbnails;
+                            status.scanned_files = thumbnail_count;
+                            status.current_file = Some(format!("生成缩略图: {}", title));
+                        }
+
+                        let _ = self.window.emit("scan-progress", self.scan_status.lock().unwrap().clone());
+                    }
+                    Err(e) => {
+                        error!("[导入管理器] 缩略图失败: id={}, error={}", movie_id, e);
+                    }
+                }
+            }
+        }
+
+        info!("[导入管理器] 缩略图生成完成: {}/{} 个", thumbnail_count, total_thumbnails);
+
+        Ok(())
     }
 
     fn scan_directories(&self) -> Result<Vec<i64>, String> {
@@ -260,12 +248,6 @@ impl ImportManager {
                 let flag = self.stop_scan_flag.lock().unwrap();
                 if *flag {
                     info!("[导入管理器] 扫描已停止");
-                    let result = ScanResult {
-                        new_movies: new_file_ids.len() as i64,
-                        deleted_movies: 0,
-                        total_movies: 0,
-                    };
-                    self.set_complete_state(&result);
                     return Ok(new_file_ids);
                 }
             }
@@ -354,12 +336,6 @@ impl ImportManager {
             let flag = self.stop_scan_flag.lock().unwrap();
             if *flag {
                 info!("[导入管理器] 扫描已停止");
-                let result = ScanResult {
-                    new_movies: new_file_ids.len() as i64,
-                    deleted_movies: 0,
-                    total_movies: 0,
-                };
-                self.set_complete_state(&result);
                 return Ok(new_file_ids);
             }
         }
@@ -367,6 +343,11 @@ impl ImportManager {
         // 串行插入数据库和更新进度
         let mut batch = Vec::new();
         for (i, file_path_str, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height) in processed_files {
+            if self.stop_requested() {
+                info!("[导入管理器] 批量插入阶段已停止");
+                break;
+            }
+
             batch.push((
                 file_path_str.clone(),
                 title,
@@ -407,6 +388,21 @@ impl ImportManager {
             let _ = self.window.emit("scan-progress", self.scan_status.lock().unwrap().clone());
         }
 
+        if !batch.is_empty() {
+            let db = self.db.lock().unwrap();
+            if let Err(e) = db.batch_insert_movies(&batch) {
+                error!("[导入管理器] 批量插入失败: {}", e);
+            } else {
+                debug!("[导入管理器] 批量插入成功: {} 条记录", batch.len());
+
+                for (file_path, _, _, _, _, _, _, _, _, _, _, _) in &batch {
+                    if let Ok(Some(movie)) = db.get_movie_by_path(file_path) {
+                        new_file_ids.push(movie.id);
+                    }
+                }
+            }
+        }
+
         Ok(new_file_ids)
     }
 
@@ -434,7 +430,7 @@ impl ImportManager {
         
         let movies = {
             let db = self.db.lock().unwrap();
-            db.get_movies(0, 10000).map_err(|e| format!("获取电影列表失败: {}", e))?
+            db.get_all_movies().map_err(|e| format!("获取电影列表失败: {}", e))?
         };
         
         info!("[视频组检测] 共 {} 个电影需要检测", movies.len());
@@ -472,17 +468,51 @@ impl ImportManager {
         status.current_file = None;
     }
 
+    fn stop_requested(&self) -> bool {
+        *self.stop_scan_flag.lock().unwrap()
+    }
+
+    fn build_scan_result(&self, new_movies: usize, deleted_movies: usize) -> ScanResult {
+        let total_movies = {
+            let db = self.db.lock().unwrap();
+            db.get_total_count().unwrap_or(0)
+        };
+
+        ScanResult {
+            new_movies: new_movies as i64,
+            deleted_movies: deleted_movies as i64,
+            total_movies,
+        }
+    }
+
+    fn emit_completion(&self, status: &str, result: Option<ScanResult>, message: Option<String>) {
+        let payload = ScanCompletion {
+            status: status.to_string(),
+            result,
+            message,
+        };
+
+        let _ = self.window.emit("scan-complete", payload);
+    }
+
     fn set_complete_state(&self, result: &ScanResult) {
         let mut status = self.scan_status.lock().unwrap();
         status.is_scanning = false;
         status.current_file = None;
-        let _ = self.window.emit("scan-complete", result);
+        self.emit_completion("success", Some(result.clone()), None);
     }
 
-    fn set_error_state(&self) {
+    fn set_cancelled_state(&self, result: &ScanResult, message: &str) {
         let mut status = self.scan_status.lock().unwrap();
         status.is_scanning = false;
         status.current_file = None;
-        let _ = self.window.emit("scan-complete", ());
+        self.emit_completion("cancelled", Some(result.clone()), Some(message.to_string()));
+    }
+
+    fn set_error_state(&self, message: &str) {
+        let mut status = self.scan_status.lock().unwrap();
+        status.is_scanning = false;
+        status.current_file = None;
+        self.emit_completion("error", None, Some(message.to_string()));
     }
 }

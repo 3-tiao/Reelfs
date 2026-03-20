@@ -29,13 +29,26 @@ export default function Settings() {
   }, [loadConfig]);
 
   useEffect(() => {
-    const unlistenPromise = onScanComplete((result) => {
+    const unlistenPromise = onScanComplete((completion) => {
       setIsScanning(false);
-      setScanResult(result);
-      setShowScanResult(true);
       loadStats();
       resetMovies();
       fetchMovies(0);
+
+      if (completion.status === "success" && completion.result) {
+        setScanResult(completion.result);
+        setShowScanResult(true);
+        return;
+      }
+
+      setShowScanResult(false);
+      setScanResult(null);
+
+      if (completion.status === "error") {
+        toast.error(completion.message || "扫描失败");
+      } else if (completion.status === "cancelled") {
+        toast.info(completion.message || "扫描已停止");
+      }
     });
 
     return () => {
@@ -182,7 +195,7 @@ export default function Settings() {
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#09090b]/70 border-b border-zinc-800/50 shadow-2xl transition-all duration-300">
         <div className="px-8 py-5 max-w-[1200px] mx-auto">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate(-1)}
             className="group flex items-center gap-2 px-4 py-2 hover:bg-zinc-800/60 rounded-xl transition-all duration-300 border border-transparent hover:border-zinc-700/50"
           >
             <ArrowLeft className="w-5 h-5 text-zinc-400 group-hover:-translate-x-1 group-hover:text-teal-400 transition-all" />

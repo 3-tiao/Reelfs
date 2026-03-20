@@ -54,6 +54,12 @@ export interface ScanResult {
   total_movies: number;
 }
 
+export interface ScanCompletion {
+  status: "success" | "error" | "cancelled";
+  result?: ScanResult;
+  message?: string;
+}
+
 export interface Stats {
   total_movies: number;
   total_size: number;
@@ -94,8 +100,8 @@ export const getMovieDetail = async (id: number): Promise<[Movie, PlayHistory | 
   return await invoke("get_movie_detail", { id });
 };
 
-export const searchMovies = async (query: string): Promise<Movie[]> => {
-  return await invoke("search_movies", { query });
+export const searchMovies = async (query: string, offset: number, limit: number): Promise<Movie[]> => {
+  return await invoke("search_movies", { query, offset, limit });
 };
 
 export const startInitialScan = async (scanMode: "incremental" | "full" = "incremental", deleteInvalid: boolean = false): Promise<string> => {
@@ -236,10 +242,6 @@ export const regenerateAllThumbnails = async (): Promise<string> => {
   return await invoke("regenerate_all_thumbnails");
 };
 
-export const batchGenerateThumbnails = async (movieIds: number[]): Promise<void> => {
-  return await invoke("batch_generate_thumbnails", { movieIds });
-};
-
 export const clearCache = async (): Promise<void> => {
   return await invoke("clear_cache");
 };
@@ -250,8 +252,8 @@ export const onScanProgress = (callback: (status: ScanStatus) => void) => {
   });
 };
 
-export const onScanComplete = (callback: (result: ScanResult) => void) => {
-  return listen<ScanResult>("scan-complete", (event) => {
+export const onScanComplete = (callback: (payload: ScanCompletion) => void) => {
+  return listen<ScanCompletion>("scan-complete", (event) => {
     callback(event.payload);
   });
 };
@@ -264,19 +266,17 @@ export const setMovieRating = async (movieId: number, rating: number | null): Pr
   return await invoke("set_movie_rating", { movieId, rating });
 };
 
-export const clearThumbnails = async (): Promise<void> => {
-  return await invoke("clear_thumbnails");
-};
-
 export const getMoviesFiltered = async (
   offset: number,
   limit: number,
   filters?: Filters,
-  sortOptions?: SortOptions
+  sortOptions?: SortOptions,
+  searchQuery?: string
 ): Promise<Movie[]> => {
   return await invoke("get_movies_filtered", {
     offset,
     limit,
+    searchQuery: searchQuery?.trim() || undefined,
     minYear: filters?.minYear,
     maxYear: filters?.maxYear,
     minRating: filters?.minRating,
@@ -295,6 +295,16 @@ export const getUniqueGenres = async (): Promise<string[]> => {
 
 export const getUniqueActors = async (): Promise<string[]> => {
   return await invoke("get_unique_actors");
+};
+
+export interface ActorInfo {
+  name: string;
+  movie_count: number;
+  representative_thumbnail: string | null;
+}
+
+export const getActorsWithCounts = async (): Promise<ActorInfo[]> => {
+  return await invoke("get_actors_with_counts");
 };
 
 export const resetDatabase = async (): Promise<void> => {

@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { Movie, getMovies, searchMovies, playMovie, Filters, SortOptions, getMoviesFiltered, getUniqueGenres, getUniqueActors, logger } from "../services/tauri";
+import { Movie, getMovies, playMovie, Filters, SortOptions, getMoviesFiltered, getUniqueGenres, getUniqueActors, logger } from "../services/tauri";
+
+const hasActiveFilterValues = (filters: Filters) => {
+  return Object.values(filters).some((value) => value !== undefined && value !== null && value !== "");
+};
 
 interface MovieStore {
   movies: Movie[];
@@ -14,7 +18,8 @@ interface MovieStore {
   availableGenres: string[];
   availableActors: string[];
   isUsingFilters: boolean;
-  scrollPosition: number;
+  scrollPositions: Record<string, number>;
+  scrollProgresses: Record<string, number>;
   searchQuery: string;
 
   fetchMovies: (offset: number) => Promise<void>;
@@ -28,7 +33,9 @@ interface MovieStore {
   clearFilters: () => void;
   fetchAvailableGenres: () => Promise<void>;
   fetchAvailableActors: () => Promise<void>;
-  setScrollPosition: (position: number) => void;
+  setScrollPosition: (key: string, position: number) => void;
+  setScrollProgress: (key: string, progress: number) => void;
+  lastRequestId: number;
 }
 
 export const useMovieStore = create<MovieStore>((set, get) => ({
@@ -44,13 +51,21 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   availableGenres: [],
   availableActors: [],
   isUsingFilters: false,
-  scrollPosition: 0,
+  scrollPositions: {},
+  scrollProgresses: {},
   searchQuery: "",
+  lastRequestId: 0,
 
   fetchMovies: async (offset: number) => {
-    set({ isLoading: true, error: null });
+    const requestId = get().lastRequestId + 1;
+    set({ isLoading: true, error: null, searchQuery: "", lastRequestId: requestId });
     try {
       const movies = await getMovies(offset, 200);
+      if (get().lastRequestId !== requestId) {
+        logger.info(`[MovieStore] fetchMovies ignored: stale requestId=${requestId}`);
+        return;
+      }
+
       logger.info(`[MovieStore] 获取电影数据: ${movies.length} 个电影`);
       logger.info(`[MovieStore] 前3个电影: ${JSON.stringify(movies.slice(0, 3).map(m => ({
         id: m.id,
@@ -72,12 +87,38 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   loadMore: async () => {
     const state = get();
     if (state.isLoadingMore || !state.hasMore) return;
+
+    const shouldUseFilteredQuery =
+      Boolean(state.searchQuery) ||
+      state.isUsingFilters ||
+      state.sortOptions.sortBy !== "added_at" ||
+      state.sortOptions.sortOrder !== "DESC";
     
+    const requestId = state.lastRequestId;
+    logger.info(`[MovieStore] Trigger loadMore: page=${state.currentPage}, searchQuery='${state.searchQuery}', requestId=${requestId}`);
     set({ isLoadingMore: true });
     try {
       const offset = (state.currentPage + 1) * 200;
-      const newMovies = await getMovies(offset, 200);
-      logger.info(`[MovieStore] 加载更多电影: ${newMovies.length} 个电影`);
+      let newMovies: Movie[] = [];
+      
+      if (shouldUseFilteredQuery) {
+        newMovies = await getMoviesFiltered(
+          offset,
+          200,
+          state.isUsingFilters ? state.filters : undefined,
+          state.sortOptions,
+          state.searchQuery || undefined
+        );
+      } else {
+        newMovies = await getMovies(offset, 200);
+      }
+      
+      if (get().lastRequestId !== requestId) {
+        logger.info(`[MovieStore] loadMore ignored: stale requestId=${requestId}`);
+        return;
+      }
+
+      logger.info(`[MovieStore] loadMore success: fetched=${newMovies.length}, total_before=${state.movies.length}, next_page=${state.currentPage + 1}`);
       
       set({ 
         movies: [...state.movies, ...newMovies],
@@ -86,18 +127,50 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
         currentPage: state.currentPage + 1
       });
     } catch (error) {
-      logger.error(`[MovieStore] 加载更多电影失败: ${error}`);
-      set({ isLoadingMore: false });
+      if (get().lastRequestId === requestId) {
+        logger.error(`[MovieStore] loadMore failed: ${error}`);
+        set({ isLoadingMore: false });
+      }
     }
   },
 
   searchMovies: async (query: string) => {
-    set({ isLoading: true, error: null, searchQuery: query });
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      set({ movies: [], isLoading: false, error: null, searchQuery: "", currentPage: 0, hasMore: false });
+      return;
+    }
+
+    const requestId = get().lastRequestId + 1;
+    logger.info(`[MovieStore] Initial search: query='${normalizedQuery}', requestId=${requestId}`);
+    set({ isLoading: true, error: null, searchQuery: normalizedQuery, currentPage: 0, lastRequestId: requestId });
     try {
-      const movies = await searchMovies(query);
-      set({ movies, isLoading: false });
+      const state = get();
+      const movies = await getMoviesFiltered(
+        0,
+        200,
+        state.isUsingFilters ? state.filters : undefined,
+        state.sortOptions,
+        normalizedQuery
+      );
+      
+      if (get().lastRequestId !== requestId) {
+        logger.info(`[MovieStore] search ignored: stale requestId=${requestId}`);
+        return;
+      }
+
+      logger.info(`[MovieStore] Search success: fetched=${movies.length}`);
+      set({ 
+        movies, 
+        isLoading: false,
+        hasMore: movies.length === 200,
+        currentPage: 0
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      if (get().lastRequestId === requestId) {
+        logger.error(`[MovieStore] Search failed: ${error}`);
+        set({ error: String(error), isLoading: false });
+      }
     }
   },
 
@@ -114,7 +187,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   },
 
   setFilters: (filters: Filters) => {
-    set({ filters, isUsingFilters: true });
+    set({ filters, isUsingFilters: hasActiveFilterValues(filters) });
   },
 
   setSortOptions: (sortOptions: SortOptions) => {
@@ -122,12 +195,29 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   },
 
   fetchMoviesFiltered: async (offset: number, limit: number) => {
-    const state = useMovieStore.getState();
-    set({ isLoading: true, error: null });
+    const state = get();
+    const requestId = state.lastRequestId + 1;
+    set({ isLoading: true, error: null, lastRequestId: requestId });
     try {
-      const movies = await getMoviesFiltered(offset, limit, state.filters, state.sortOptions);
+      const movies = await getMoviesFiltered(
+        offset,
+        limit,
+        state.isUsingFilters ? state.filters : undefined,
+        state.sortOptions,
+        state.searchQuery || undefined
+      );
+      if (get().lastRequestId !== requestId) {
+        logger.info(`[MovieStore] filtered fetch ignored: stale requestId=${requestId}`);
+        return;
+      }
+
       logger.info(`[MovieStore] 获取筛选电影数据: ${movies.length} 个电影`);
-      set({ movies, isLoading: false });
+      set({ 
+        movies, 
+        isLoading: false,
+        hasMore: movies.length === limit,
+        currentPage: Math.floor(offset / limit)
+      });
     } catch (error) {
       logger.error(`[MovieStore] 获取筛选电影失败: ${error}`);
       set({ error: String(error), isLoading: false });
@@ -135,7 +225,7 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   },
 
   clearFilters: () => {
-    set({ filters: {}, isUsingFilters: false, searchQuery: "" });
+    set({ filters: {}, isUsingFilters: false });
   },
 
   fetchAvailableGenres: async () => {
@@ -156,7 +246,21 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
     }
   },
 
-  setScrollPosition: (position: number) => {
-    set({ scrollPosition: position });
+  setScrollPosition: (key: string, position: number) => {
+    set((state) => ({
+      scrollPositions: {
+        ...state.scrollPositions,
+        [key]: position
+      }
+    }));
+  },
+
+  setScrollProgress: (key: string, progress: number) => {
+    set((state) => ({
+      scrollProgresses: {
+        ...state.scrollProgresses,
+        [key]: progress,
+      }
+    }));
   },
 }));

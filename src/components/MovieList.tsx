@@ -4,8 +4,11 @@ import { useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, Eye, Calendar, Star, Play } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
+import { useMovieStore } from "../stores/movieStore";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
 import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
+import { getSearchSecondaryText } from "../lib/search";
+import HighlightedText from "./HighlightedText";
 
 interface MovieListProps {
   movies: Movie[];
@@ -31,6 +34,10 @@ interface MovieListItemProps {
 const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const searchQuery = useMovieStore((state) => state.searchQuery);
+  const secondaryText = searchQuery
+    ? getSearchSecondaryText(movie, searchQuery) ?? movie.actors?.split(",")[0]?.trim() ?? movie.director
+    : movie.actors?.split(",")[0]?.trim();
 
   useEffect(() => {
     if (!showThumbnails) {
@@ -47,7 +54,16 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
           if (movie.thumbnail_path) {
             // Thumbnail already exists — load from global cache
             getCachedThumbnail(movie.thumbnail_path).then((url) => {
-              if (isMounted && url) setImageSrc(url);
+              if (url) {
+                if (isMounted) setImageSrc(url);
+                return;
+              }
+
+              if (isMounted) {
+                enqueueThumbnailGen(movie.id, (generatedUrl) => {
+                  if (isMounted) setImageSrc(generatedUrl);
+                });
+              }
             });
           } else {
             // No thumbnail — enqueue Rust generation
@@ -97,14 +113,22 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
       
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-zinc-100 truncate font-medium">{movie.title}</span>
+          <span className="text-zinc-100 truncate font-medium">
+            <HighlightedText text={movie.title} query={searchQuery} />
+          </span>
           {movie.is_watched === 1 && (
             <Eye className="w-4 h-4 text-teal-500 flex-shrink-0" />
           )}
         </div>
         <div className="flex items-center gap-4 text-sm text-zinc-400 mt-1">
-          {movie.actors && (
-            <span className="truncate max-w-[200px]">{movie.actors.split(',')[0]}</span>
+          {secondaryText && (
+            <span className="truncate max-w-[240px]">
+              <HighlightedText
+                text={secondaryText}
+                query={searchQuery}
+                highlightClassName="bg-teal-500/20 text-teal-100 rounded px-0.5"
+              />
+            </span>
           )}
           {movie.year && (
             <span className="flex items-center gap-1">
@@ -166,7 +190,12 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   useImperativeHandle(ref, () => ({
     scrollToPercentage: (percentage: number) => {
       if (listRef.current) {
-        listRef.current.scrollTo(percentage);
+        const totalHeight = movies.length * 72;
+        const clientHeight = dimensions.height;
+        const scrollHeight = totalHeight - clientHeight;
+        const targetScrollTop = scrollHeight * (percentage / 100);
+        currentScrollTopRef.current = targetScrollTop;
+        listRef.current.scrollTo(targetScrollTop);
       }
     },
     getScrollPosition: () => {
@@ -174,12 +203,13 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     },
     scrollToPosition: (scrollTop: number) => {
       if (listRef.current) {
+        currentScrollTopRef.current = scrollTop;
         listRef.current.scrollTo(scrollTop);
       }
     },
     getScrollPercentage: () => {
       const totalHeight = movies.length * 72;
-      const clientHeight = window.innerHeight - 180;
+      const clientHeight = dimensions.height;
       const scrollHeight = totalHeight - clientHeight;
       if (scrollHeight <= 0) return 0;
       return Math.min(100, (currentScrollTopRef.current / scrollHeight) * 100);
@@ -197,7 +227,7 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     
     if (onLoadMore && !loadingRef.current) {
       const totalHeight = movies.length * 72;
-      const clientHeight = window.innerHeight - 180;
+      const clientHeight = dimensions.height;
       const scrollHeight = totalHeight - clientHeight;
       
       if (scrollHeight > 0 && scrollOffset >= scrollHeight * 0.8) {

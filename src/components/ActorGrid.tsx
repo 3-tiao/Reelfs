@@ -1,29 +1,27 @@
-import { useEffect, useState, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { FixedSizeGrid as Grid } from "react-window";
-import MovieCard from "./MovieCard";
-import { Movie } from "../services/tauri";
+import ActorCard from "./ActorCard";
+import { ActorInfo } from "../services/tauri";
 
-interface MovieGridProps {
-  movies: Movie[];
+interface ActorGridProps {
+  actors: ActorInfo[];
   onScroll?: () => void;
-  onLoadMore?: () => void;
 }
 
-export interface MovieGridRef {
+export interface ActorGridRef {
   scrollToPercentage: (percentage: number) => void;
   getScrollPosition: () => number;
   scrollToPosition: (scrollTop: number) => void;
   getScrollPercentage: () => number;
 }
 
-export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll, onLoadMore }, ref) {
+export default forwardRef<ActorGridRef, ActorGridProps>(function ActorGrid({ actors, onScroll }, ref) {
   const gridRef = useRef<any>(null);
   const currentScrollTopRef = useRef(0);
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
     height: window.innerHeight - 80,
   });
-  const loadingRef = useRef(false);
 
   const cardWidth = 200;
   const cardHeight = 350;
@@ -34,8 +32,8 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
   }, [dimensions.width, gap]);
 
   const rowCount = useMemo(() => {
-    return Math.ceil(movies.length / columnCount);
-  }, [movies.length, columnCount]);
+    return Math.ceil(actors.length / columnCount);
+  }, [actors.length, columnCount]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -80,52 +78,34 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
 
   const handleScroll = useCallback(
     ({ scrollTop }: any) => {
-      // 保存当前滚动位置
       currentScrollTopRef.current = scrollTop;
-      
-      // 调用 onScroll 回调
       if (onScroll) {
         onScroll();
       }
-      
-      if (onLoadMore && !loadingRef.current) {
-        const totalHeight = rowCount * (cardHeight + gap);
-        const clientHeight = dimensions.height;
-        const scrollHeight = totalHeight - clientHeight;
-        
-        if (scrollHeight > 0 && scrollTop >= scrollHeight * 0.8) {
-          loadingRef.current = true;
-          onLoadMore();
-          // 500ms 后重置 loading 状态
-          setTimeout(() => {
-            loadingRef.current = false;
-          }, 500);
-        }
-      }
     },
-    [rowCount, cardHeight, gap, dimensions.height, onScroll, onLoadMore]
+    [onScroll]
   );
 
   const Cell = useCallback(
     ({ columnIndex, rowIndex, style }: any) => {
       const index = rowIndex * columnCount + columnIndex;
-      const movie = movies[index];
+      const actor = actors[index];
 
-      if (!movie) return null;
+      if (!actor) return null;
 
       return (
         <div style={{ ...style, padding: `${gap / 2}px` }}>
-          <MovieCard movie={movie} />
+          <ActorCard actor={actor} />
         </div>
       );
     },
-    [movies, columnCount, gap]
+    [actors, columnCount, gap]
   );
 
-  if (movies.length === 0) {
+  if (actors.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-gray-400 text-lg">No movies found</p>
+        <p className="text-gray-400 text-lg">No actors found</p>
       </div>
     );
   }
