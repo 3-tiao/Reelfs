@@ -1,12 +1,13 @@
 import { useRef, useCallback, forwardRef, useImperativeHandle, useState, useEffect, memo } from "react";
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, Eye, Calendar, Star, Play } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { useMovieStore } from "../stores/movieStore";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
 import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
+import { getRouteState } from "../lib/navigation";
 import { getSearchSecondaryText } from "../lib/search";
 import HighlightedText from "./HighlightedText";
 
@@ -28,10 +29,11 @@ interface MovieListItemProps {
   index: number;
   showThumbnails: boolean;
   formatDuration: (seconds: number) => string;
-  navigate: (path: string) => void;
+  navigate: (path: string, options?: { state?: { from?: string } }) => void;
+  routeState: { from?: string };
 }
 
-const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate }: MovieListItemProps) {
+const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate, routeState }: MovieListItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const searchQuery = useMovieStore((state) => state.searchQuery);
@@ -89,7 +91,7 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
   return (
     <div
       ref={itemRef}
-      onClick={() => movie.group_id ? navigate(`/video-group/${movie.group_id}`) : navigate(`/movie/${movie.id}`)}
+      onClick={() => movie.group_id ? navigate(`/video-group/${movie.group_id}`, { state: routeState }) : navigate(`/movie/${movie.id}`, { state: routeState })}
       className="flex items-center gap-4 px-4 py-3 hover:bg-zinc-800/50 cursor-pointer transition-colors border-b border-zinc-800/50 group"
       style={{ height: '72px' }}
     >
@@ -153,7 +155,7 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
         <button
           onClick={(e) => {
             e.stopPropagation();
-            movie.group_id ? navigate(`/video-group/${movie.group_id}`) : navigate(`/movie/${movie.id}`);
+            movie.group_id ? navigate(`/video-group/${movie.group_id}`, { state: routeState }) : navigate(`/movie/${movie.id}`, { state: routeState });
           }}
           className="opacity-0 group-hover:opacity-100 p-2 bg-gradient-to-r from-teal-500 to-teal-600 rounded-lg hover:from-teal-400 hover:to-teal-500 transition-all"
         >
@@ -166,7 +168,9 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
 
 export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ movies, onScroll, onLoadMore }, ref) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showThumbnails } = useNsfwStore();
+  const routeState = getRouteState(location);
   const listRef = useRef<any>(null);
   const currentScrollTopRef = useRef(0);
   const loadingRef = useRef(false);
@@ -261,10 +265,11 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
           showThumbnails={showThumbnails}
           formatDuration={formatDuration}
           navigate={navigate}
+          routeState={routeState}
         />
       </div>
     );
-  }, [movies, showThumbnails, formatDuration, navigate]);
+  }, [movies, showThumbnails, formatDuration, navigate, routeState]);
 
   return (
     <List

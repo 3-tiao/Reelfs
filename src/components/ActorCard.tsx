@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ActorInfo } from "../services/tauri";
 import { User } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { getRouteState } from "../lib/navigation";
 
 interface ActorCardProps {
   actor: ActorInfo;
@@ -11,9 +12,11 @@ interface ActorCardProps {
 
 export default function ActorCard({ actor }: ActorCardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showThumbnails } = useNsfwStore();
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const routeState = getRouteState(location);
 
   useEffect(() => {
     if (!showThumbnails || !actor.representative_thumbnail) {
@@ -55,7 +58,7 @@ export default function ActorCard({ actor }: ActorCardProps) {
   return (
     <div
       ref={cardRef}
-      onClick={() => navigate(`/actor/${encodeURIComponent(actor.name)}`)}
+      onClick={() => navigate(`/actor/${encodeURIComponent(actor.name)}`, { state: routeState })}
       className="group cursor-pointer transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1"
     >
       <div className="relative aspect-[2/3] bg-zinc-800/80 backdrop-blur-sm rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-violet-500/10 border border-zinc-700/50 group-hover:border-violet-500/30 transition-all duration-300">

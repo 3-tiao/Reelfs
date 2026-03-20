@@ -1,57 +1,60 @@
-import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Film, User } from "lucide-react";
 import { Movie, getMoviesFiltered, logger } from "../services/tauri";
-import { useMovieStore } from "../stores/movieStore";
 import { readBinaryFile, exists } from "@tauri-apps/api/fs";
+import { useScrollRestoration } from "../hooks/useScrollRestoration";
+import { getBackTarget, getRouteState } from "../lib/navigation";
 
 export default function ActorDetail() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
-  const { setScrollPosition } = useMovieStore();
+  const location = useLocation();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [posterCache, setPosterCache] = useState<Map<number, string>>(new Map());
-  const hasRestoredRef = useRef(false);
-  const isRestoringRef = useRef(false);
+
+  const { handleScroll } = useScrollRestoration({
+    storageKey: name ? `actor:${name}` : "actor:unknown",
+    itemCount: movies.length,
+    getController: () => {
+      if (typeof window === "undefined") {
+        return null;
+      }
+
+      return {
+        getScrollPosition: () => window.scrollY,
+        getScrollPercentage: () => {
+          const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+          if (scrollHeight <= 0) {
+            return 0;
+          }
+
+          return Math.min(100, (window.scrollY / scrollHeight) * 100);
+        },
+        scrollToPosition: (scrollTop: number) => {
+          window.scrollTo(0, scrollTop);
+        },
+        scrollToPercentage: (percentage: number) => {
+          const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+          const targetScrollTop = scrollHeight * (percentage / 100);
+          window.scrollTo(0, targetScrollTop);
+        },
+      };
+    },
+  });
 
   // 保存滚动位置
   useEffect(() => {
-    const handleScroll = () => {
-      if (name && !isRestoringRef.current) {
-        setScrollPosition(`actor:${name}`, window.scrollY);
-      }
-    };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [name, setScrollPosition]);
+  }, [handleScroll]);
 
   useEffect(() => {
     if (name) {
       loadActorMovies(decodeURIComponent(name));
     }
   }, [name]);
-
-  // 恢复滚动位置
-  useEffect(() => {
-    if (!isLoading && movies.length > 0 && name && !hasRestoredRef.current) {
-      const savedPos = useMovieStore.getState().scrollPositions[`actor:${name}`] || 0;
-      if (savedPos > 0) {
-        hasRestoredRef.current = true;
-        isRestoringRef.current = true;
-        
-        // 等待内容渲染
-        requestAnimationFrame(() => {
-          window.scrollTo(0, savedPos);
-          setTimeout(() => {
-            isRestoringRef.current = false;
-          }, 100);
-        });
-      } else {
-        hasRestoredRef.current = true; // No position to restore
-      }
-    }
-  }, [isLoading, movies.length, name]);
 
   const loadActorMovies = async (actorName: string) => {
     try {
@@ -96,7 +99,7 @@ export default function ActorDetail() {
   };
 
   const handleMovieClick = (movieId: number) => {
-    navigate(`/movie/${movieId}`);
+    navigate(`/movie/${movieId}`, { state: getRouteState(location) });
   };
 
   if (isLoading) {
@@ -110,7 +113,7 @@ export default function ActorDetail() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 to-zinc-900 text-white">
       <button
-        onClick={() => navigate(-1)}
+        onClick={() => navigate(getBackTarget(location.state, "/"))}
         className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-zinc-700/50 shadow-lg z-50"
       >
         <ArrowLeft className="w-5 h-5" />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getVideoGroupDetail, VideoGroupWithParts, playMovie, showInFileManager, logger } from "../services/tauri";
 import { Play, ArrowLeft, Film, FolderOpen } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
@@ -10,10 +10,12 @@ import DetailBackground from "../components/DetailBackground";
 import MetadataChips from "../components/MetadataChips";
 import CastList from "../components/CastList";
 import InteractiveRating from "../components/InteractiveRating";
+import { getBackTarget } from "../lib/navigation";
 
 export default function VideoGroupDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { showThumbnails } = useNsfwStore();
   const [groupData, setGroupData] = useState<VideoGroupWithParts | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,7 +110,7 @@ export default function VideoGroupDetail() {
       {/* Content */}
       <div className="relative z-10">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate(getBackTarget(location.state, "/"))}
           className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-zinc-700/50 shadow-lg z-50"
         >
           <ArrowLeft className="w-5 h-5" />

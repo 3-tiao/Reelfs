@@ -1,20 +1,24 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
 import FilterSortBar from "../components/FilterSortBar";
+import { useScrollRestoration } from "../hooks/useScrollRestoration";
 import { useMovieStore } from "../stores/movieStore";
 
 export default function Search() {
   const navigate = useNavigate();
-  const { movies, isLoading, searchMovies, isUsingFilters, fetchMoviesFiltered, setScrollPosition, reset, clearFilters, searchQuery } = useMovieStore();
+  const { movies, isLoading, searchMovies, isUsingFilters, fetchMoviesFiltered, reset, clearFilters, searchQuery } = useMovieStore();
   const [hasSearched, setHasSearched] = useState(Boolean(searchQuery) || isUsingFilters);
   const movieGridRef = useRef<MovieGridRef>(null);
-  const lastSavedPositionRef = useRef(0);
-  const hasRestoredRef = useRef(false);
-  const isRestoringRef = useRef(false);
   const hasHydratedSearchRef = useRef(false);
+
+  const { handleScroll, resetRestoration } = useScrollRestoration({
+    storageKey: "search",
+    itemCount: movies.length,
+    getController: () => movieGridRef.current,
+  });
 
   useEffect(() => {
     setHasSearched(Boolean(searchQuery) || isUsingFilters);
@@ -27,46 +31,16 @@ export default function Search() {
     }
   }, [searchQuery, movies.length, isLoading, searchMovies]);
 
-  // 保存滚动位置
-  const handleScroll = useCallback(() => {
-    if (isRestoringRef.current) return;
-    
-    if (movieGridRef.current) {
-      const position = movieGridRef.current.getScrollPosition();
-      if (Math.abs(position - lastSavedPositionRef.current) > 100) {
-        lastSavedPositionRef.current = position;
-        setScrollPosition("search", position);
-      }
-    }
-  }, [setScrollPosition]);
-
-  // 恢复滚动位置
-  useEffect(() => {
-    const searchScrollPos = useMovieStore.getState().scrollPositions["search"] || 0;
-    if (searchScrollPos > 0 && movies.length > 0 && !isLoading && !hasRestoredRef.current) {
-      hasRestoredRef.current = true;
-      isRestoringRef.current = true;
-      
-      requestAnimationFrame(() => {
-        if (movieGridRef.current) {
-          movieGridRef.current.scrollToPosition(searchScrollPos);
-        }
-        setTimeout(() => {
-          isRestoringRef.current = false;
-        }, 100);
-      });
-    }
-  }, [movies.length, isLoading]);
-
   const handleSearch = (query: string) => {
     if (query.trim()) {
       hasHydratedSearchRef.current = true;
       searchMovies(query);
-      hasRestoredRef.current = false; // Reset on new search
+      resetRestoration();
     } else {
       hasHydratedSearchRef.current = false;
       clearFilters();
       reset();
+      resetRestoration();
     }
   };
 

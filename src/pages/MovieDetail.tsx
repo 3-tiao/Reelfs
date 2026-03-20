@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Eye, EyeOff } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus, logger } from "../services/tauri";
 import { formatBytes, formatDuration } from "../lib/utils";
@@ -9,6 +9,7 @@ import DetailBackground from "../components/DetailBackground";
 import MetadataChips from "../components/MetadataChips";
 import CastList from "../components/CastList";
 import InteractiveRating from "../components/InteractiveRating";
+import { getBackTarget } from "../lib/navigation";
 
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
@@ -32,6 +33,7 @@ const formatDate = (dateString: string): string => {
 export default function MovieDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [movie, setMovie] = useState<Movie | null>(null);
   const [history, setHistory] = useState<PlayHistory | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -160,7 +162,7 @@ export default function MovieDetail() {
       {/* Content */}
       <div className="relative z-10">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate(getBackTarget(location.state, "/"))}
           className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-zinc-700/50 shadow-lg z-50"
         >
           <ArrowLeft className="w-5 h-5" />

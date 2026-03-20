@@ -10,6 +10,7 @@ import ActorGrid, { ActorGridRef } from "../components/ActorGrid";
 import SearchBar from "../components/SearchBar";
 import FilterSortBar from "../components/FilterSortBar";
 import ScrollProgressVertical from "../components/ScrollProgressVertical";
+import { useScrollRestoration } from "../hooks/useScrollRestoration";
 import { ActorInfo, getActorsWithCounts } from "../services/tauri";
 
 export default function Home() {
@@ -25,8 +26,6 @@ export default function Home() {
     isUsingFilters, 
     fetchMoviesFiltered, 
     clearFilters,
-    setScrollPosition,
-    setScrollProgress: saveScrollProgress,
     hasMore,
     searchQuery,
   } = useMovieStore();
@@ -34,7 +33,6 @@ export default function Home() {
   const { viewMode, setViewMode } = useViewStore();
   const movieGridRef = useRef<MovieGridRef>(null);
   const movieListRef = useRef<MovieListRef>(null);
-  const [scrollProgress, setScrollProgress] = useState(0);
   const actorGridRef = useRef<ActorGridRef>(null);
   const [actors, setActors] = useState<ActorInfo[]>([]);
   const [isLoadingActors, setIsLoadingActors] = useState(false);
@@ -64,12 +62,15 @@ export default function Home() {
     return movies.length;
   }, [viewMode, actors.length, movies.length]);
 
-  const syncScrollProgressFromRef = useCallback(() => {
-    const ref = getActiveScrollRef();
-    if (ref) {
-      setScrollProgress(ref.getScrollPercentage());
-    }
-  }, [getActiveScrollRef]);
+  const {
+    scrollProgress,
+    handleScroll,
+    handleSeek,
+  } = useScrollRestoration({
+    storageKey: activeScrollKey,
+    itemCount: getActiveItemCount(),
+    getController: getActiveScrollRef,
+  });
   
   // 加载演员数据
   useEffect(() => {
@@ -83,75 +84,6 @@ export default function Home() {
         .catch(() => setIsLoadingActors(false));
     }
   }, [viewMode]);
-  
-  // 保存滚动位置
-  const lastSavedPositionRef = useRef(0);
-  
-  // 恢复滚动位置 - 只在首次加载且数据准备好时执行一次
-  const restoredKeyRef = useRef<string | null>(null);
-  const isRestoringRef = useRef(false);
-  
-  useEffect(() => {
-    const activeItemCount = getActiveItemCount();
-    const savedScrollPos = useMovieStore.getState().scrollPositions[activeScrollKey] || 0;
-    const savedProgress = useMovieStore.getState().scrollProgresses[activeScrollKey] || 0;
-
-    if (activeItemCount > 0 && restoredKeyRef.current !== activeScrollKey) {
-      restoredKeyRef.current = activeScrollKey;
-      isRestoringRef.current = true;
-      lastSavedPositionRef.current = savedScrollPos;
-      setScrollProgress(savedProgress);
-      
-      // 需要等待渲染完成后恢复滚动位置
-      requestAnimationFrame(() => {
-        const ref = getActiveScrollRef();
-        if (ref) {
-          ref.scrollToPosition(savedScrollPos);
-        }
-        
-        // 恢复完成后延迟关闭标志，避免处理恢复过程中产生的滚动事件
-        setTimeout(() => {
-          syncScrollProgressFromRef();
-          isRestoringRef.current = false;
-        }, 100);
-      });
-    } else if (activeItemCount > 0) {
-      requestAnimationFrame(() => {
-        syncScrollProgressFromRef();
-      });
-    }
-  }, [activeScrollKey, getActiveItemCount, getActiveScrollRef, syncScrollProgressFromRef]);
-
-  const handleScroll = useCallback(() => {
-    if (isRestoringRef.current) return;
-    
-    const ref = getActiveScrollRef();
-    if (ref) {
-      const position = ref.getScrollPosition();
-      const progress = ref.getScrollPercentage();
-      setScrollProgress(progress);
-      
-      if (Math.abs(position - lastSavedPositionRef.current) > 100) {
-        lastSavedPositionRef.current = position;
-        setScrollPosition(activeScrollKey, position);
-      }
-
-      saveScrollProgress(activeScrollKey, progress);
-    }
-  }, [activeScrollKey, getActiveScrollRef, setScrollPosition, saveScrollProgress]);
-
-  const handleSeek = useCallback((percentage: number) => {
-    const ref = getActiveScrollRef();
-    if (ref) {
-      ref.scrollToPercentage(percentage);
-      setScrollProgress(percentage);
-      saveScrollProgress(activeScrollKey, percentage);
-    }
-  }, [activeScrollKey, getActiveScrollRef, saveScrollProgress]);
-
-  useEffect(() => {
-    setScrollProgress(useMovieStore.getState().scrollProgresses[activeScrollKey] || 0);
-  }, [activeScrollKey]);
   
   useEffect(() => {
     // 只在 movies 为空时才加载数据
