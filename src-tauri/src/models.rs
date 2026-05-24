@@ -49,6 +49,7 @@ pub struct PlayHistory {
 pub enum ImportStage {
     Scanning,
     Importing,
+    ProbingVideo,
     GeneratingThumbnails,
 }
 
@@ -65,6 +66,7 @@ pub struct ScanStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     pub new_movies: i64,
+    pub updated_movies: i64,
     pub deleted_movies: i64,
     pub total_movies: i64,
 }

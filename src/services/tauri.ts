@@ -36,6 +36,7 @@ export interface PlayHistory {
 export enum ImportStage {
   Scanning = "Scanning",
   Importing = "Importing",
+  ProbingVideo = "ProbingVideo",
   GeneratingThumbnails = "GeneratingThumbnails",
 }
 
@@ -50,6 +51,7 @@ export interface ScanStatus {
 
 export interface ScanResult {
   new_movies: number;
+  updated_movies: number;
   deleted_movies: number;
   total_movies: number;
 }

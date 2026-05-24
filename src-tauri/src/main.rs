@@ -5,6 +5,7 @@ mod database;
 mod indexer;
 mod import_manager;
 mod models;
+mod path_utils;
 mod player;
 mod thumbnail;
 mod video_group;
@@ -16,6 +17,7 @@ use models::{AppConfig, Movie, PlayHistory, ScanStatus, Stats, VideoGroup, Video
 use video_group::VideoGroupManager;
 use video_group_detector::{detect_video_groups, VideoGroupCandidate};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::fs;
 use std::path::Path;
 use log::{info, debug, warn, error};
@@ -24,7 +26,7 @@ struct AppState {
     db: Arc<Mutex<Database>>,
     config: Arc<Mutex<AppConfig>>,
     scan_status: Arc<Mutex<ScanStatus>>,
-    stop_scan_flag: Arc<Mutex<bool>>,
+    stop_scan_flag: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -486,9 +488,8 @@ async fn stop_scan(
 ) -> Result<(), String> {
     info!("[扫描] 停止扫描");
     
-    let mut flag = state.stop_scan_flag.lock().map_err(|e| format!("Lock error: {}", e))?;
-    *flag = true;
-    
+    state.stop_scan_flag.store(true, Ordering::SeqCst);
+
     info!("[扫描] 停止标志已设置");
     
     Ok(())
@@ -947,7 +948,11 @@ fn main() {
     info!("[应用启动] 缓存目录创建完成: {}/thumbnails", config.cache_dir);
     
     if !config.nas_paths.is_empty() {
-        let _ = watcher::start_watcher(config.nas_paths.clone(), config.db_path.clone());
+        let _ = watcher::start_watcher(
+            config.nas_paths.clone(),
+            config.db_path.clone(),
+            config.cache_dir.clone(),
+        );
         info!("[应用启动] 文件监听器启动成功: {:?}", config.nas_paths);
     }
     
@@ -966,7 +971,7 @@ fn main() {
                 scanned_files: 0,
                 current_file: None,
             })),
-            stop_scan_flag: Arc::new(Mutex::new(false)),
+            stop_scan_flag: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
             get_movies,

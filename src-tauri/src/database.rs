@@ -1,6 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::path::Path;
 use crate::models::{Movie, PlayHistory};
+use crate::path_utils::normalize_path_str;
 use log::{info, debug, error};
 
 pub struct Database {
@@ -79,6 +80,24 @@ fn resolve_sort_clause(sort_by: Option<&str>, sort_order: Option<&str>) -> (&'st
     };
 
     (sort_column, sort_direction)
+}
+
+fn build_order_clause(sort_by: Option<&str>, sort_order: Option<&str>) -> String {
+    let (sorted_col, sort_dir) = resolve_sort_clause(sort_by, sort_order);
+    if sort_by.map(|v| v == "rating").unwrap_or(false) {
+        // Within each rating bucket, fall back to added_at (same direction)
+        // so paginated chunks line up with the front-end section grouping.
+        format!("{} {}, m.added_at {}, m.id DESC", sorted_col, sort_dir, sort_dir)
+    } else {
+        format!("{} {}, m.id DESC", sorted_col, sort_dir)
+    }
+}
+
+fn sanitize_rating(rating: Option<f64>) -> Option<f64> {
+    match rating {
+        Some(value) if (0.0..=5.0).contains(&value) => Some(value),
+        _ => None,
+    }
 }
 
 impl Database {
@@ -270,42 +289,159 @@ impl Database {
             info!("[数据库] 添加 group_id 列");
             tx.execute("ALTER TABLE movies ADD COLUMN group_id INTEGER REFERENCES video_groups(id)", [])?;
         }
-        
+
+        let cleared_movie_ratings = tx.execute(
+            "UPDATE movies SET rating = NULL, updated_at = CURRENT_TIMESTAMP WHERE rating < 0 OR rating > 5",
+            [],
+        )?;
+        if cleared_movie_ratings > 0 {
+            info!("[数据库] 已清理 {} 条异常电影评分", cleared_movie_ratings);
+        }
+
+        let cleared_group_ratings = tx.execute(
+            "UPDATE video_groups SET rating = NULL, updated_at = CURRENT_TIMESTAMP WHERE rating < 0 OR rating > 5",
+            [],
+        )?;
+        if cleared_group_ratings > 0 {
+            info!("[数据库] 已清理 {} 条异常视频组评分", cleared_group_ratings);
+        }
+
+        // Always run; the pass is O(N) and a no-op when there are no NFC/NFD
+        // drifts, so it doubles as a safety net against future regressions
+        // (external writes, rolled-back versions, etc.).
+        Self::migrate_path_nfc(&tx)?;
+
         tx.commit()?;
-        
+
         info!("[数据库] 数据库迁移完成");
-        
+
         Ok(())
     }
 
-    pub fn insert_movie(&self, file_path: &str, title: &str, year: Option<i32>, 
+    /// One-shot migration: collapse rows whose `file_path` differs only in Unicode
+    /// normalization form (NFD vs NFC, common on macOS) into a single canonical
+    /// NFC row, merging useful per-movie state. Gated by `PRAGMA user_version`.
+    fn migrate_path_nfc(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+        use std::collections::HashMap;
+
+        debug!("[数据库] 开始 Unicode NFC 路径迁移");
+
+        let rows: Vec<(i64, String)> = {
+            let mut stmt = tx.prepare("SELECT id, file_path FROM movies ORDER BY id ASC")?;
+            let iter = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
+            let mut out = Vec::new();
+            for r in iter {
+                out.push(r?);
+            }
+            out
+        };
+
+        let mut groups: HashMap<String, Vec<i64>> = HashMap::new();
+        for (id, fp) in &rows {
+            let key = normalize_path_str(fp);
+            groups.entry(key).or_default().push(*id);
+        }
+
+        let mut merged = 0usize;
+        let mut rewritten = 0usize;
+
+        for (nfc_path, members) in groups {
+            if members.is_empty() {
+                continue;
+            }
+            let keeper_id = *members.iter().min().expect("non-empty");
+            let duplicates: Vec<i64> = members.into_iter().filter(|id| *id != keeper_id).collect();
+
+            for dup_id in &duplicates {
+                // Merge state from dup → keeper. Keeper's existing values win when set;
+                // otherwise we adopt the duplicate's, so nothing useful is lost.
+                tx.execute(
+                    "UPDATE movies SET
+                        rating = COALESCE(rating, (SELECT rating FROM movies WHERE id = ?2)),
+                        is_watched = MAX(IFNULL(is_watched, 0), IFNULL((SELECT is_watched FROM movies WHERE id = ?2), 0)),
+                        last_accessed = COALESCE(last_accessed, (SELECT last_accessed FROM movies WHERE id = ?2)),
+                        group_id = COALESCE(group_id, (SELECT group_id FROM movies WHERE id = ?2)),
+                        updated_at = CURRENT_TIMESTAMP
+                     WHERE id = ?1",
+                    params![keeper_id, dup_id],
+                )?;
+
+                // Rebind dependent rows before the cascade kicks in.
+                tx.execute(
+                    "UPDATE play_history SET movie_id = ?1 WHERE movie_id = ?2",
+                    params![keeper_id, dup_id],
+                )?;
+                tx.execute(
+                    "UPDATE video_parts SET movie_id = ?1 WHERE movie_id = ?2",
+                    params![keeper_id, dup_id],
+                )?;
+
+                tx.execute("DELETE FROM movies WHERE id = ?1", params![dup_id])?;
+                merged += 1;
+            }
+
+            // Make sure the keeper's stored path is in NFC form too.
+            let changed = tx.execute(
+                "UPDATE movies SET file_path = ?1 WHERE id = ?2 AND file_path <> ?1",
+                params![nfc_path, keeper_id],
+            )?;
+            rewritten += changed;
+        }
+
+        if merged > 0 || rewritten > 0 {
+            info!("[数据库] Unicode NFC 路径迁移完成: 合并 {} 条重复, 重写 {} 条路径", merged, rewritten);
+        } else {
+            debug!("[数据库] Unicode NFC 路径迁移完成: 无需变更");
+        }
+        Ok(())
+    }
+
+    pub fn insert_movie(&self, file_path: &str, title: &str, year: Option<i32>,
                        plot: Option<&str>, rating: Option<f64>, genres: Option<&str>,
                        director: Option<&str>, actors: Option<&str>,
                        file_size: Option<i64>, duration_seconds: Option<i64>,
                        width: Option<i32>, height: Option<i32>) -> Result<i64> {
+        let file_path = normalize_path_str(file_path);
         debug!("[数据库] 插入电影: title={}, file_path={}", title, file_path);
-        
-        self.conn.execute(
+        let rating = sanitize_rating(rating);
+
+        // ON CONFLICT DO NOTHING with RETURNING id so racing inserts (watcher + scan) don't error.
+        // If the row already existed, RETURNING yields no rows; fall back to a SELECT.
+        let id: Option<i64> = self.conn.query_row(
             "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height, last_checked_at, scan_state)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             ON CONFLICT(file_path) DO NOTHING
+             RETURNING id",
             params![file_path, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height, "checked", "checked"],
-        )?;
-        
-        let id = self.conn.last_insert_rowid();
+            |row| row.get::<_, i64>(0),
+        ).map(Some).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+
+        let id = match id {
+            Some(id) => id,
+            None => self.conn.query_row(
+                "SELECT id FROM movies WHERE file_path = ?1",
+                params![file_path],
+                |row| row.get(0),
+            )?,
+        };
+
         info!("[数据库] 电影插入成功: id={}, title={}", id, title);
-        
+
         Ok(id)
     }
 
-    pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i32>, Option<i32>)]) -> Result<usize> {
+    pub fn batch_insert_movies(&self, movies: &[(String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i32>, Option<i32>)]) -> Result<Vec<i64>> {
         let start_time = std::time::Instant::now();
         debug!("[数据库] 开始批量插入/更新: {} 条记录", movies.len());
-        
+
         let tx = self.conn.unchecked_transaction()?;
-        let mut count = 0;
-        
-        for movie in movies {
-            let result = tx.execute(
+        let mut ids = Vec::with_capacity(movies.len());
+
+        {
+            let mut stmt = tx.prepare(
                 "INSERT INTO movies (file_path, title, year, plot, rating, genres, director, actors, file_size, duration_seconds, width, height, last_checked_at, scan_state)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                  ON CONFLICT(file_path) DO UPDATE SET
@@ -319,24 +455,34 @@ impl Database {
                     file_size = excluded.file_size,
                     last_checked_at = excluded.last_checked_at,
                     scan_state = excluded.scan_state,
-                    updated_at = CURRENT_TIMESTAMP",
-                params![
-                    &movie.0, &movie.1, movie.2, &movie.3, movie.4, 
-                    &movie.5, &movie.6, &movie.7,
-                    movie.8, movie.9, movie.10, movie.11, "checked", "checked"
-                ],
-            );
-            if result.is_ok() {
-                count += 1;
+                    updated_at = CURRENT_TIMESTAMP
+                 RETURNING id"
+            )?;
+
+            for movie in movies {
+                let rating = sanitize_rating(movie.4);
+                let normalized_path = normalize_path_str(&movie.0);
+                let id_result = stmt.query_row(
+                    params![
+                        &normalized_path, &movie.1, movie.2, &movie.3, rating,
+                        &movie.5, &movie.6, &movie.7,
+                        movie.8, movie.9, movie.10, movie.11, "checked", "checked"
+                    ],
+                    |row| row.get::<_, i64>(0),
+                );
+                match id_result {
+                    Ok(id) => ids.push(id),
+                    Err(e) => error!("[数据库] 批量插入单行失败: path={}, error={}", normalized_path, e),
+                }
             }
         }
-        
+
         tx.commit()?;
-        
+
         let elapsed = start_time.elapsed();
-        info!("[数据库] 批量插入/更新完成: {}/{} 条，耗时: {}ms", count, movies.len(), elapsed.as_millis());
-        
-        Ok(count)
+        info!("[数据库] 批量插入/更新完成: {}/{} 条，耗时: {}ms", ids.len(), movies.len(), elapsed.as_millis());
+
+        Ok(ids)
     }
 
     pub fn get_movies(&self, offset: i32, limit: i32) -> Result<Vec<Movie>> {
@@ -418,10 +564,11 @@ impl Database {
     }
 
     pub fn get_movie_by_path(&self, file_path: &str) -> Result<Option<Movie>> {
+        let file_path = normalize_path_str(file_path);
         debug!("[数据库] 根据路径获取电影: file_path={}", file_path);
-        
+
         let movie = self.conn.query_row(
-            "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
+            "SELECT id, file_path, title, year, plot, rating, genres, director, actors,
                     thumbnail_path, file_size, duration_seconds,
                     width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
              FROM movies WHERE file_path = ?1",
@@ -519,6 +666,34 @@ impl Database {
         info!("[数据库] 缩略图路径更新成功: movie_id={}", movie_id);
         
         Ok(())
+    }
+
+    pub fn update_movie_metadata(&self, movie_id: i64, title: &str, year: Option<i32>,
+                                  plot: Option<&str>, rating: Option<f64>, genres: Option<&str>,
+                                  director: Option<&str>, actors: Option<&str>,
+                                  file_size: Option<i64>) -> Result<()> {
+        debug!("[数据库] 更新电影元数据: movie_id={}, title={}", movie_id, title);
+        let rating = sanitize_rating(rating);
+
+        self.conn.execute(
+            "UPDATE movies SET title = ?1, year = ?2, plot = ?3, rating = COALESCE(movies.rating, ?4),
+             genres = ?5, director = ?6, actors = ?7, file_size = ?8,
+             last_checked_at = 'checked', scan_state = 'checked',
+             updated_at = CURRENT_TIMESTAMP WHERE id = ?9",
+            params![title, year, plot, rating, genres, director, actors, file_size, movie_id],
+        )?;
+
+        info!("[数据库] 电影元数据更新成功: movie_id={}", movie_id);
+        Ok(())
+    }
+
+    pub fn get_all_file_paths(&self) -> Result<Vec<(i64, String)>> {
+        debug!("[数据库] 获取所有文件路径");
+        let mut stmt = self.conn.prepare("SELECT id, file_path FROM movies")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+        rows.collect()
     }
 
     pub fn clear_all_thumbnail_paths(&self) -> Result<()> {
@@ -648,6 +823,7 @@ impl Database {
     }
 
     pub fn set_movie_rating(&self, movie_id: i64, rating: Option<f64>) -> Result<()> {
+        let rating = sanitize_rating(rating);
         debug!("[数据库] 设置电影评级: movie_id={}, rating={:?}", movie_id, rating);
         
         self.conn.execute(
@@ -673,13 +849,29 @@ impl Database {
         count
     }
 
+    /// Migrate a movie's file_path (used by watcher when it can prove a rename happened,
+    /// so play history / rating / watched state on the existing row are preserved).
+    pub fn update_file_path(&self, movie_id: i64, new_path: &str) -> Result<()> {
+        let new_path = normalize_path_str(new_path);
+        debug!("[数据库] 更新文件路径: id={}, new_path={}", movie_id, new_path);
+
+        self.conn.execute(
+            "UPDATE movies SET file_path = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+            params![new_path, movie_id],
+        )?;
+
+        info!("[数据库] 文件路径迁移成功: id={}", movie_id);
+        Ok(())
+    }
+
     pub fn delete_movie_by_path(&self, file_path: &str) -> Result<()> {
+        let file_path = normalize_path_str(file_path);
         debug!("[数据库] 删除电影: file_path={}", file_path);
-        
+
         self.conn.execute("DELETE FROM movies WHERE file_path = ?1", params![file_path])?;
-        
+
         info!("[数据库] 电影删除成功: {}", file_path);
-        
+
         Ok(())
     }
 
@@ -767,6 +959,7 @@ impl Database {
                 let bm25_clause = "bm25(movie_fts, 8.0, 1.0, 3.0, 2.0)";
                 let (sorted_col, sort_dir) = resolve_sort_clause(sort_by.as_deref(), sort_order.as_deref());
                 let prefers_relevance = sort_by.as_deref().map(|value| value == "added_at").unwrap_or(true);
+                let is_rating_sort = sort_by.as_deref().map(|v| v == "rating").unwrap_or(false);
 
                 if prefers_relevance {
                     order_clause = format!(
@@ -775,6 +968,15 @@ impl Database {
                         bm25_clause,
                         sorted_col,
                         sort_dir
+                    );
+                } else if is_rating_sort {
+                    order_clause = format!(
+                        "{} {}, m.added_at {}, {}, {}, m.id DESC",
+                        sorted_col,
+                        sort_dir,
+                        sort_dir,
+                        relevance_clause,
+                        bm25_clause
                     );
                 } else {
                     order_clause = format!(
@@ -843,9 +1045,8 @@ impl Database {
              ))", where_clauses.join(" AND "))
         };
 
-        let (sorted_col, sort_dir) = resolve_sort_clause(sort_by.as_deref(), sort_order.as_deref());
         if order_clause.is_empty() {
-            order_clause = format!("{} {}, m.id DESC", sorted_col, sort_dir);
+            order_clause = build_order_clause(sort_by.as_deref(), sort_order.as_deref());
         }
 
         let join_clause = joins.join("\n             ");

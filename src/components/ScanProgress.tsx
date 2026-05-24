@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ScanStatus, onScanProgress, onScanComplete , logger } from "../services/tauri";
-import { Loader2, FolderSearch, Database, Sparkles } from "lucide-react";
+import { Loader2, FolderSearch, Database, Sparkles, Film } from "lucide-react";
 
 interface ScanProgressProps {
   inline?: boolean;
@@ -42,6 +42,8 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
         return <FolderSearch className="w-5 h-5" />;
       case "Importing":
         return <Database className="w-5 h-5" />;
+      case "ProbingVideo":
+        return <Film className="w-5 h-5" />;
       case "GeneratingThumbnails":
         return <Sparkles className="w-5 h-5" />;
       default:
@@ -55,6 +57,8 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
         return "text-blue-400";
       case "Importing":
         return "text-green-400";
+      case "ProbingVideo":
+        return "text-amber-400";
       case "GeneratingThumbnails":
         return "text-purple-400";
       default:
@@ -68,6 +72,8 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
         return "bg-blue-500/20";
       case "Importing":
         return "bg-green-500/20";
+      case "ProbingVideo":
+        return "bg-amber-500/20";
       case "GeneratingThumbnails":
         return "bg-purple-500/20";
       default:
@@ -81,6 +87,8 @@ export default function ScanProgress({ inline = false }: ScanProgressProps) {
         return "from-blue-500 to-blue-400";
       case "Importing":
         return "from-green-500 to-green-400";
+      case "ProbingVideo":
+        return "from-amber-500 to-amber-400";
       case "GeneratingThumbnails":
         return "from-purple-500 to-purple-400";
       default:

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ActorInfo } from "../services/tauri";
 import { User } from "lucide-react";
@@ -10,7 +10,7 @@ interface ActorCardProps {
   actor: ActorInfo;
 }
 
-export default function ActorCard({ actor }: ActorCardProps) {
+function ActorCard({ actor }: ActorCardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { showThumbnails } = useNsfwStore();
@@ -95,3 +95,5 @@ export default function ActorCard({ actor }: ActorCardProps) {
     </div>
   );
 }
+
+export default memo(ActorCard);

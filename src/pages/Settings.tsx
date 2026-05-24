@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { config, loadConfig, saveConfig } = useSettingsStore();
+  const { config, loadConfig, patchConfig } = useSettingsStore();
   const { reset: resetMovies, fetchMovies } = useMovieStore();
   const [nasPaths, setNasPaths] = useState<string[]>([]);
   const [cacheDir, setCacheDir] = useState<string>("");
@@ -81,17 +81,9 @@ export default function Settings() {
 
       if (selected && typeof selected === "string") {
         if (!nasPaths.includes(selected)) {
-          setNasPaths([...nasPaths, selected]);
-          await saveConfig({
-            ...config,
-            nas_paths: [...nasPaths, selected],
-            db_path: config?.db_path || "",
-            cache_dir: config?.cache_dir || "",
-            scan_on_startup: config?.scan_on_startup || false,
-            auto_generate_thumbnails: config?.auto_generate_thumbnails || false,
-            theme: config?.theme || "dark",
-            default_player: config?.default_player || "system",
-          });
+          const updated = [...nasPaths, selected];
+          setNasPaths(updated);
+          await patchConfig({ nas_paths: updated });
         }
       }
     } catch (error) {
@@ -102,16 +94,7 @@ export default function Settings() {
   const handleRemovePath = async (index: number) => {
     const newPaths = nasPaths.filter((_, i) => i !== index);
     setNasPaths(newPaths);
-    await saveConfig({
-      ...config,
-      nas_paths: newPaths,
-      db_path: config?.db_path || "",
-      cache_dir: config?.cache_dir || "",
-      scan_on_startup: config?.scan_on_startup || false,
-      auto_generate_thumbnails: config?.auto_generate_thumbnails || false,
-      theme: config?.theme || "dark",
-      default_player: config?.default_player || "system",
-    });
+    await patchConfig({ nas_paths: newPaths });
   };
 
   const handleSelectCacheDir = async () => {
@@ -123,16 +106,7 @@ export default function Settings() {
 
       if (selected && typeof selected === "string") {
         setCacheDir(selected);
-        await saveConfig({
-          ...config,
-          cache_dir: selected,
-          db_path: config?.db_path || "",
-          nas_paths: config?.nas_paths || [],
-          scan_on_startup: config?.scan_on_startup || false,
-          auto_generate_thumbnails: config?.auto_generate_thumbnails || false,
-          theme: config?.theme || "dark",
-          default_player: config?.default_player || "system",
-        });
+        await patchConfig({ cache_dir: selected });
       }
     } catch (error) {
       logger.error("Failed to select cache directory:", error);
@@ -345,7 +319,7 @@ export default function Settings() {
                     />
                     <div className="text-center relative z-10">
                       <p className={`font-semibold text-lg transition-colors ${scanMode === "full" ? "text-purple-400" : "text-zinc-300"}`}>Full Integrity Check</p>
-                      <p className="text-sm text-zinc-500 mt-1">Slower, more thorough</p>
+                       <p className="text-sm text-zinc-500 mt-1">Validate, update & import</p>
                     </div>
                     {scanMode === "full" && (
                       <div className="absolute top-3 right-3 w-2.5 h-2.5 bg-purple-400 rounded-full shadow-[0_0_8px_rgba(168,85,247,0.8)] animate-pulse"></div>
@@ -358,26 +332,28 @@ export default function Settings() {
                   <p className="leading-relaxed">
                     {scanMode === "incremental" 
                       ? "Only scans newly added or recently modified files. This is the fastest method and is recommended for daily use." 
-                      : "Re-verifies all files against the database to ensure maximum data integrity. This will take significantly longer."}
+                      : "Validates all files against the database: removes entries for deleted files, imports new files, and re-parses NFO metadata for existing entries."}
                   </p>
                 </div>
-                <label className="flex items-center gap-4 bg-zinc-900/50 rounded-xl p-4 cursor-pointer hover:bg-zinc-800 transition-colors border border-transparent hover:border-zinc-700/50 group mt-4">
-                  <div className="relative flex items-center justify-center">
-                    <input
-                      type="checkbox"
-                      checked={deleteInvalid}
-                      onChange={(e) => setDeleteInvalid(e.target.checked)}
-                      className="peer sr-only"
-                    />
-                    <div className="w-6 h-6 rounded border-2 border-zinc-600 peer-checked:bg-teal-500 peer-checked:border-teal-500 transition-all flex items-center justify-center">
-                      <svg className={`w-4 h-4 text-white opacity-0 peer-checked:opacity-100 transition-opacity`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                {scanMode === "incremental" && (
+                  <label className="flex items-center gap-4 bg-zinc-900/50 rounded-xl p-4 cursor-pointer hover:bg-zinc-800 transition-colors border border-transparent hover:border-zinc-700/50 group mt-4">
+                    <div className="relative flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={deleteInvalid}
+                        onChange={(e) => setDeleteInvalid(e.target.checked)}
+                        className="peer sr-only"
+                      />
+                      <div className="w-6 h-6 rounded border-2 border-zinc-600 peer-checked:bg-teal-500 peer-checked:border-teal-500 transition-all flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white opacity-0 peer-checked:opacity-100 transition-opacity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex-1">
-                    <span className="text-zinc-200 font-medium group-hover:text-white transition-colors">Prune missing files</span>
-                    <p className="text-xs text-zinc-500 mt-0.5">Automatically remove database entries for files that no longer exist on disk.</p>
-                  </div>
-                </label>
+                    <div className="flex-1">
+                      <span className="text-zinc-200 font-medium group-hover:text-white transition-colors">Prune missing files</span>
+                      <p className="text-xs text-zinc-500 mt-0.5">Automatically remove database entries for files that no longer exist on disk.</p>
+                    </div>
+                  </label>
+                )}
               </div>
               
               <div className="grid sm:grid-cols-2 gap-4 mt-8">
@@ -477,6 +453,12 @@ export default function Settings() {
                 <span className="text-zinc-500 font-medium">New Media Found</span>
                 <span className="text-teal-400 font-bold text-xl">+{scanResult.new_movies}</span>
               </div>
+              {scanResult.updated_movies > 0 && (
+                <div className="flex justify-between items-center py-4 border-b border-zinc-800/80">
+                  <span className="text-zinc-500 font-medium">Metadata Updated</span>
+                  <span className="text-blue-400 font-bold text-xl">{scanResult.updated_movies}</span>
+                </div>
+              )}
               {scanResult.deleted_movies > 0 && (
                 <div className="flex justify-between items-center py-4 border-b border-zinc-800/80">
                   <span className="text-zinc-500 font-medium">Invalid Entries Pruned</span>

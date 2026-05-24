@@ -35,10 +35,88 @@ interface MovieStore {
   fetchAvailableActors: () => Promise<void>;
   setScrollPosition: (key: string, position: number) => void;
   setScrollProgress: (key: string, progress: number) => void;
+  patchMovie: (id: number, partial: Partial<Movie>) => void;
   lastRequestId: number;
 }
 
-export const useMovieStore = create<MovieStore>((set, get) => ({
+const compareMovies = (a: Movie, b: Movie, sort: SortOptions): number => {
+  const dir = sort.sortOrder === "ASC" ? 1 : -1;
+
+  // Treat missing ratings as -Infinity so that — combined with dir — they end up
+  // at the start for ASC and at the end for DESC, matching SQLite's default.
+  const ratingOf = (m: Movie) =>
+    m.rating === undefined || m.rating === null ? Number.NEGATIVE_INFINITY : m.rating;
+
+  const timeOf = (m: Movie) => Date.parse(m.added_at) || 0;
+
+  switch (sort.sortBy) {
+    case "rating": {
+      const ra = ratingOf(a);
+      const rb = ratingOf(b);
+      if (ra !== rb) return (ra - rb) * dir;
+      const ta = timeOf(a);
+      const tb = timeOf(b);
+      if (ta !== tb) return (ta - tb) * dir;
+      return (b.id - a.id);
+    }
+    case "year": {
+      const ya = a.year ?? -Infinity;
+      const yb = b.year ?? -Infinity;
+      if (ya !== yb) return (ya - yb) * dir;
+      return (b.id - a.id);
+    }
+    case "title": {
+      const cmp = a.title.localeCompare(b.title);
+      if (cmp !== 0) return cmp * dir;
+      return (b.id - a.id);
+    }
+    case "last_accessed": {
+      const la = a.last_accessed ? Date.parse(a.last_accessed) : -Infinity;
+      const lb = b.last_accessed ? Date.parse(b.last_accessed) : -Infinity;
+      if (la !== lb) return (la - lb) * dir;
+      return (b.id - a.id);
+    }
+    case "added_at":
+    default: {
+      const ta = timeOf(a);
+      const tb = timeOf(b);
+      if (ta !== tb) return (ta - tb) * dir;
+      return (b.id - a.id);
+    }
+  }
+};
+
+export const useMovieStore = create<MovieStore>((set, get) => {
+  const withRequestId = async <T>(
+    label: string,
+    options: {
+      bumpId?: boolean;
+      initial?: Partial<MovieStore>;
+      work: (requestId: number) => Promise<T>;
+      onSuccess: (result: T) => Partial<MovieStore>;
+      onError?: (error: unknown) => Partial<MovieStore>;
+    }
+  ) => {
+    const bumpId = options.bumpId ?? true;
+    const requestId = bumpId ? get().lastRequestId + 1 : get().lastRequestId;
+    const initial = options.initial ?? {};
+    set({ ...initial, ...(bumpId ? { lastRequestId: requestId } : {}) });
+
+    try {
+      const result = await options.work(requestId);
+      if (get().lastRequestId !== requestId) {
+        logger.info(`[MovieStore] ${label} ignored: stale requestId=${requestId}`);
+        return;
+      }
+      set(options.onSuccess(result));
+    } catch (error) {
+      if (get().lastRequestId !== requestId) return;
+      logger.error(`[MovieStore] ${label} failed: ${error}`);
+      if (options.onError) set(options.onError(error));
+    }
+  };
+
+  return {
   movies: [],
   currentPage: 0,
   totalCount: 0,
@@ -57,31 +135,36 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   lastRequestId: 0,
 
   fetchMovies: async (offset: number) => {
-    const requestId = get().lastRequestId + 1;
-    set({ isLoading: true, error: null, searchQuery: "", lastRequestId: requestId });
-    try {
-      const movies = await getMovies(offset, 200);
-      if (get().lastRequestId !== requestId) {
-        logger.info(`[MovieStore] fetchMovies ignored: stale requestId=${requestId}`);
-        return;
-      }
+    await withRequestId<Movie[]>("fetchMovies", {
+      initial: { isLoading: true, error: null, searchQuery: "" },
+      work: async () => {
+        const state = get();
+        const shouldUseFilteredQuery =
+          state.isUsingFilters ||
+          state.sortOptions.sortBy !== "added_at" ||
+          state.sortOptions.sortOrder !== "DESC";
 
-      logger.info(`[MovieStore] 获取电影数据: ${movies.length} 个电影`);
-      logger.info(`[MovieStore] 前3个电影: ${JSON.stringify(movies.slice(0, 3).map(m => ({
-        id: m.id,
-        title: m.title,
-        thumbnail_path: m.thumbnail_path
-      })))}`);
-      set({ 
-        movies, 
-        isLoading: false, 
-        hasMore: movies.length === 200,
-        currentPage: Math.floor(offset / 200)
-      });
-    } catch (error) {
-      logger.error(`[MovieStore] 获取电影失败: ${error}`);
-      set({ error: String(error), isLoading: false });
-    }
+        return shouldUseFilteredQuery
+          ? await getMoviesFiltered(
+              offset,
+              200,
+              state.isUsingFilters ? state.filters : undefined,
+              state.sortOptions,
+              undefined
+            )
+          : await getMovies(offset, 200);
+      },
+      onSuccess: (movies) => {
+        logger.info(`[MovieStore] 获取电影数据: ${movies.length} 个电影`);
+        return {
+          movies,
+          isLoading: false,
+          hasMore: movies.length === 200,
+          currentPage: Math.floor(offset / 200),
+        };
+      },
+      onError: (error) => ({ error: String(error), isLoading: false }),
+    });
   },
 
   loadMore: async () => {
@@ -93,45 +176,37 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
       state.isUsingFilters ||
       state.sortOptions.sortBy !== "added_at" ||
       state.sortOptions.sortOrder !== "DESC";
-    
-    const requestId = state.lastRequestId;
-    logger.info(`[MovieStore] Trigger loadMore: page=${state.currentPage}, searchQuery='${state.searchQuery}', requestId=${requestId}`);
-    set({ isLoadingMore: true });
-    try {
-      const offset = (state.currentPage + 1) * 200;
-      let newMovies: Movie[] = [];
-      
-      if (shouldUseFilteredQuery) {
-        newMovies = await getMoviesFiltered(
-          offset,
-          200,
-          state.isUsingFilters ? state.filters : undefined,
-          state.sortOptions,
-          state.searchQuery || undefined
-        );
-      } else {
-        newMovies = await getMovies(offset, 200);
-      }
-      
-      if (get().lastRequestId !== requestId) {
-        logger.info(`[MovieStore] loadMore ignored: stale requestId=${requestId}`);
-        return;
-      }
 
-      logger.info(`[MovieStore] loadMore success: fetched=${newMovies.length}, total_before=${state.movies.length}, next_page=${state.currentPage + 1}`);
-      
-      set({ 
-        movies: [...state.movies, ...newMovies],
-        isLoadingMore: false,
-        hasMore: newMovies.length === 200,
-        currentPage: state.currentPage + 1
-      });
-    } catch (error) {
-      if (get().lastRequestId === requestId) {
-        logger.error(`[MovieStore] loadMore failed: ${error}`);
-        set({ isLoadingMore: false });
-      }
-    }
+    logger.info(`[MovieStore] Trigger loadMore: page=${state.currentPage}, searchQuery='${state.searchQuery}', requestId=${state.lastRequestId}`);
+
+    await withRequestId<Movie[]>("loadMore", {
+      bumpId: false,
+      initial: { isLoadingMore: true },
+      work: async () => {
+        const offset = (state.currentPage + 1) * 200;
+        if (shouldUseFilteredQuery) {
+          return await getMoviesFiltered(
+            offset,
+            200,
+            state.isUsingFilters ? state.filters : undefined,
+            state.sortOptions,
+            state.searchQuery || undefined
+          );
+        }
+        return await getMovies(offset, 200);
+      },
+      onSuccess: (newMovies) => {
+        const current = get();
+        logger.info(`[MovieStore] loadMore success: fetched=${newMovies.length}, total_before=${current.movies.length}, next_page=${current.currentPage + 1}`);
+        return {
+          movies: [...current.movies, ...newMovies],
+          isLoadingMore: false,
+          hasMore: newMovies.length === 200,
+          currentPage: current.currentPage + 1,
+        };
+      },
+      onError: () => ({ isLoadingMore: false }),
+    });
   },
 
   searchMovies: async (query: string) => {
@@ -141,37 +216,31 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
       return;
     }
 
-    const requestId = get().lastRequestId + 1;
-    logger.info(`[MovieStore] Initial search: query='${normalizedQuery}', requestId=${requestId}`);
-    set({ isLoading: true, error: null, searchQuery: normalizedQuery, currentPage: 0, lastRequestId: requestId });
-    try {
-      const state = get();
-      const movies = await getMoviesFiltered(
-        0,
-        200,
-        state.isUsingFilters ? state.filters : undefined,
-        state.sortOptions,
-        normalizedQuery
-      );
-      
-      if (get().lastRequestId !== requestId) {
-        logger.info(`[MovieStore] search ignored: stale requestId=${requestId}`);
-        return;
-      }
+    logger.info(`[MovieStore] Initial search: query='${normalizedQuery}'`);
 
-      logger.info(`[MovieStore] Search success: fetched=${movies.length}`);
-      set({ 
-        movies, 
-        isLoading: false,
-        hasMore: movies.length === 200,
-        currentPage: 0
-      });
-    } catch (error) {
-      if (get().lastRequestId === requestId) {
-        logger.error(`[MovieStore] Search failed: ${error}`);
-        set({ error: String(error), isLoading: false });
-      }
-    }
+    await withRequestId<Movie[]>("searchMovies", {
+      initial: { isLoading: true, error: null, searchQuery: normalizedQuery, currentPage: 0 },
+      work: async () => {
+        const state = get();
+        return await getMoviesFiltered(
+          0,
+          200,
+          state.isUsingFilters ? state.filters : undefined,
+          state.sortOptions,
+          normalizedQuery
+        );
+      },
+      onSuccess: (movies) => {
+        logger.info(`[MovieStore] Search success: fetched=${movies.length}`);
+        return {
+          movies,
+          isLoading: false,
+          hasMore: movies.length === 200,
+          currentPage: 0,
+        };
+      },
+      onError: (error) => ({ error: String(error), isLoading: false }),
+    });
   },
 
   playMovie: async (id: number) => {
@@ -195,33 +264,29 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
   },
 
   fetchMoviesFiltered: async (offset: number, limit: number) => {
-    const state = get();
-    const requestId = state.lastRequestId + 1;
-    set({ isLoading: true, error: null, lastRequestId: requestId });
-    try {
-      const movies = await getMoviesFiltered(
-        offset,
-        limit,
-        state.isUsingFilters ? state.filters : undefined,
-        state.sortOptions,
-        state.searchQuery || undefined
-      );
-      if (get().lastRequestId !== requestId) {
-        logger.info(`[MovieStore] filtered fetch ignored: stale requestId=${requestId}`);
-        return;
-      }
-
-      logger.info(`[MovieStore] 获取筛选电影数据: ${movies.length} 个电影`);
-      set({ 
-        movies, 
-        isLoading: false,
-        hasMore: movies.length === limit,
-        currentPage: Math.floor(offset / limit)
-      });
-    } catch (error) {
-      logger.error(`[MovieStore] 获取筛选电影失败: ${error}`);
-      set({ error: String(error), isLoading: false });
-    }
+    await withRequestId<Movie[]>("fetchMoviesFiltered", {
+      initial: { isLoading: true, error: null },
+      work: async () => {
+        const state = get();
+        return await getMoviesFiltered(
+          offset,
+          limit,
+          state.isUsingFilters ? state.filters : undefined,
+          state.sortOptions,
+          state.searchQuery || undefined
+        );
+      },
+      onSuccess: (movies) => {
+        logger.info(`[MovieStore] 获取筛选电影数据: ${movies.length} 个电影`);
+        return {
+          movies,
+          isLoading: false,
+          hasMore: movies.length === limit,
+          currentPage: Math.floor(offset / limit),
+        };
+      },
+      onError: (error) => ({ error: String(error), isLoading: false }),
+    });
   },
 
   clearFilters: () => {
@@ -263,4 +328,22 @@ export const useMovieStore = create<MovieStore>((set, get) => ({
       }
     }));
   },
-}));
+
+  patchMovie: (id: number, partial: Partial<Movie>) => {
+    set((state) => {
+      let touched = false;
+      const next = state.movies.map((m) => {
+        if (m.id !== id) return m;
+        touched = true;
+        return { ...m, ...partial };
+      });
+      if (!touched) return state;
+
+      // Re-sort in memory so the patched row falls into the right rating
+      // section right away; without this, the card just updates in place.
+      next.sort((a, b) => compareMovies(a, b, state.sortOptions));
+      return { movies: next };
+    });
+  },
+  };
+});

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, Eye, Layers } from "lucide-react";
@@ -14,7 +14,7 @@ interface MovieCardProps {
   movie: Movie;
 }
 
-export default function MovieCard({ movie }: MovieCardProps) {
+function MovieCard({ movie }: MovieCardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { showThumbnails } = useNsfwStore();
@@ -165,3 +165,5 @@ export default function MovieCard({ movie }: MovieCardProps) {
     </div>
   );
 }
+
+export default memo(MovieCard);

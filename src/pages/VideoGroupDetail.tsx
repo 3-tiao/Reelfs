@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getVideoGroupDetail, VideoGroupWithParts, playMovie, showInFileManager, logger } from "../services/tauri";
-import { Play, ArrowLeft, Film, FolderOpen } from "lucide-react";
+import { Play, ArrowLeft, Film, FolderOpen, AlertCircle } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { formatBytes, formatDuration } from "../lib/utils";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
@@ -19,6 +19,7 @@ export default function VideoGroupDetail() {
   const { showThumbnails } = useNsfwStore();
   const [groupData, setGroupData] = useState<VideoGroupWithParts | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [posterSrc, setPosterSrc] = useState<string | null>(null);
   const [fanartSrc, setFanartSrc] = useState<string | null>(null);
 
@@ -37,10 +38,12 @@ export default function VideoGroupDetail() {
   const loadGroupData = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const data = await getVideoGroupDetail(parseInt(id!));
       setGroupData(data);
     } catch (error) {
       logger.error("Failed to load video group:", error);
+      setLoadError(String(error));
     } finally {
       setLoading(false);
     }
@@ -76,16 +79,38 @@ export default function VideoGroupDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_18%),linear-gradient(180deg,#09090b,#0a0f10)]">
+        <div className="text-center">
+          <div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-2 border-teal-300/20 border-t-teal-300"></div>
+          <p className="text-base font-medium text-zinc-200">Loading grouped feature</p>
+        </div>
       </div>
     );
   }
 
   if (!groupData) {
+    const backTarget = getBackTarget(location.state, "/");
+    const message = loadError
+      ? "影片组合信息加载失败，可能已经被删除或从扫描中移除。"
+      : "找不到这个影片组合。";
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-400">Video group not found</p>
+      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(239,68,68,0.08),transparent_22%),linear-gradient(180deg,#09090b,#0a0f10)] px-6">
+        <div className="max-w-md w-full rounded-[26px] border border-white/8 bg-white/[0.03] p-8 text-center backdrop-blur-xl">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-rose-400/20 bg-rose-500/10 text-rose-300">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <p className="text-base font-medium text-zinc-100">{message}</p>
+          {loadError && (
+            <p className="mt-2 text-xs text-zinc-500 break-all">{loadError}</p>
+          )}
+          <button
+            onClick={() => navigate(backTarget)}
+            className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/[0.09]"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回上一页
+          </button>
+        </div>
       </div>
     );
   }
@@ -101,17 +126,14 @@ export default function VideoGroupDetail() {
   const displayPlot = group.plot || firstPartMovie?.plot;
   const displayDirector = group.director || firstPartMovie?.director;
   const displayActors = group.actors || firstPartMovie?.actors;
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 text-white">
-      {/* Background */}
       <DetailBackground fanartSrc={fanartSrc} />
 
-      {/* Content */}
       <div className="relative z-10">
         <button
           onClick={() => navigate(getBackTarget(location.state, "/"))}
-          className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-zinc-700/50 shadow-lg z-50"
+          className="fixed left-5 top-5 z-50 flex items-center gap-2 rounded-full border border-white/10 bg-zinc-950/55 px-4 py-2.5 text-sm font-medium text-zinc-200 backdrop-blur-xl transition-colors duration-200 hover:bg-zinc-900/80 hover:text-white md:left-6 md:top-6"
         >
           <ArrowLeft className="w-5 h-5" />
           Back
@@ -119,7 +141,6 @@ export default function VideoGroupDetail() {
 
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-8">
           <div className="flex flex-col lg:flex-row gap-10">
-            {/* Poster */}
             <div className="flex-shrink-0 mx-auto lg:mx-0">
               <div className="w-72 aspect-[2/3] bg-zinc-800/50 rounded-2xl overflow-hidden shadow-2xl border border-zinc-700/50 backdrop-blur-sm">
                 {showThumbnails && posterSrc ? (
@@ -136,7 +157,6 @@ export default function VideoGroupDetail() {
               </div>
             </div>
 
-            {/* Info */}
             <div className="flex-1 space-y-6">
               <div>
                 <h1 className="text-4xl lg:text-5xl font-bold mb-3 bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent flex items-center gap-4">
@@ -150,7 +170,7 @@ export default function VideoGroupDetail() {
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={() => handlePlay()}
-                  className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 rounded-xl font-semibold text-lg transition-all duration-200 shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40"
+                  className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-teal-400 to-emerald-400 px-6 py-4 font-semibold text-zinc-950 shadow-[0_18px_42px_rgba(20,184,166,0.28)] transition-transform duration-200 hover:-translate-y-0.5"
                 >
                   <Play className="w-6 h-6" fill="currentColor" />
                   Play (Part 1)
@@ -177,12 +197,11 @@ export default function VideoGroupDetail() {
 
               <CastList actors={displayActors} />
 
-              {/* Parts Information */}
               <div className="pt-6 border-t border-zinc-800/50">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-zinc-400 text-sm uppercase tracking-wider font-medium">Parts ({group.part_count})</h3>
                 </div>
-                
+
                 <div className="space-y-4">
                   {parts.map((p) => (
                     <div key={p.part.id} className="bg-zinc-800/30 rounded-xl p-4 border border-zinc-700/30 flex flex-col gap-3">
@@ -198,14 +217,14 @@ export default function VideoGroupDetail() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleShowInFileManager(p.movie.file_path)}
-                            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700/80 rounded-lg transition-colors"
+                            className="rounded-2xl border border-white/10 bg-white/[0.04] p-2.5 text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white"
                             title="Show in File Manager"
                           >
                             <FolderOpen className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handlePlay(p.movie.id)}
-                            className="flex items-center gap-2 px-4 py-2 bg-zinc-700/80 hover:bg-teal-600/80 text-white rounded-lg transition-colors text-sm font-medium"
+                            className="flex items-center gap-2 rounded-2xl bg-white text-zinc-950 px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-teal-300"
                           >
                             <Play className="w-4 h-4" fill="currentColor" />
                             Play

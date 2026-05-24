@@ -1,6 +1,16 @@
 import { create } from "zustand";
 import { AppConfig, getConfig, updateConfig } from "../services/tauri";
 
+const DEFAULT_CONFIG: AppConfig = {
+  nas_paths: [],
+  cache_dir: "",
+  db_path: "",
+  scan_on_startup: false,
+  auto_generate_thumbnails: false,
+  theme: "dark",
+  default_player: "system",
+};
+
 interface SettingsStore {
   config: AppConfig | null;
   isLoading: boolean;
@@ -8,9 +18,10 @@ interface SettingsStore {
 
   loadConfig: () => Promise<void>;
   saveConfig: (config: AppConfig) => Promise<void>;
+  patchConfig: (updates: Partial<AppConfig>) => Promise<void>;
 }
 
-export const useSettingsStore = create<SettingsStore>((set) => ({
+export const useSettingsStore = create<SettingsStore>((set, get) => ({
   config: null,
   isLoading: false,
   error: null,
@@ -33,5 +44,10 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     } catch (error) {
       set({ error: String(error), isLoading: false });
     }
+  },
+
+  patchConfig: async (updates: Partial<AppConfig>) => {
+    const merged: AppConfig = { ...DEFAULT_CONFIG, ...get().config, ...updates };
+    await get().saveConfig(merged);
   },
 }));
