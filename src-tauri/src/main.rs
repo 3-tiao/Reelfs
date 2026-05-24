@@ -2,8 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod database;
-mod indexer;
 mod import_manager;
+mod indexer;
 mod models;
 mod path_utils;
 mod player;
@@ -13,14 +13,14 @@ mod video_group_detector;
 mod watcher;
 
 use database::Database;
+use log::{debug, error, info, warn};
 use models::{AppConfig, Movie, PlayHistory, ScanStatus, Stats, VideoGroup, VideoGroupWithParts};
-use video_group::VideoGroupManager;
-use video_group_detector::{detect_video_groups, VideoGroupCandidate};
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::fs;
 use std::path::Path;
-use log::{info, debug, warn, error};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use video_group::VideoGroupManager;
+use video_group_detector::{detect_video_groups, VideoGroupCandidate};
 
 struct AppState {
     db: Arc<Mutex<Database>>,
@@ -29,6 +29,8 @@ struct AppState {
     stop_scan_flag: Arc<AtomicBool>,
 }
 
+type VideoInfoProbe = (Option<i64>, Option<i32>, Option<i32>);
+
 #[tauri::command]
 async fn get_movies(
     state: tauri::State<'_, AppState>,
@@ -36,20 +38,24 @@ async fn get_movies(
     limit: i32,
 ) -> Result<Vec<Movie>, String> {
     info!("[API] get_movies 调用: offset={}, limit={}", offset, limit);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let movies = db.get_movies(offset, limit)
-        .map_err(|e| {
-            error!("[API] get_movies 失败: {}", e);
-            format!("Database error: {}", e)
-        })?;
-    
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let movies = db.get_movies(offset, limit).map_err(|e| {
+        error!("[API] get_movies 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+
     info!("[API] get_movies 返回: {} 个电影", movies.len());
     if !movies.is_empty() {
-        info!("[API] 第一个电影: id={}, title={}, thumbnail_path={:?}", 
-              movies[0].id, movies[0].title, movies[0].thumbnail_path);
+        info!(
+            "[API] 第一个电影: id={}, title={}, thumbnail_path={:?}",
+            movies[0].id, movies[0].title, movies[0].thumbnail_path
+        );
     }
-    
+
     Ok(movies)
 }
 
@@ -58,10 +64,15 @@ async fn get_movie_detail(
     state: tauri::State<'_, AppState>,
     id: i64,
 ) -> Result<(Movie, Option<PlayHistory>), String> {
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let movie = db.get_movie_by_id(id)
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let movie = db
+        .get_movie_by_id(id)
         .map_err(|e| format!("Database error: {}", e))?;
-    let history = db.get_play_history(id)
+    let history = db
+        .get_play_history(id)
         .map_err(|e| format!("Database error: {}", e))?;
     Ok((movie, history))
 }
@@ -73,13 +84,18 @@ async fn search_movies(
     offset: i32,
     limit: i32,
 ) -> Result<Vec<Movie>, String> {
-    info!("[API] search_movies 调用: query='{}', offset={}, limit={}", query, offset, limit);
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let movies = db.search_movies(&query, offset, limit)
-        .map_err(|e| {
-            error!("[API] search_movies 失败: {}", e);
-            format!("Database error: {}", e)
-        })?;
+    info!(
+        "[API] search_movies 调用: query='{}', offset={}, limit={}",
+        query, offset, limit
+    );
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let movies = db.search_movies(&query, offset, limit).map_err(|e| {
+        error!("[API] search_movies 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
     info!("[API] search_movies 返回: {} 个电影", movies.len());
     Ok(movies)
 }
@@ -91,68 +107,88 @@ async fn start_initial_scan(
     scan_mode: String,
     delete_invalid: bool,
 ) -> Result<String, String> {
-    info!("[导入管理器] 开始扫描: mode={}, delete_invalid={}", scan_mode, delete_invalid);
-    
-    let config = state.config.lock().map_err(|e| format!("Config lock error: {}", e))?.clone();
+    info!(
+        "[导入管理器] 开始扫描: mode={}, delete_invalid={}",
+        scan_mode, delete_invalid
+    );
+
+    let config = state
+        .config
+        .lock()
+        .map_err(|e| format!("Config lock error: {}", e))?
+        .clone();
     let db = Arc::clone(&state.db);
     let scan_status = Arc::clone(&state.scan_status);
     let stop_scan_flag = Arc::clone(&state.stop_scan_flag);
-    
-    let manager = import_manager::ImportManager::new(db, config, scan_status, stop_scan_flag, window, scan_mode, delete_invalid);
+
+    let manager = import_manager::ImportManager::new(
+        db,
+        config,
+        scan_status,
+        stop_scan_flag,
+        window,
+        scan_mode,
+        delete_invalid,
+    );
     manager.start_import().map(|_| "Import started".to_string())
 }
 
 #[tauri::command]
 async fn get_scan_status(state: tauri::State<'_, AppState>) -> Result<ScanStatus, String> {
-    Ok(state.scan_status.lock().map_err(|e| format!("Status lock error: {}", e))?.clone())
+    Ok(state
+        .scan_status
+        .lock()
+        .map_err(|e| format!("Status lock error: {}", e))?
+        .clone())
 }
 
 #[tauri::command]
-async fn play_movie(
-    state: tauri::State<'_, AppState>,
-    id: i64,
-) -> Result<(), String> {
+async fn play_movie(state: tauri::State<'_, AppState>, id: i64) -> Result<(), String> {
     info!("[播放器] 开始播放: movie_id={}", id);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let movie = db.get_movie_by_id(id)
-        .map_err(|e| {
-            error!("[播放器] 获取电影信息失败: {}", e);
-            format!("Movie not found: {}", e)
-        })?;
-    
-    let history = db.get_play_history(id)
-        .map_err(|e| {
-            error!("[播放器] 获取播放历史失败: {}", e);
-            format!("Database error: {}", e)
-        })?;
-    
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let movie = db.get_movie_by_id(id).map_err(|e| {
+        error!("[播放器] 获取电影信息失败: {}", e);
+        format!("Movie not found: {}", e)
+    })?;
+
+    let history = db.get_play_history(id).map_err(|e| {
+        error!("[播放器] 获取播放历史失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+
     let start_position = history.map(|h| {
-        debug!("[播放器] 播放历史: last_position={}s, play_count={}", h.last_position, h.play_count);
+        debug!(
+            "[播放器] 播放历史: last_position={}s, play_count={}",
+            h.last_position, h.play_count
+        );
         h.last_position
     });
-    
+
     // 自动标记为已观看
     if let Err(e) = db.set_watched_status(id, true) {
         warn!("[播放器] 设置观看状态失败: {}", e);
     }
-    
+
     // 增加播放次数
     if let Err(e) = db.increment_play_count(id) {
         warn!("[播放器] 增加播放次数失败: {}", e);
     }
-    
+
     player::play_movie(&movie.file_path, start_position)?;
-    
+
     info!("[播放器] 播放器启动成功: {}", movie.file_path);
-    
+
     Ok(())
 }
 
 #[tauri::command]
 async fn show_in_file_manager(file_path: String) -> Result<(), String> {
     info!("[文件管理器] 在文件管理器中显示: {}", file_path);
-    
+
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
@@ -165,7 +201,7 @@ async fn show_in_file_manager(file_path: String) -> Result<(), String> {
                 format!("Failed to open in Finder: {}", e)
             })?;
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         use std::process::Command;
@@ -177,14 +213,14 @@ async fn show_in_file_manager(file_path: String) -> Result<(), String> {
                 format!("Failed to open in file manager: {}", e)
             })?;
     }
-    
+
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         return Err("Unsupported platform".to_string());
     }
-    
+
     info!("[文件管理器] 文件管理器打开成功");
-    
+
     Ok(())
 }
 
@@ -194,14 +230,19 @@ async fn update_play_progress(
     id: i64,
     position: f64,
 ) -> Result<(), String> {
-    debug!("[播放器] 更新播放进度: movie_id={}, position={}s", id, position);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    db.update_play_history(id, position)
-        .map_err(|e| {
-            error!("[播放器] 更新播放进度失败: {}", e);
-            format!("Database error: {}", e)
-        })
+    debug!(
+        "[播放器] 更新播放进度: movie_id={}, position={}s",
+        id, position
+    );
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    db.update_play_history(id, position).map_err(|e| {
+        error!("[播放器] 更新播放进度失败: {}", e);
+        format!("Database error: {}", e)
+    })
 }
 
 #[tauri::command]
@@ -211,40 +252,49 @@ async fn set_watched_status(
     is_watched: bool,
 ) -> Result<(), String> {
     info!("[API] 设置观看状态: id={}, is_watched={}", id, is_watched);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    db.set_watched_status(id, is_watched)
-        .map_err(|e| {
-            error!("[API] 设置观看状态失败: {}", e);
-            format!("Database error: {}", e)
-        })
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    db.set_watched_status(id, is_watched).map_err(|e| {
+        error!("[API] 设置观看状态失败: {}", e);
+        format!("Database error: {}", e)
+    })
 }
 
 #[tauri::command]
 async fn get_stats(state: tauri::State<'_, AppState>) -> Result<Stats, String> {
     debug!("[数据查询] 获取统计信息");
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let config = state.config.lock().map_err(|e| format!("Config lock error: {}", e))?;
-    
-    let total_movies = db.get_total_count()
-        .map_err(|e| {
-            error!("[数据查询] 获取电影总数失败: {}", e);
-            format!("Database error: {}", e)
-        })?;
-    
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let config = state
+        .config
+        .lock()
+        .map_err(|e| format!("Config lock error: {}", e))?;
+
+    let total_movies = db.get_total_count().map_err(|e| {
+        error!("[数据查询] 获取电影总数失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+
     let db_path = &config.db_path;
-    let db_size = fs::metadata(db_path)
-        .map(|m| m.len() as i64)
-        .unwrap_or(0);
-    
+    let db_size = fs::metadata(db_path).map(|m| m.len() as i64).unwrap_or(0);
+
     let cache_size = thumbnail::get_cache_size(&config.cache_dir)
         .map(|s| s as i64)
         .unwrap_or(0);
-    
-    debug!("[数据查询] 统计信息: total={}, db_size={}MB, cache_size={}MB", 
-           total_movies, db_size / 1024 / 1024, cache_size / 1024 / 1024);
-    
+
+    debug!(
+        "[数据查询] 统计信息: total={}, db_size={}MB, cache_size={}MB",
+        total_movies,
+        db_size / 1024 / 1024,
+        cache_size / 1024 / 1024
+    );
+
     Ok(Stats {
         total_movies,
         total_size: 0,
@@ -255,41 +305,42 @@ async fn get_stats(state: tauri::State<'_, AppState>) -> Result<Stats, String> {
 
 #[tauri::command]
 async fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
-    Ok(state.config.lock().map_err(|e| format!("Config lock error: {}", e))?.clone())
+    Ok(state
+        .config
+        .lock()
+        .map_err(|e| format!("Config lock error: {}", e))?
+        .clone())
 }
 
 #[tauri::command]
-async fn update_config(
-    state: tauri::State<'_, AppState>,
-    config: AppConfig,
-) -> Result<(), String> {
+async fn update_config(state: tauri::State<'_, AppState>, config: AppConfig) -> Result<(), String> {
     info!("[设置] 更新配置: nas_paths={:?}", config.nas_paths);
-    
+
     let config_path = get_config_path();
     if let Some(parent) = Path::new(&config_path).parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| {
-                error!("[设置] 创建配置目录失败: {}", e);
-                format!("Failed to create config directory: {}", e)
-            })?;
+        fs::create_dir_all(parent).map_err(|e| {
+            error!("[设置] 创建配置目录失败: {}", e);
+            format!("Failed to create config directory: {}", e)
+        })?;
     }
-    
-    let json = serde_json::to_string_pretty(&config)
-        .map_err(|e| {
-            error!("[设置] 序列化配置失败: {}", e);
-            format!("Failed to serialize config: {}", e)
-        })?;
-    
-    fs::write(&config_path, json)
-        .map_err(|e| {
-            error!("[设置] 写入配置文件失败: {}", e);
-            format!("Failed to write config: {}", e)
-        })?;
-    
-    *state.config.lock().map_err(|e| format!("Config lock error: {}", e))? = config;
-    
+
+    let json = serde_json::to_string_pretty(&config).map_err(|e| {
+        error!("[设置] 序列化配置失败: {}", e);
+        format!("Failed to serialize config: {}", e)
+    })?;
+
+    fs::write(&config_path, json).map_err(|e| {
+        error!("[设置] 写入配置文件失败: {}", e);
+        format!("Failed to write config: {}", e)
+    })?;
+
+    *state
+        .config
+        .lock()
+        .map_err(|e| format!("Config lock error: {}", e))? = config;
+
     info!("[设置] 配置更新成功");
-    
+
     Ok(())
 }
 
@@ -302,14 +353,19 @@ async fn generate_thumbnail(
 
     // --- Phase 1: Gather required data, then immediately release locks ---
     let (file_path, existing_thumbnail, thumbnail_path) = {
-        let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-        let config = state.config.lock().map_err(|e| format!("Config lock error: {}", e))?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| format!("Database lock error: {}", e))?;
+        let config = state
+            .config
+            .lock()
+            .map_err(|e| format!("Config lock error: {}", e))?;
 
-        let movie = db.get_movie_by_id(movie_id)
-            .map_err(|e| {
-                error!("[缩略图生成] 获取电影信息失败: {}", e);
-                format!("Movie not found: {}", e)
-            })?;
+        let movie = db.get_movie_by_id(movie_id).map_err(|e| {
+            error!("[缩略图生成] 获取电影信息失败: {}", e);
+            format!("Movie not found: {}", e)
+        })?;
 
         let thumb_path = thumbnail::get_thumbnail_path(&config.cache_dir, movie_id);
         (movie.file_path, movie.thumbnail_path, thumb_path)
@@ -358,7 +414,10 @@ async fn generate_thumbnail(
 
     // --- Phase 4: Update DB (brief lock re-acquisition) ---
     {
-        let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| format!("Database lock error: {}", e))?;
         db.update_thumbnail_path(movie_id, &thumbnail_path)
             .map_err(|e| {
                 error!("[缩略图生成] 更新缩略图路径失败: {}", e);
@@ -370,7 +429,6 @@ async fn generate_thumbnail(
     Ok(thumbnail_path)
 }
 
-
 #[tauri::command]
 async fn regenerate_all_thumbnails(
     state: tauri::State<'_, AppState>,
@@ -378,12 +436,16 @@ async fn regenerate_all_thumbnails(
 ) -> Result<String, String> {
     info!("[缩略图生成] 开始重新生成所有缩略图");
 
-    let cache_dir = state.config.lock()
+    let cache_dir = state
+        .config
+        .lock()
         .map_err(|e| format!("Config lock error: {}", e))?
         .cache_dir
         .clone();
 
-    let movies: Vec<(i64, String, String)> = state.db.lock()
+    let movies: Vec<(i64, String, String)> = state
+        .db
+        .lock()
         .map_err(|e| format!("Database lock error: {}", e))?
         .get_all_movies()
         .map_err(|e| format!("Failed to load movies: {}", e))?
@@ -392,16 +454,22 @@ async fn regenerate_all_thumbnails(
         .collect();
 
     let total_thumbnails = movies.len();
-    info!("[缩略图生成] 找到 {} 个电影需要重新生成缩略图", total_thumbnails);
+    info!(
+        "[缩略图生成] 找到 {} 个电影需要重新生成缩略图",
+        total_thumbnails
+    );
 
-    let _ = window.emit("scan-progress", ScanStatus {
-        is_scanning: true,
-        stage: models::ImportStage::GeneratingThumbnails,
-        stage_message: "重新生成缩略图中...".to_string(),
-        total_files: total_thumbnails,
-        scanned_files: 0,
-        current_file: None,
-    });
+    let _ = window.emit(
+        "scan-progress",
+        ScanStatus {
+            is_scanning: true,
+            stage: models::ImportStage::GeneratingThumbnails,
+            stage_message: "重新生成缩略图中...".to_string(),
+            total_files: total_thumbnails,
+            scanned_files: 0,
+            current_file: None,
+        },
+    );
 
     let mut thumbnail_count = 0;
 
@@ -420,7 +488,10 @@ async fn regenerate_all_thumbnails(
 
             match thumbnail::generate_thumbnail(&poster, &thumbnail_path) {
                 Ok(_) => {
-                    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+                    let db = state
+                        .db
+                        .lock()
+                        .map_err(|e| format!("Database lock error: {}", e))?;
                     let _ = db.update_thumbnail_path(*movie_id, &thumbnail_path);
                     thumbnail_count += 1;
                     debug!("[缩略图生成] 缩略图成功: id={}", movie_id);
@@ -429,7 +500,10 @@ async fn regenerate_all_thumbnails(
                         let status = ScanStatus {
                             is_scanning: true,
                             stage: models::ImportStage::GeneratingThumbnails,
-                            stage_message: format!("重新生成缩略图: {}/{}", thumbnail_count, total_thumbnails),
+                            stage_message: format!(
+                                "重新生成缩略图: {}/{}",
+                                thumbnail_count, total_thumbnails
+                            ),
                             total_files: total_thumbnails,
                             scanned_files: thumbnail_count,
                             current_file: Some(format!("生成缩略图: {}", title)),
@@ -444,38 +518,50 @@ async fn regenerate_all_thumbnails(
         }
     }
 
-    info!("[缩略图生成] 重新生成缩略图完成: {}/{} 个", thumbnail_count, total_thumbnails);
+    info!(
+        "[缩略图生成] 重新生成缩略图完成: {}/{} 个",
+        thumbnail_count, total_thumbnails
+    );
 
-    let _ = window.emit("scan-progress", ScanStatus {
-        is_scanning: false,
-        stage: models::ImportStage::GeneratingThumbnails,
-        stage_message: "缩略图重建完成".to_string(),
-        total_files: total_thumbnails,
-        scanned_files: total_thumbnails,
-        current_file: None,
-    });
+    let _ = window.emit(
+        "scan-progress",
+        ScanStatus {
+            is_scanning: false,
+            stage: models::ImportStage::GeneratingThumbnails,
+            stage_message: "缩略图重建完成".to_string(),
+            total_files: total_thumbnails,
+            scanned_files: total_thumbnails,
+            current_file: None,
+        },
+    );
 
-    Ok(format!("成功重新生成 {} / {} 个缩略图", thumbnail_count, total_thumbnails))
+    Ok(format!(
+        "成功重新生成 {} / {} 个缩略图",
+        thumbnail_count, total_thumbnails
+    ))
 }
 
 #[tauri::command]
-async fn reset_database(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+async fn reset_database(state: tauri::State<'_, AppState>) -> Result<(), String> {
     info!("[数据库] 开始重置数据库");
 
-    let cache_dir = state.config.lock()
+    let cache_dir = state
+        .config
+        .lock()
         .map_err(|e| format!("Config lock error: {}", e))?
         .cache_dir
         .clone();
 
     {
-        let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-        db.clear_all_movies().map_err(|e| format!("清空数据库失败: {}", e))?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| format!("Database lock error: {}", e))?;
+        db.clear_all_movies()
+            .map_err(|e| format!("清空数据库失败: {}", e))?;
     }
 
-    thumbnail::clear_cache(&cache_dir)
-        .map_err(|e| format!("清理缩略图缓存失败: {}", e))?;
+    thumbnail::clear_cache(&cache_dir).map_err(|e| format!("清理缩略图缓存失败: {}", e))?;
 
     info!("[数据库] 数据库重置完成");
 
@@ -483,15 +569,13 @@ async fn reset_database(
 }
 
 #[tauri::command]
-async fn stop_scan(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+async fn stop_scan(state: tauri::State<'_, AppState>) -> Result<(), String> {
     info!("[扫描] 停止扫描");
-    
+
     state.stop_scan_flag.store(true, Ordering::SeqCst);
 
     info!("[扫描] 停止标志已设置");
-    
+
     Ok(())
 }
 
@@ -499,11 +583,14 @@ async fn stop_scan(
 async fn get_and_update_video_info(
     id: i64,
     state: tauri::State<'_, AppState>,
-) -> Result<(Option<i64>, Option<i32>, Option<i32>), String> {
+) -> Result<VideoInfoProbe, String> {
     info!("[视频信息] 获取视频信息: id={}", id);
 
     let file_path = {
-        let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| format!("Database lock error: {}", e))?;
         match db.get_movie_by_id(id) {
             Ok(movie) => movie.file_path,
             Err(e) => return Err(format!("获取电影失败: {}", e)),
@@ -514,19 +601,25 @@ async fn get_and_update_video_info(
     let (duration_seconds, width, height) = tokio::task::spawn_blocking(move || {
         indexer::get_video_info(std::path::Path::new(&file_path_for_probe))
     })
-        .await
-        .map_err(|e| format!("视频探测任务失败: {}", e))?
-        .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
-        .unwrap_or((None, None, None));
+    .await
+    .map_err(|e| format!("视频探测任务失败: {}", e))?
+    .map(|(d, w, h)| (Some(d), Some(w), Some(h)))
+    .unwrap_or((None, None, None));
 
     if duration_seconds.is_some() || width.is_some() || height.is_some() {
-        let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| format!("Database lock error: {}", e))?;
         if let Err(e) = db.update_video_info(id, duration_seconds, width, height) {
             return Err(format!("更新视频信息失败: {}", e));
         }
-        info!("[视频信息] 更新成功: id={}, duration={:?}, width={:?}, height={:?}", id, duration_seconds, width, height);
+        info!(
+            "[视频信息] 更新成功: id={}, duration={:?}, width={:?}, height={:?}",
+            id, duration_seconds, width, height
+        );
     }
-    
+
     Ok((duration_seconds, width, height))
 }
 
@@ -534,18 +627,21 @@ async fn get_and_update_video_info(
 async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
     info!("[设置] 开始清理缓存");
 
-    let cache_dir = state.config.lock()
+    let cache_dir = state
+        .config
+        .lock()
         .map_err(|e| format!("Config lock error: {}", e))?
         .cache_dir
         .clone();
 
-    thumbnail::clear_cache(&cache_dir)
-        .map_err(|e| {
-            error!("[设置] 清理缓存失败: {}", e);
-            format!("Failed to clear cache: {}", e)
-        })?;
+    thumbnail::clear_cache(&cache_dir).map_err(|e| {
+        error!("[设置] 清理缓存失败: {}", e);
+        format!("Failed to clear cache: {}", e)
+    })?;
 
-    state.db.lock()
+    state
+        .db
+        .lock()
         .map_err(|e| format!("Database lock error: {}", e))?
         .clear_all_thumbnail_paths()
         .map_err(|e| format!("Failed to clear thumbnail paths: {}", e))?;
@@ -558,16 +654,18 @@ async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 async fn delete_invalid_records(state: tauri::State<'_, AppState>) -> Result<(), String> {
     info!("[设置] 开始删除失效记录");
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let count = db.delete_invalid_records()
-        .map_err(|e| {
-            error!("[设置] 删除失效记录失败: {}", e);
-            format!("Failed to delete invalid records: {}", e)
-        })?;
-    
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let count = db.delete_invalid_records().map_err(|e| {
+        error!("[设置] 删除失效记录失败: {}", e);
+        format!("Failed to delete invalid records: {}", e)
+    })?;
+
     info!("[设置] 删除失效记录完成: {} 条", count);
-    
+
     Ok(())
 }
 
@@ -577,17 +675,23 @@ async fn update_thumbnail_path(
     movie_id: i64,
     thumbnail_path: String,
 ) -> Result<(), String> {
-    info!("[缩略图生成] 更新缩略图路径: movie_id={}, path={}", movie_id, thumbnail_path);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+    info!(
+        "[缩略图生成] 更新缩略图路径: movie_id={}, path={}",
+        movie_id, thumbnail_path
+    );
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
     db.update_thumbnail_path(movie_id, &thumbnail_path)
         .map_err(|e| {
             error!("[缩略图生成] 更新缩略图路径失败: {}", e);
             format!("Failed to update thumbnail path: {}", e)
         })?;
-    
+
     info!("[缩略图生成] 缩略图路径更新成功: movie_id={}", movie_id);
-    
+
     Ok(())
 }
 
@@ -597,21 +701,30 @@ async fn set_movie_rating(
     movie_id: i64,
     rating: Option<f64>,
 ) -> Result<(), String> {
-    info!("[API] set_movie_rating 调用: movie_id={}, rating={:?}", movie_id, rating);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    db.set_movie_rating(movie_id, rating)
-        .map_err(|e| {
-            error!("[API] 设置电影评级失败: {}", e);
-            format!("Failed to set movie rating: {}", e)
-        })?;
-    
-    info!("[API] 电影评级设置成功: movie_id={}, rating={:?}", movie_id, rating);
-    
+    info!(
+        "[API] set_movie_rating 调用: movie_id={}, rating={:?}",
+        movie_id, rating
+    );
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    db.set_movie_rating(movie_id, rating).map_err(|e| {
+        error!("[API] 设置电影评级失败: {}", e);
+        format!("Failed to set movie rating: {}", e)
+    })?;
+
+    info!(
+        "[API] 电影评级设置成功: movie_id={}, rating={:?}",
+        movie_id, rating
+    );
+
     Ok(())
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn get_movies_filtered(
     state: tauri::State<'_, AppState>,
     offset: i32,
@@ -629,64 +742,89 @@ async fn get_movies_filtered(
 ) -> Result<Vec<Movie>, String> {
     info!("[API] get_movies_filtered 调用: offset={}, limit={}, query={:?}, filters={:?}, sort={:?} {:?}",
            offset, limit, &search_query, (min_year, max_year, min_rating, max_rating, &actors, &genres, is_watched), sort_by, sort_order);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let movies = db.get_movies_with_filters(offset, limit, search_query, min_year, max_year, min_rating, max_rating, actors, genres, sort_by, sort_order, is_watched)
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let movies = db
+        .get_movies_with_filters(
+            offset,
+            limit,
+            search_query,
+            min_year,
+            max_year,
+            min_rating,
+            max_rating,
+            actors,
+            genres,
+            sort_by,
+            sort_order,
+            is_watched,
+        )
         .map_err(|e| {
             error!("[API] get_movies_filtered 失败: {}", e);
             format!("Database error: {}", e)
         })?;
-    
+
     info!("[API] get_movies_filtered 返回: {} 个电影", movies.len());
-    
+
     Ok(movies)
 }
 
 #[tauri::command]
 async fn get_unique_genres(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
     info!("[API] get_unique_genres 调用");
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let genres = db.get_unique_genres()
-        .map_err(|e| {
-            error!("[API] get_unique_genres 失败: {}", e);
-            format!("Database error: {}", e)
-        })?;
-    
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let genres = db.get_unique_genres().map_err(|e| {
+        error!("[API] get_unique_genres 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+
     info!("[API] get_unique_genres 返回: {} 个类型", genres.len());
-    
+
     Ok(genres)
 }
 
 #[tauri::command]
 async fn get_unique_actors(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
     info!("[API] get_unique_actors 调用");
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let actors = db.get_unique_actors()
-        .map_err(|e| {
-            error!("[API] get_unique_actors 失败: {}", e);
-            format!("Database error: {}", e)
-        })?;
-    
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let actors = db.get_unique_actors().map_err(|e| {
+        error!("[API] get_unique_actors 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+
     info!("[API] get_unique_actors 返回: {} 个演员", actors.len());
-    
+
     Ok(actors)
 }
 
 #[tauri::command]
-async fn get_actors_with_counts(state: tauri::State<'_, AppState>) -> Result<Vec<models::ActorInfo>, String> {
+async fn get_actors_with_counts(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<models::ActorInfo>, String> {
     info!("[API] get_actors_with_counts 调用");
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let actors = db.get_actors_with_counts()
-        .map_err(|e| {
-            error!("[API] get_actors_with_counts 失败: {}", e);
-            format!("Database error: {}", e)
-        })?;
-    
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let actors = db.get_actors_with_counts().map_err(|e| {
+        error!("[API] get_actors_with_counts 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+
     info!("[API] get_actors_with_counts 返回: {} 个演员", actors.len());
-    
+
     Ok(actors)
 }
 
@@ -697,13 +835,13 @@ fn get_config_path() -> String {
 
 fn load_config() -> AppConfig {
     let config_path = get_config_path();
-    
+
     if let Ok(content) = fs::read_to_string(&config_path) {
         if let Ok(config) = serde_json::from_str(&content) {
             return config;
         }
     }
-    
+
     AppConfig::default()
 }
 
@@ -713,17 +851,22 @@ async fn get_video_groups(
     offset: i32,
     limit: i32,
 ) -> Result<Vec<VideoGroup>, String> {
-    info!("[API] get_video_groups 调用: offset={}, limit={}", offset, limit);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+    info!(
+        "[API] get_video_groups 调用: offset={}, limit={}",
+        offset, limit
+    );
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
     let manager = VideoGroupManager::new(db.get_connection());
-    
-    let groups = manager.get_all_video_groups(offset, limit)
-        .map_err(|e| {
-            error!("[API] get_video_groups 失败: {}", e);
-            format!("Database error: {}", e)
-        })?;
-    
+
+    let groups = manager.get_all_video_groups(offset, limit).map_err(|e| {
+        error!("[API] get_video_groups 失败: {}", e);
+        format!("Database error: {}", e)
+    })?;
+
     info!("[API] get_video_groups 返回: {} 个视频组", groups.len());
     Ok(groups)
 }
@@ -734,22 +877,30 @@ async fn get_video_group_detail(
     id: i64,
 ) -> Result<VideoGroupWithParts, String> {
     info!("[API] get_video_group_detail 调用: id={}", id);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
     let manager = VideoGroupManager::new(db.get_connection());
-    
-    let group = manager.get_video_group_with_parts(id)
+
+    let group = manager
+        .get_video_group_with_parts(id)
         .map_err(|e| {
             error!("[API] get_video_group_detail 失败: {}", e);
             format!("Database error: {}", e)
         })?
         .ok_or_else(|| format!("Video group not found: {}", id))?;
-    
-    info!("[API] get_video_group_detail 返回: {} 个片段", group.parts.len());
+
+    info!(
+        "[API] get_video_group_detail 返回: {} 个片段",
+        group.parts.len()
+    );
     Ok(group)
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn create_video_group(
     state: tauri::State<'_, AppState>,
     title: String,
@@ -762,24 +913,29 @@ async fn create_video_group(
     poster_path: Option<String>,
 ) -> Result<i64, String> {
     info!("[API] create_video_group 调用: title={}", title);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
     let manager = VideoGroupManager::new(db.get_connection());
-    
-    let id = manager.create_video_group(
-        &title,
-        year,
-        plot.as_deref(),
-        rating,
-        genres.as_deref(),
-        director.as_deref(),
-        actors.as_deref(),
-        poster_path.as_deref(),
-    ).map_err(|e| {
-        error!("[API] create_video_group 失败: {}", e);
-        format!("Database error: {}", e)
-    })?;
-    
+
+    let id = manager
+        .create_video_group(
+            &title,
+            year,
+            plot.as_deref(),
+            rating,
+            genres.as_deref(),
+            director.as_deref(),
+            actors.as_deref(),
+            poster_path.as_deref(),
+        )
+        .map_err(|e| {
+            error!("[API] create_video_group 失败: {}", e);
+            format!("Database error: {}", e)
+        })?;
+
     info!("[API] create_video_group 成功: id={}", id);
     Ok(id)
 }
@@ -792,41 +948,43 @@ async fn add_video_part(
     part_number: i32,
     part_title: Option<String>,
 ) -> Result<i64, String> {
-    info!("[API] add_video_part 调用: group_id={}, movie_id={}, part_number={}", 
-          group_id, movie_id, part_number);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+    info!(
+        "[API] add_video_part 调用: group_id={}, movie_id={}, part_number={}",
+        group_id, movie_id, part_number
+    );
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
     let manager = VideoGroupManager::new(db.get_connection());
-    
-    let id = manager.add_video_part(
-        group_id,
-        movie_id,
-        part_number,
-        part_title.as_deref(),
-    ).map_err(|e| {
-        error!("[API] add_video_part 失败: {}", e);
-        format!("Database error: {}", e)
-    })?;
-    
+
+    let id = manager
+        .add_video_part(group_id, movie_id, part_number, part_title.as_deref())
+        .map_err(|e| {
+            error!("[API] add_video_part 失败: {}", e);
+            format!("Database error: {}", e)
+        })?;
+
     info!("[API] add_video_part 成功: part_id={}", id);
     Ok(id)
 }
 
 #[tauri::command]
-async fn delete_video_group(
-    state: tauri::State<'_, AppState>,
-    id: i64,
-) -> Result<(), String> {
+async fn delete_video_group(state: tauri::State<'_, AppState>, id: i64) -> Result<(), String> {
     info!("[API] delete_video_group 调用: id={}", id);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
     let manager = VideoGroupManager::new(db.get_connection());
-    
+
     manager.delete_video_group(id).map_err(|e| {
         error!("[API] delete_video_group 失败: {}", e);
         format!("Database error: {}", e)
     })?;
-    
+
     info!("[API] delete_video_group 成功");
     Ok(())
 }
@@ -837,13 +995,20 @@ async fn auto_detect_video_groups(
 ) -> Result<Vec<VideoGroupCandidate>, String> {
     info!("[API] auto_detect_video_groups 调用");
 
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    let movies = db.get_all_movies()
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    let movies = db
+        .get_all_movies()
         .map_err(|e| format!("Database error: {}", e))?;
 
     let candidates = detect_video_groups(&movies);
-    
-    info!("[API] auto_detect_video_groups 返回: {} 个候选组", candidates.len());
+
+    info!(
+        "[API] auto_detect_video_groups 返回: {} 个候选组",
+        candidates.len()
+    );
     Ok(candidates)
 }
 
@@ -856,11 +1021,11 @@ async fn check_file_exists(path: String) -> bool {
 async fn frontend_log(level: String, message: String) -> Result<(), String> {
     match level.as_str() {
         "error" => error!("[前端] {}", message),
-        "warn"  => warn!("[前端] {}", message),
-        "info"  => info!("[前端] {}", message),
+        "warn" => warn!("[前端] {}", message),
+        "info" => info!("[前端] {}", message),
         "debug" => debug!("[前端] {}", message),
         "trace" => log::trace!("[前端] {}", message),
-        _       => info!("[前端] {}", message),
+        _ => info!("[前端] {}", message),
     }
     Ok(())
 }
@@ -883,7 +1048,7 @@ fn init_logger() {
     let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
     let log_dir = format!("{}/.reelfs/logs", home);
     let log_file = format!("{}/reelfs.log", log_dir);
-    
+
     // Ensure log directory exists
     let _ = fs::create_dir_all(&log_dir);
 
@@ -903,7 +1068,8 @@ fn init_logger() {
 
     let size_trigger = SizeTrigger::new(10 * 1024 * 1024); // 10 MB
 
-    let compound_policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(fixed_window_roller));
+    let compound_policy =
+        CompoundPolicy::new(Box::new(size_trigger), Box::new(fixed_window_roller));
 
     let file_appender = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(pattern)))
@@ -926,27 +1092,31 @@ fn init_logger() {
 
 fn main() {
     let start_time = std::time::Instant::now();
-    
+
     // 初始化日志系统 (Rolling File + Console)
     init_logger();
-    
+
     info!("[应用启动] 开始初始化应用");
-    
+
     let config = load_config();
-    
-    info!("[应用启动] 配置文件加载完成: db_path={}, cache_dir={}", config.db_path, config.cache_dir);
+
+    info!(
+        "[应用启动] 配置文件加载完成: db_path={}, cache_dir={}",
+        config.db_path, config.cache_dir
+    );
     info!("[应用启动] NAS路径配置: {:?}", config.nas_paths);
-    
-    let db = Database::new(&config.db_path)
-        .expect("Failed to initialize database");
-    
+
+    let db = Database::new(&config.db_path).expect("Failed to initialize database");
+
     info!("[应用启动] 数据库初始化完成: {}", config.db_path);
-    
-    thumbnail::ensure_cache_dir(&config.cache_dir)
-        .expect("Failed to create cache directory");
-    
-    info!("[应用启动] 缓存目录创建完成: {}/thumbnails", config.cache_dir);
-    
+
+    thumbnail::ensure_cache_dir(&config.cache_dir).expect("Failed to create cache directory");
+
+    info!(
+        "[应用启动] 缓存目录创建完成: {}/thumbnails",
+        config.cache_dir
+    );
+
     if !config.nas_paths.is_empty() {
         let _ = watcher::start_watcher(
             config.nas_paths.clone(),
@@ -955,10 +1125,10 @@ fn main() {
         );
         info!("[应用启动] 文件监听器启动成功: {:?}", config.nas_paths);
     }
-    
+
     let elapsed = start_time.elapsed();
     info!("[应用启动] 应用初始化完成，耗时: {}ms", elapsed.as_millis());
-    
+
     tauri::Builder::default()
         .manage(AppState {
             db: Arc::new(Mutex::new(db)),

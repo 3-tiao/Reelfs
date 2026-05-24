@@ -100,7 +100,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
-        
+
         Self {
             nas_paths: vec![],
             cache_dir: format!("{}/.reelfs/cache", home),

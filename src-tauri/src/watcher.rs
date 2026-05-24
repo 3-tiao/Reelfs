@@ -1,13 +1,16 @@
-use notify::{Watcher, RecursiveMode, Event, EventKind, event::*};
-use std::sync::mpsc::channel;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
-use crate::indexer::{is_video_file, find_nfo_for_video, parse_nfo_file, extract_title_from_filename, get_file_size, get_poster_path};
 use crate::database::Database;
+use crate::indexer::{
+    extract_title_from_filename, find_nfo_for_video, get_file_size, get_poster_path, is_video_file,
+    parse_nfo_file,
+};
 use crate::thumbnail;
-use log::{info, debug, warn, error};
+use log::{debug, error, info, warn};
+use notify::{event::*, Event, EventKind, RecursiveMode, Watcher};
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel;
+use std::time::{Duration, Instant};
 
-/// Window within which we treat a Remove + Create pair (matching file_size) as a rename.
+/// Window within which we treat a same-directory Remove + Create pair as a rename fallback.
 const RENAME_WINDOW: Duration = Duration::from_secs(3);
 
 struct PendingRemove {
@@ -30,15 +33,15 @@ pub fn start_watcher(
     cache_dir: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("[文件监听] 监听器启动: {:?}", paths);
-    
+
     let (tx, rx) = channel();
-    
+
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
         if let Ok(event) = res {
             let _ = tx.send(event);
         }
     })?;
-    
+
     for path in &paths {
         if Path::new(path).exists() {
             watcher.watch(Path::new(path), RecursiveMode::Recursive)?;
@@ -47,7 +50,7 @@ pub fn start_watcher(
             warn!("[文件监听] 路径不存在，跳过: {}", path);
         }
     }
-    
+
     std::thread::spawn(move || {
         let _watcher = watcher;
         info!("[文件监听] 监听线程启动");
@@ -81,53 +84,103 @@ pub fn start_watcher(
             }
         }
     });
-    
+
     Ok(())
 }
 
-fn handle_nfo_modified(db: &Database, nfo_path: &Path) {
-    debug!("[文件监听] 检测到NFO文件修改: {:?}", nfo_path);
+fn nfo_removed_path_matches_video(nfo_path: &Path, video_path: &Path) -> bool {
+    let Some(nfo_stem) = nfo_path.file_stem().and_then(|s| s.to_str()) else {
+        return false;
+    };
+
+    if nfo_stem.eq_ignore_ascii_case("movie") {
+        return true;
+    }
+
+    video_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|video_stem| video_stem == nfo_stem)
+        .unwrap_or(false)
+}
+
+fn refresh_movie_metadata_for_video(db: &Database, video_path: &Path) {
+    let file_path_str = video_path.to_string_lossy().to_string();
+    let movie = match db.get_movie_by_path(&file_path_str) {
+        Ok(Some(movie)) => movie,
+        Ok(None) => return,
+        Err(e) => {
+            error!("[文件监听] 查询电影失败: {} - {}", file_path_str, e);
+            return;
+        }
+    };
+
+    let metadata = find_nfo_for_video(video_path).and_then(|nfo_path| {
+        debug!("[文件监听] 刷新元数据，使用NFO: {:?}", nfo_path);
+        parse_nfo_file(&nfo_path)
+    });
+
+    let title = metadata
+        .as_ref()
+        .map(|m| m.title.clone())
+        .unwrap_or_else(|| extract_title_from_filename(video_path));
+    let year = metadata.as_ref().and_then(|m| m.year);
+    let plot = metadata.as_ref().and_then(|m| m.plot.as_deref());
+    let rating = metadata.as_ref().and_then(|m| m.rating);
+    let genres = metadata.as_ref().and_then(|m| m.genres.as_deref());
+    let director = metadata.as_ref().and_then(|m| m.director.as_deref());
+    let actors = metadata.as_ref().and_then(|m| m.actors.as_deref());
+    let file_size = get_file_size(video_path);
+
+    match db.update_movie_metadata(
+        movie.id, &title, year, plot, rating, genres, director, actors, file_size,
+    ) {
+        Ok(true) => info!(
+            "[文件监听] 更新电影元数据: id={}, title={}",
+            movie.id, title
+        ),
+        Ok(false) => debug!(
+            "[文件监听] 电影元数据无变化: id={}, title={}",
+            movie.id, title
+        ),
+        Err(e) => error!(
+            "[文件监听] 更新电影元数据失败: id={}, error={}",
+            movie.id, e
+        ),
+    }
+}
+
+fn handle_nfo_changed(db: &Database, nfo_path: &Path) {
+    debug!("[文件监听] 检测到NFO文件变更: {:?}", nfo_path);
 
     let parent = match nfo_path.parent() {
         Some(p) => p,
         None => return,
     };
 
-    // Find video files in the same directory
     if let Ok(entries) = std::fs::read_dir(parent) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if is_video_file(&path) {
-                // Check if this video corresponds to this NFO
-                let matched_nfo = find_nfo_for_video(&path);
-                if let Some(matched) = matched_nfo {
-                    if matched == nfo_path {
-                        let file_path_str = path.to_string_lossy().to_string();
+            if is_video_file(&path) && find_nfo_for_video(&path).as_deref() == Some(nfo_path) {
+                refresh_movie_metadata_for_video(db, &path);
+            }
+        }
+    }
+}
 
-                        // Look up movie in DB
-                        if let Ok(Some(movie)) = db.get_movie_by_path(&file_path_str) {
-                            let metadata = parse_nfo_file(nfo_path);
+fn handle_nfo_removed(db: &Database, nfo_path: &Path) {
+    debug!("[文件监听] 检测到NFO文件删除: {:?}", nfo_path);
 
-                            let title = metadata.as_ref().map(|m| m.title.clone())
-                                .unwrap_or_else(|| extract_title_from_filename(&path));
-                            let year = metadata.as_ref().and_then(|m| m.year);
-                            let plot = metadata.as_ref().and_then(|m| m.plot.as_deref());
-                            let rating = metadata.as_ref().and_then(|m| m.rating);
-                            let genres = metadata.as_ref().and_then(|m| m.genres.as_deref());
-                            let director = metadata.as_ref().and_then(|m| m.director.as_deref());
-                            let actors = metadata.as_ref().and_then(|m| m.actors.as_deref());
-                            let file_size = get_file_size(&path);
+    let parent = match nfo_path.parent() {
+        Some(p) => p,
+        None => return,
+    };
 
-                            if let Err(e) = db.update_movie_metadata(
-                                movie.id, &title, year, plot, rating, genres, director, actors, file_size,
-                            ) {
-                                error!("[文件监听] 更新电影元数据失败: id={}, error={}", movie.id, e);
-                            } else {
-                                info!("[文件监听] 更新电影元数据: id={}, title={}", movie.id, title);
-                            }
-                        }
-                    }
-                }
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if is_video_file(&path) && nfo_removed_path_matches_video(nfo_path, &path) {
+                refresh_movie_metadata_for_video(db, &path);
             }
         }
     }
@@ -151,7 +204,10 @@ fn ensure_thumbnail(db: &Database, cache_dir: &str, movie_id: i64, video_path: &
     match thumbnail::generate_thumbnail(&poster, &thumb_path) {
         Ok(_) => {
             if let Err(e) = db.update_thumbnail_path(movie_id, &thumb_path) {
-                error!("[文件监听] 更新缩略图路径失败: id={}, error={}", movie_id, e);
+                error!(
+                    "[文件监听] 更新缩略图路径失败: id={}, error={}",
+                    movie_id, e
+                );
             } else {
                 info!("[文件监听] 缩略图生成成功: id={}", movie_id);
             }
@@ -178,8 +234,15 @@ fn reap_pending_removes(db: &Database, pending: &mut Vec<PendingRemove>) {
     *pending = still_pending;
 }
 
-/// If a recent Remove with matching file size is sitting in `pending`, treat the new path
-/// as a rename of that movie. Returns Some(movie_id) on rename match.
+fn same_rename_context(old_path: &str, new_path: &Path) -> bool {
+    let old_path = Path::new(old_path);
+    old_path.parent() == new_path.parent()
+        && old_path.extension().and_then(|e| e.to_str())
+            == new_path.extension().and_then(|e| e.to_str())
+}
+
+/// If a recent same-directory Remove with matching file size is sitting in `pending`,
+/// treat the new path as a rename of that movie. Returns Some(movie_id) on match.
 fn try_match_rename(
     db: &Database,
     pending: &mut Vec<PendingRemove>,
@@ -191,18 +254,24 @@ fn try_match_rename(
     let pos = pending.iter().position(|p| {
         p.file_size == Some(target_size)
             && now.duration_since(p.removed_at) <= RENAME_WINDOW
+            && same_rename_context(&p.file_path, new_path)
     })?;
 
     let matched = pending.remove(pos);
     let new_path_str = new_path.to_string_lossy().to_string();
     match db.update_file_path(matched.movie_id, &new_path_str) {
         Ok(_) => {
-            info!("[文件监听] 识别为重命名: id={}, {} -> {}",
-                  matched.movie_id, matched.file_path, new_path_str);
+            info!(
+                "[文件监听] 识别为重命名: id={}, {} -> {}",
+                matched.movie_id, matched.file_path, new_path_str
+            );
             Some(matched.movie_id)
         }
         Err(e) => {
-            error!("[文件监听] 重命名路径更新失败: id={}, error={}", matched.movie_id, e);
+            error!(
+                "[文件监听] 重命名路径更新失败: id={}, error={}",
+                matched.movie_id, e
+            );
             None
         }
     }
@@ -215,9 +284,15 @@ fn handle_path_swap(db: &Database, from: &Path, to: &Path) {
     match db.get_movie_by_path(&from_str) {
         Ok(Some(movie)) => {
             if let Err(e) = db.update_file_path(movie.id, &to_str) {
-                error!("[文件监听] 重命名路径更新失败: id={}, error={}", movie.id, e);
+                error!(
+                    "[文件监听] 重命名路径更新失败: id={}, error={}",
+                    movie.id, e
+                );
             } else {
-                info!("[文件监听] 重命名 (Both): id={}, {} -> {}", movie.id, from_str, to_str);
+                info!(
+                    "[文件监听] 重命名 (Both): id={}, {} -> {}",
+                    movie.id, from_str, to_str
+                );
             }
         }
         Ok(None) => {
@@ -227,12 +302,7 @@ fn handle_path_swap(db: &Database, from: &Path, to: &Path) {
     }
 }
 
-fn handle_new_video(
-    db: &Database,
-    cache_dir: &str,
-    pending: &mut Vec<PendingRemove>,
-    path: &Path,
-) {
+fn handle_new_video(db: &Database, cache_dir: &str, pending: &mut Vec<PendingRemove>, path: &Path) {
     debug!("[文件监听] 检测到新视频文件: {:?}", path);
 
     let file_size = get_file_size(path);
@@ -243,13 +313,14 @@ fn handle_new_video(
         return;
     }
 
-    let metadata = find_nfo_for_video(path)
-        .and_then(|nfo_path| {
-            debug!("[文件监听] 找到NFO文件: {:?}", nfo_path);
-            parse_nfo_file(&nfo_path)
-        });
+    let metadata = find_nfo_for_video(path).and_then(|nfo_path| {
+        debug!("[文件监听] 找到NFO文件: {:?}", nfo_path);
+        parse_nfo_file(&nfo_path)
+    });
 
-    let title = metadata.as_ref().map(|m| m.title.clone())
+    let title = metadata
+        .as_ref()
+        .map(|m| m.title.clone())
         .unwrap_or_else(|| extract_title_from_filename(path));
     let year = metadata.as_ref().and_then(|m| m.year);
     let plot = metadata.as_ref().and_then(|m| m.plot.as_deref());
@@ -261,17 +332,7 @@ fn handle_new_video(
     let file_path = path.to_string_lossy().to_string();
 
     match db.insert_movie(
-        &file_path,
-        &title,
-        year,
-        plot,
-        rating,
-        genres,
-        director,
-        actors,
-        file_size,
-        None,
-        None,
+        &file_path, &title, year, plot, rating, genres, director, actors, file_size, None, None,
         None,
     ) {
         Ok(id) => {
@@ -295,7 +356,10 @@ fn handle_remove_video(db: &Database, pending: &mut Vec<PendingRemove>, path: &P
                 file_size: movie.file_size,
                 removed_at: Instant::now(),
             });
-            debug!("[文件监听] 删除挂起，等待可能的重命名: id={}, path={}", movie.id, file_path);
+            debug!(
+                "[文件监听] 删除挂起，等待可能的重命名: id={}, path={}",
+                movie.id, file_path
+            );
         }
         Ok(None) => {
             debug!("[文件监听] 删除事件无对应记录: {}", file_path);
@@ -304,44 +368,46 @@ fn handle_remove_video(db: &Database, pending: &mut Vec<PendingRemove>, path: &P
     }
 }
 
-fn handle_fs_event(
-    db: &Database,
-    cache_dir: &str,
-    event: Event,
-    pending: &mut Vec<PendingRemove>,
-) {
+fn handle_fs_event(db: &Database, cache_dir: &str, event: Event, pending: &mut Vec<PendingRemove>) {
     debug!("[文件监听] 检测到文件系统事件: {:?}", event.kind);
 
     match event.kind {
         EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
             // notify emits [from, to] in one event on platforms that can pair them.
-            let paths: Vec<PathBuf> = event.paths.into_iter()
-                .filter(|p| is_video_file(p))
-                .collect();
-            if paths.len() == 2 {
+            let paths: Vec<PathBuf> = event.paths;
+            if paths.len() == 2 && is_video_file(&paths[0]) && is_video_file(&paths[1]) {
                 handle_path_swap(db, &paths[0], &paths[1]);
+            } else if paths.len() == 2 && is_nfo_file(&paths[0]) && is_nfo_file(&paths[1]) {
+                handle_nfo_removed(db, &paths[0]);
+                handle_nfo_changed(db, &paths[1]);
             } else {
                 debug!("[文件监听] 忽略不对称 rename(Both) 事件: {:?}", paths);
             }
         }
-        EventKind::Create(CreateKind::File) | EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
+        EventKind::Create(CreateKind::File)
+        | EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
             for path in event.paths {
                 if is_video_file(&path) {
                     handle_new_video(db, cache_dir, pending, &path);
+                } else if is_nfo_file(&path) {
+                    handle_nfo_changed(db, &path);
                 }
             }
         }
         EventKind::Modify(ModifyKind::Data(_)) | EventKind::Modify(ModifyKind::Any) => {
             for path in event.paths {
                 if is_nfo_file(&path) {
-                    handle_nfo_modified(db, &path);
+                    handle_nfo_changed(db, &path);
                 }
             }
         }
-        EventKind::Remove(RemoveKind::File) | EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+        EventKind::Remove(RemoveKind::File)
+        | EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
             for path in event.paths {
                 if is_video_file(&path) {
                     handle_remove_video(db, pending, &path);
+                } else if is_nfo_file(&path) {
+                    handle_nfo_removed(db, &path);
                 }
             }
         }

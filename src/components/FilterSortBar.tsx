@@ -14,7 +14,7 @@ const movieSortOptions = [
   { value: 'year', label: '年份', icon: Calendar },
   { value: 'rating', label: '评分', icon: Star },
   { value: 'added_at', label: '添加时间', icon: Clock },
-  { value: 'last_accessed', label: '播放次数', icon: User },
+  { value: 'last_accessed', label: '最近播放', icon: User },
 ];
 
 const actorSortOptions = [
@@ -46,6 +46,7 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const filterMenuRef = useRef<HTMLDivElement>(null);
+  const filterChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (viewMode === "actors") return;
@@ -69,6 +70,14 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (filterChangeTimerRef.current) {
+        clearTimeout(filterChangeTimerRef.current);
+      }
+    };
   }, []);
 
   const handleMovieSortChange = (sortBy: SortOptions['sortBy']) => {
@@ -98,12 +107,15 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
     (key: keyof Filters, value: any) => {
       const newFilters = { ...filters, [key]: value };
       setFilters(newFilters);
-      
-      const timer = setTimeout(() => {
+
+      if (filterChangeTimerRef.current) {
+        clearTimeout(filterChangeTimerRef.current);
+      }
+
+      filterChangeTimerRef.current = setTimeout(() => {
+        filterChangeTimerRef.current = null;
         onFilterChange();
       }, 300);
-      
-      return () => clearTimeout(timer);
     },
     [filters, setFilters, onFilterChange]
   );
@@ -272,7 +284,7 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
                       type="number"
                       placeholder="最小评分"
                       min="0"
-                      max="10"
+                      max="5"
                       step="0.1"
                       value={filters.minRating || ''}
                       onChange={(e) => handleFilterChange('minRating', e.target.value ? parseFloat(e.target.value) : undefined)}
@@ -282,7 +294,7 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
                       type="number"
                       placeholder="最大评分"
                       min="0"
-                      max="10"
+                      max="5"
                       step="0.1"
                       value={filters.maxRating || ''}
                       onChange={(e) => handleFilterChange('maxRating', e.target.value ? parseFloat(e.target.value) : undefined)}

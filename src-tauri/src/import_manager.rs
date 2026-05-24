@@ -1,15 +1,18 @@
-use std::sync::{Arc, Mutex, MutexGuard, atomic::{AtomicBool, AtomicUsize, Ordering}};
-use std::time::{Duration, Instant};
-use tauri::Window;
-use log::{info, debug, warn, error};
-use rayon::prelude::*;
-use crate::database::Database;
-use crate::models::{AppConfig, ScanCompletion, ScanStatus, ImportStage, ScanResult};
+use crate::database::{Database, MovieBatchRow};
 use crate::indexer;
+use crate::models::{AppConfig, ImportStage, ScanCompletion, ScanResult, ScanStatus};
 use crate::path_utils::normalize_path;
 use crate::thumbnail;
-use crate::video_group_detector::detect_video_groups;
 use crate::video_group::VideoGroupManager;
+use crate::video_group_detector::detect_video_groups;
+use log::{debug, error, info, warn};
+use rayon::prelude::*;
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+    Arc, Mutex, MutexGuard,
+};
+use std::time::{Duration, Instant};
+use tauri::Window;
 
 trait LockExt<T> {
     fn lock_recover(&self) -> MutexGuard<'_, T>;
@@ -25,6 +28,8 @@ impl<T> LockExt<T> for Mutex<T> {
 }
 
 const PROGRESS_EMIT_INTERVAL_MS: u64 = 150;
+
+type VideoProbe = (i64, Option<i64>, Option<i32>, Option<i32>);
 
 pub struct ImportManager {
     db: Arc<Mutex<Database>>,
@@ -92,11 +97,14 @@ impl ImportManager {
 
         self.stop_scan_flag.store(false, Ordering::SeqCst);
 
-        info!("[导入管理器] 开始扫描: mode={}, delete_invalid={}", self.scan_mode, self.delete_invalid);
-        
+        info!(
+            "[导入管理器] 开始扫描: mode={}, delete_invalid={}",
+            self.scan_mode, self.delete_invalid
+        );
+
         self.set_stage(ImportStage::Scanning, "扫描目录中...");
         self.reset_progress();
-        
+
         let db = Arc::clone(&self.db);
         let scan_status = Arc::clone(&self.scan_status);
         let stop_scan_flag = Arc::clone(&self.stop_scan_flag);
@@ -105,12 +113,20 @@ impl ImportManager {
         let cache_dir = config.cache_dir.clone();
         let scan_mode = self.scan_mode.clone();
         let delete_invalid = self.delete_invalid;
-        
+
         let _ = window.emit("scan-progress", scan_status.lock_recover().clone());
-        
+
         std::thread::spawn(move || {
-            let manager = ImportManager::new(db, config, scan_status, stop_scan_flag, window, scan_mode, delete_invalid);
-            
+            let manager = ImportManager::new(
+                db,
+                config,
+                scan_status,
+                stop_scan_flag,
+                window,
+                scan_mode,
+                delete_invalid,
+            );
+
             if let Err(e) = manager.run_import_process(&cache_dir) {
                 error!("[导入管理器] 导入过程失败: {}", e);
                 manager.set_error_state(&e);
@@ -135,7 +151,12 @@ impl ImportManager {
         };
 
         if self.stop_requested() {
-            let result = ScanResult { new_movies: 0, updated_movies: 0, deleted_movies: deleted_count as i64, total_movies: 0 };
+            let result = ScanResult {
+                new_movies: 0,
+                updated_movies: 0,
+                deleted_movies: deleted_count as i64,
+                total_movies: 0,
+            };
             self.set_cancelled_state(&result, "扫描已停止");
             return Ok(result);
         }
@@ -144,7 +165,12 @@ impl ImportManager {
         let all_video_paths = self.scan_directories_collect()?;
 
         if self.stop_requested() {
-            let result = ScanResult { new_movies: 0, updated_movies: 0, deleted_movies: deleted_count as i64, total_movies: 0 };
+            let result = ScanResult {
+                new_movies: 0,
+                updated_movies: 0,
+                deleted_movies: deleted_count as i64,
+                total_movies: 0,
+            };
             self.set_cancelled_state(&result, "扫描已停止");
             return Ok(result);
         }
@@ -153,7 +179,12 @@ impl ImportManager {
         let (new_ids, updated_count) = self.process_and_import_files(&all_video_paths, is_full)?;
 
         if self.stop_requested() {
-            let result = ScanResult { new_movies: new_ids.len() as i64, updated_movies: updated_count, deleted_movies: deleted_count as i64, total_movies: 0 };
+            let result = ScanResult {
+                new_movies: new_ids.len() as i64,
+                updated_movies: updated_count,
+                deleted_movies: deleted_count as i64,
+                total_movies: 0,
+            };
             self.set_cancelled_state(&result, "扫描已停止");
             return Ok(result);
         }
@@ -167,7 +198,12 @@ impl ImportManager {
                 self.probe_and_update_video_info(&new_ids)?;
 
                 if self.stop_requested() {
-                    let result = ScanResult { new_movies: new_ids.len() as i64, updated_movies: updated_count, deleted_movies: deleted_count as i64, total_movies: 0 };
+                    let result = ScanResult {
+                        new_movies: new_ids.len() as i64,
+                        updated_movies: updated_count,
+                        deleted_movies: deleted_count as i64,
+                        total_movies: 0,
+                    };
                     self.set_cancelled_state(&result, "扫描已停止");
                     return Ok(result);
                 }
@@ -189,7 +225,12 @@ impl ImportManager {
         }
 
         if self.stop_requested() {
-            let result = ScanResult { new_movies: new_ids.len() as i64, updated_movies: updated_count, deleted_movies: deleted_count as i64, total_movies: 0 };
+            let result = ScanResult {
+                new_movies: new_ids.len() as i64,
+                updated_movies: updated_count,
+                deleted_movies: deleted_count as i64,
+                total_movies: 0,
+            };
             self.set_cancelled_state(&result, "扫描已停止");
             return Ok(result);
         }
@@ -206,8 +247,13 @@ impl ImportManager {
         self.set_complete_state(&result);
 
         let elapsed = scan_start_time.elapsed();
-        info!("[导入管理器] 导入完成: {} 个新文件, {} 个更新, {} 个删除，耗时: {}ms",
-              new_ids.len(), updated_count, deleted_count, elapsed.as_millis());
+        info!(
+            "[导入管理器] 导入完成: {} 个新文件, {} 个更新, {} 个删除，耗时: {}ms",
+            new_ids.len(),
+            updated_count,
+            deleted_count,
+            elapsed.as_millis()
+        );
 
         Ok(result)
     }
@@ -216,11 +262,20 @@ impl ImportManager {
     fn scan_directories_collect(&self) -> Result<Vec<std::path::PathBuf>, String> {
         let mut all_video_paths = Vec::new();
         for (path_index, nas_path) in self.config.nas_paths.iter().enumerate() {
-            info!("[导入管理器] 扫描路径 ({}/{}): {}", path_index + 1, self.config.nas_paths.len(), nas_path);
+            info!(
+                "[导入管理器] 扫描路径 ({}/{}): {}",
+                path_index + 1,
+                self.config.nas_paths.len(),
+                nas_path
+            );
 
             {
                 let mut status = self.scan_status.lock_recover();
-                status.stage_message = format!("扫描目录中 ({}/{})...", path_index + 1, self.config.nas_paths.len());
+                status.stage_message = format!(
+                    "扫描目录中 ({}/{})...",
+                    path_index + 1,
+                    self.config.nas_paths.len()
+                );
             }
             self.emit_progress_force();
 
@@ -269,14 +324,23 @@ impl ImportManager {
     }
 
     /// Process video files: insert new ones, and in full mode update existing ones with changed NFO
-    fn process_and_import_files(&self, all_video_paths: &[std::path::PathBuf], is_full: bool) -> Result<(Vec<i64>, i64), String> {
+    fn process_and_import_files(
+        &self,
+        all_video_paths: &[std::path::PathBuf],
+        is_full: bool,
+    ) -> Result<(Vec<i64>, i64), String> {
         let is_incremental = !is_full;
 
         // Single DB scan reused for both "is this path known?" and "what's its id?"
         let path_to_id: std::collections::HashMap<String, i64> = {
             let db = self.db.lock_recover();
-            let all_records = db.get_all_file_paths().map_err(|e| format!("获取文件路径失败: {}", e))?;
-            all_records.into_iter().map(|(id, path)| (path, id)).collect()
+            let all_records = db
+                .get_all_file_paths()
+                .map_err(|e| format!("获取文件路径失败: {}", e))?;
+            all_records
+                .into_iter()
+                .map(|(id, path)| (path, id))
+                .collect()
         };
 
         let processed_counter = Arc::new(AtomicUsize::new(0));
@@ -314,11 +378,10 @@ impl ImportManager {
                     return None;
                 }
 
-                let metadata = indexer::find_nfo_for_video(video_path)
-                    .and_then(|nfo_path| {
-                        debug!("[导入管理器] 找到NFO文件: {:?}", nfo_path);
-                        indexer::parse_nfo_file(&nfo_path)
-                    });
+                let metadata = indexer::find_nfo_for_video(video_path).and_then(|nfo_path| {
+                    debug!("[导入管理器] 找到NFO文件: {:?}", nfo_path);
+                    indexer::parse_nfo_file(&nfo_path)
+                });
 
                 let title = if let Some(ref meta) = metadata {
                     meta.title.clone()
@@ -369,8 +432,18 @@ impl ImportManager {
         }
 
         // Separate into new files and existing files needing update
-        type NewRow = (String, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i32>, Option<i32>);
-        type UpdateRow = (i64, String, Option<i32>, Option<String>, Option<f64>, Option<String>, Option<String>, Option<String>, Option<i64>);
+        type NewRow = MovieBatchRow;
+        type UpdateRow = (
+            i64,
+            String,
+            Option<i32>,
+            Option<String>,
+            Option<f64>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<i64>,
+        );
         let mut new_batch: Vec<NewRow> = Vec::new();
         let mut existing_updates: Vec<UpdateRow> = Vec::new();
 
@@ -431,7 +504,11 @@ impl ImportManager {
                     let db = self.db.lock_recover();
                     match db.batch_insert_movies(&batch_buf) {
                         Ok(mut ids) => {
-                            debug!("[导入管理器] 批量插入成功: {} 条记录, {} 个 ID", batch_size, ids.len());
+                            debug!(
+                                "[导入管理器] 批量插入成功: {} 条记录, {} 个 ID",
+                                batch_size,
+                                ids.len()
+                            );
                             new_file_ids.append(&mut ids);
                         }
                         Err(e) => error!("[导入管理器] 批量插入失败: {}", e),
@@ -453,13 +530,31 @@ impl ImportManager {
         // Update existing files with re-parsed metadata (full mode only)
         let mut updated_count: i64 = 0;
         if !existing_updates.is_empty() {
-            info!("[导入管理器] 开始更新 {} 个已有文件的元数据", existing_updates.len());
+            info!(
+                "[导入管理器] 开始更新 {} 个已有文件的元数据",
+                existing_updates.len()
+            );
             let db = self.db.lock_recover();
-            for (movie_id, title, year, plot, rating, genres, director, actors, file_size) in &existing_updates {
-                if let Err(e) = db.update_movie_metadata(*movie_id, title, *year, plot.as_deref(), *rating, genres.as_deref(), director.as_deref(), actors.as_deref(), *file_size) {
-                    error!("[导入管理器] 更新电影元数据失败: id={}, error={}", movie_id, e);
-                } else {
-                    updated_count += 1;
+            for (movie_id, title, year, plot, rating, genres, director, actors, file_size) in
+                &existing_updates
+            {
+                match db.update_movie_metadata(
+                    *movie_id,
+                    title,
+                    *year,
+                    plot.as_deref(),
+                    *rating,
+                    genres.as_deref(),
+                    director.as_deref(),
+                    actors.as_deref(),
+                    *file_size,
+                ) {
+                    Ok(true) => updated_count += 1,
+                    Ok(false) => {}
+                    Err(e) => error!(
+                        "[导入管理器] 更新电影元数据失败: id={}, error={}",
+                        movie_id, e
+                    ),
                 }
             }
             info!("[导入管理器] 元数据更新完成: {} 个文件", updated_count);
@@ -478,7 +573,8 @@ impl ImportManager {
         // Collect (id, file_path) pairs once under a brief DB lock.
         let targets: Vec<(i64, String)> = {
             let db = self.db.lock_recover();
-            movie_ids.iter()
+            movie_ids
+                .iter()
                 .filter_map(|&id| db.get_movie_by_id(id).ok().map(|m| (m.id, m.file_path)))
                 .collect()
         };
@@ -496,7 +592,7 @@ impl ImportManager {
 
         let probed_counter = Arc::new(AtomicUsize::new(0));
 
-        let probes: Vec<(i64, Option<i64>, Option<i32>, Option<i32>)> = targets
+        let probes: Vec<VideoProbe> = targets
             .par_iter()
             .filter_map(|(id, file_path)| {
                 if self.stop_scan_flag.load(Ordering::Relaxed) {
@@ -521,7 +617,7 @@ impl ImportManager {
             .collect();
 
         // Persist in one batch — single lock acquisition, one transaction.
-        let to_write: Vec<&(i64, Option<i64>, Option<i32>, Option<i32>)> = probes
+        let to_write: Vec<&VideoProbe> = probes
             .iter()
             .filter(|(_id, d, w, h)| d.is_some() || w.is_some() || h.is_some())
             .collect();
@@ -535,8 +631,12 @@ impl ImportManager {
             }
         }
 
-        info!("[导入管理器] 视频信息探测完成: 写入 {} / 探测 {} / 计划 {}",
-              to_write.len(), probes.len(), total);
+        info!(
+            "[导入管理器] 视频信息探测完成: 写入 {} / 探测 {} / 计划 {}",
+            to_write.len(),
+            probes.len(),
+            total
+        );
         Ok(())
     }
 
@@ -546,7 +646,8 @@ impl ImportManager {
 
         let movies_without_thumbnails: Vec<(i64, String, String)> = {
             let db = self.db.lock_recover();
-            movie_ids.iter()
+            movie_ids
+                .iter()
                 .filter_map(|&id| db.get_movie_by_id(id).ok())
                 .filter(|movie| movie.thumbnail_path.is_none())
                 .map(|movie| (movie.id, movie.title, movie.file_path))
@@ -564,21 +665,31 @@ impl ImportManager {
 
         let movies_without_thumbnails: Vec<(i64, String, String)> = {
             let db = self.db.lock_recover();
-            let all_movies = db.get_all_movies().map_err(|e| format!("获取电影列表失败: {}", e))?;
-            all_movies.into_iter()
+            let all_movies = db
+                .get_all_movies()
+                .map_err(|e| format!("获取电影列表失败: {}", e))?;
+            all_movies
+                .into_iter()
                 .filter(|m| m.thumbnail_path.is_none())
                 .map(|m| (m.id, m.title, m.file_path))
                 .collect()
         };
 
-        info!("[导入管理器] 发现 {} 个电影缺少缩略图", movies_without_thumbnails.len());
+        info!(
+            "[导入管理器] 发现 {} 个电影缺少缩略图",
+            movies_without_thumbnails.len()
+        );
         self.generate_thumbnails_for_movies(cache_dir, &movies_without_thumbnails)?;
 
         Ok(())
     }
 
     /// Shared thumbnail generation logic
-    fn generate_thumbnails_for_movies(&self, cache_dir: &str, movies: &[(i64, String, String)]) -> Result<(), String> {
+    fn generate_thumbnails_for_movies(
+        &self,
+        cache_dir: &str,
+        movies: &[(i64, String, String)],
+    ) -> Result<(), String> {
         let total_thumbnails = movies.len();
         let mut thumbnail_count = 0;
 
@@ -620,7 +731,10 @@ impl ImportManager {
 
                         {
                             let mut status = self.scan_status.lock_recover();
-                            status.stage_message = format!("生成缩略图中... ({}/{})", thumbnail_count, total_thumbnails);
+                            status.stage_message = format!(
+                                "生成缩略图中... ({}/{})",
+                                thumbnail_count, total_thumbnails
+                            );
                             status.scanned_files = thumbnail_count;
                             status.current_file = Some(format!("生成缩略图: {}", title));
                         }
@@ -637,19 +751,24 @@ impl ImportManager {
         {
             let mut status = self.scan_status.lock_recover();
             status.scanned_files = thumbnail_count;
-            status.stage_message = format!("缩略图生成完成 ({}/{})", thumbnail_count, total_thumbnails);
+            status.stage_message =
+                format!("缩略图生成完成 ({}/{})", thumbnail_count, total_thumbnails);
             status.current_file = None;
         }
         self.emit_progress_force();
 
-        info!("[导入管理器] 缩略图生成完成: {}/{} 个", thumbnail_count, total_thumbnails);
+        info!(
+            "[导入管理器] 缩略图生成完成: {}/{} 个",
+            thumbnail_count, total_thumbnails
+        );
         Ok(())
     }
 
     fn delete_invalid_records(&self) -> Result<usize, String> {
         info!("[导入管理器] 开始删除失效记录");
         let db = self.db.lock_recover();
-        db.delete_invalid_records().map_err(|e| format!("删除失效记录失败: {}", e))
+        db.delete_invalid_records()
+            .map_err(|e| format!("删除失效记录失败: {}", e))
     }
 
     fn set_stage(&self, stage: ImportStage, message: &str) {
@@ -667,36 +786,41 @@ impl ImportManager {
 
     fn auto_detect_and_create_video_groups(&self) -> Result<(), String> {
         info!("[视频组检测] 开始自动检测");
-        
+
         let movies = {
             let db = self.db.lock_recover();
-            db.get_all_movies().map_err(|e| format!("获取电影列表失败: {}", e))?
+            db.get_all_movies()
+                .map_err(|e| format!("获取电影列表失败: {}", e))?
         };
-        
+
         info!("[视频组检测] 共 {} 个电影需要检测", movies.len());
-        
+
         let candidates = detect_video_groups(&movies);
-        
+
         info!("[视频组检测] 检测到 {} 个候选视频组", candidates.len());
-        
+
         if candidates.is_empty() {
             return Ok(());
         }
-        
+
         let db = self.db.lock_recover();
         let conn = db.get_connection();
         let group_manager = VideoGroupManager::new(conn);
-        
+
         info!("[视频组检测] 开始执行批量检测插入");
         match group_manager.create_video_groups_batch(&candidates) {
             Ok(count) => {
-                info!("[视频组检测] 批量创建视频组成功: {}/{}", count, candidates.len());
+                info!(
+                    "[视频组检测] 批量创建视频组成功: {}/{}",
+                    count,
+                    candidates.len()
+                );
             }
             Err(e) => {
                 error!("[视频组检测] 批量创建视频组失败: {}", e);
             }
         }
-        
+
         Ok(())
     }
 
@@ -712,7 +836,12 @@ impl ImportManager {
         self.stop_scan_flag.load(Ordering::Relaxed)
     }
 
-    fn build_scan_result(&self, new_movies: usize, updated_movies: i64, deleted_movies: usize) -> ScanResult {
+    fn build_scan_result(
+        &self,
+        new_movies: usize,
+        updated_movies: i64,
+        deleted_movies: usize,
+    ) -> ScanResult {
         let total_movies = {
             let db = self.db.lock_recover();
             db.get_total_count().unwrap_or(0)

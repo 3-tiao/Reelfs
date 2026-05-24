@@ -35,6 +35,7 @@ export default function Home() {
   const movieGridRef = useRef<MovieGridRef>(null);
   const movieListRef = useRef<MovieListRef>(null);
   const actorGridRef = useRef<ActorGridRef>(null);
+  const didRequestInitialMovies = useRef(false);
   const [actors, setActors] = useState<ActorInfo[]>([]);
   const [isLoadingActors, setIsLoadingActors] = useState(false);
 
@@ -104,10 +105,20 @@ export default function Home() {
   }, [viewMode, actors.length]);
 
   useEffect(() => {
-    if (movies.length === 0) {
+    if (didRequestInitialMovies.current) {
+      return;
+    }
+
+    if (movies.length > 0) {
+      didRequestInitialMovies.current = true;
+      return;
+    }
+
+    if (!searchQuery && !isUsingFilters) {
+      didRequestInitialMovies.current = true;
       fetchMovies(0);
     }
-  }, [movies.length, fetchMovies]);
+  }, [movies.length, searchQuery, isUsingFilters, fetchMovies]);
 
   const handleSearch = (query: string) => {
     if (viewMode === "actors") {

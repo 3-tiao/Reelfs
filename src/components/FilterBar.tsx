@@ -137,7 +137,7 @@ export default function FilterBar({ onFilterChange }: FilterBarProps) {
                   type="number"
                   placeholder="最小评分"
                   min="0"
-                  max="10"
+                  max="5"
                   step="0.1"
                   value={localFilters.minRating || ''}
                   onChange={(e) => handleFilterChange('minRating', e.target.value ? parseFloat(e.target.value) : undefined)}
@@ -147,7 +147,7 @@ export default function FilterBar({ onFilterChange }: FilterBarProps) {
                   type="number"
                   placeholder="最大评分"
                   min="0"
-                  max="10"
+                  max="5"
                   step="0.1"
                   value={localFilters.maxRating || ''}
                   onChange={(e) => handleFilterChange('maxRating', e.target.value ? parseFloat(e.target.value) : undefined)}
