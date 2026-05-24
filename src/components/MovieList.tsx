@@ -30,20 +30,20 @@ function ListSectionHeader({ rating, count }: { rating: RatingKey; count: number
   const stars = rating ?? 0;
   return (
     <div className="flex items-center gap-3 px-4 py-3">
-      <div className="flex items-center gap-1.5 rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1.5 text-amber-200">
+      <div className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-foreground">
         {rating !== null ? (
           <>
             {Array.from({ length: stars }).map((_, i) => (
               <Star key={i} className="w-3.5 h-3.5" fill="currentColor" />
             ))}
-            <span className="ml-1 text-sm font-semibold tracking-wide">{ratingSectionLabel(rating)}</span>
+            <span className="ml-1 text-xs font-medium tracking-wide">{ratingSectionLabel(rating)}</span>
           </>
         ) : (
-          <span className="text-sm font-semibold tracking-wide text-zinc-300">{ratingSectionLabel(rating)}</span>
+          <span className="text-xs font-medium tracking-wide">{ratingSectionLabel(rating)}</span>
         )}
       </div>
-      <span className="text-xs text-zinc-500">{count}</span>
-      <div className="ml-2 h-px flex-1 bg-gradient-to-r from-zinc-700/60 to-transparent" />
+      <span className="text-xs text-muted-foreground">{count}</span>
+      <div className="ml-2 h-px flex-1 bg-white/[0.06]" />
     </div>
   );
 }
@@ -122,75 +122,73 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
   return (
     <div
       ref={itemRef}
-      onClick={() => movie.group_id ? navigate(`/video-group/${movie.group_id}`, { state: routeState }) : navigate(`/movie/${movie.id}`, { state: routeState })}
-      className="flex items-center gap-4 px-4 py-3 hover:bg-zinc-800/50 cursor-pointer transition-colors border-b border-zinc-800/50 group"
-      style={{ height: '72px' }}
+      onClick={() =>
+        movie.group_id
+          ? navigate(`/video-group/${movie.group_id}`, { state: routeState })
+          : navigate(`/movie/${movie.id}`, { state: routeState })
+      }
+      className="group flex cursor-pointer items-center gap-4 border-b border-white/[0.04] px-4 py-3 transition-colors hover:bg-white/[0.03]"
+      style={{ height: "72px" }}
     >
-      <div className="flex-shrink-0 w-8 text-center text-zinc-500 text-sm">
+      <div className="w-8 flex-shrink-0 text-center text-xs text-muted-foreground tabular-nums">
         {index + 1}
       </div>
-      
-      <div className="flex-shrink-0 w-12 h-16 bg-zinc-800/80 backdrop-blur-sm rounded overflow-hidden">
+
+      <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded border border-white/[0.06] bg-card">
         {showThumbnails && imageSrc ? (
-          <img
-            src={imageSrc}
-            alt={movie.title}
-            className="w-full h-full object-cover"
-          />
+          <img src={imageSrc} alt={movie.title} className="h-full w-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Film className="w-6 h-6 text-zinc-600" />
+          <div className="flex h-full w-full items-center justify-center">
+            <Film className="h-5 w-5 text-white/15" />
           </div>
         )}
       </div>
-      
-      <div className="flex-1 min-w-0">
+
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-zinc-100 truncate font-medium">
+          <span className="truncate text-sm font-medium text-foreground">
             <HighlightedText text={movie.title} query={searchQuery} />
           </span>
-          {movie.is_watched === 1 && (
-            <Eye className="w-4 h-4 text-teal-500 flex-shrink-0" />
-          )}
+          {movie.is_watched === 1 && <Eye className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />}
         </div>
-        <div className="flex items-center gap-4 text-sm text-zinc-400 mt-1">
+        <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
           {secondaryText && (
-            <span className="truncate max-w-[240px]">
+            <span className="max-w-[240px] truncate">
               <HighlightedText
                 text={secondaryText}
                 query={searchQuery}
-                highlightClassName="bg-teal-500/20 text-teal-100 rounded px-0.5"
+                highlightClassName="bg-white/10 text-foreground rounded px-0.5"
               />
             </span>
           )}
           {movie.year && (
             <span className="flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
+              <Calendar className="h-3 w-3" />
               {movie.year}
             </span>
           )}
-          {movie.duration_seconds && (
-            <span>{formatDuration(movie.duration_seconds)}</span>
-          )}
+          {movie.duration_seconds && <span>{formatDuration(movie.duration_seconds)}</span>}
         </div>
       </div>
-      
-      <div className="flex items-center gap-4 flex-shrink-0 pr-4">
+
+      <div className="flex flex-shrink-0 items-center gap-4 pr-4">
         {movie.rating && (
-          <div className="flex items-center gap-1 text-teal-400">
-            <Star className="w-4 h-4" fill="currentColor" />
-            <span className="text-sm">{movie.rating.toFixed(1)}</span>
+          <div className="flex items-center gap-1 text-foreground">
+            <Star className="h-3.5 w-3.5" fill="currentColor" />
+            <span className="text-xs tabular-nums">{movie.rating.toFixed(1)}</span>
           </div>
         )}
-        
+
         <button
           onClick={(e) => {
             e.stopPropagation();
-            movie.group_id ? navigate(`/video-group/${movie.group_id}`, { state: routeState }) : navigate(`/movie/${movie.id}`, { state: routeState });
+            movie.group_id
+              ? navigate(`/video-group/${movie.group_id}`, { state: routeState })
+              : navigate(`/movie/${movie.id}`, { state: routeState });
           }}
-          className="opacity-0 group-hover:opacity-100 p-2 bg-gradient-to-r from-teal-500 to-teal-600 rounded-lg hover:from-teal-400 hover:to-teal-500 transition-all"
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-black opacity-0 transition-opacity group-hover:opacity-100"
         >
-          <Play className="w-4 h-4 text-white" fill="currentColor" />
+          <Play className="ml-0.5 h-3 w-3" fill="currentColor" />
         </button>
       </div>
     </div>

@@ -148,10 +148,10 @@ export default function MovieDetail() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_18%),linear-gradient(180deg,#09090b,#0a0f10)]">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-2 border-teal-300/20 border-t-teal-300"></div>
-          <p className="text-base font-medium text-zinc-200">Loading feature details</p>
+          <div className="mx-auto mb-4 h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-foreground" />
+          <p className="text-sm text-muted-foreground">Loading feature details</p>
         </div>
       </div>
     );
@@ -163,20 +163,18 @@ export default function MovieDetail() {
       ? "影片信息加载失败，可能已经被删除或从扫描中移除。"
       : "找不到这部影片。";
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(239,68,68,0.08),transparent_22%),linear-gradient(180deg,#09090b,#0a0f10)] px-6">
-        <div className="max-w-md w-full rounded-[26px] border border-white/8 bg-white/[0.03] p-8 text-center backdrop-blur-xl">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-rose-400/20 bg-rose-500/10 text-rose-300">
-            <AlertCircle className="w-6 h-6" />
+      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="w-full max-w-md rounded-2xl border border-white/[0.06] bg-card p-8 text-center">
+          <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+            <AlertCircle className="h-5 w-5" />
           </div>
-          <p className="text-base font-medium text-zinc-100">{message}</p>
-          {loadError && (
-            <p className="mt-2 text-xs text-zinc-500 break-all">{loadError}</p>
-          )}
+          <p className="text-sm font-medium text-foreground">{message}</p>
+          {loadError && <p className="mt-2 break-all text-xs text-muted-foreground">{loadError}</p>}
           <button
             onClick={() => navigate(backTarget)}
-            className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/[0.09]"
+            className="mt-6 inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:border-white/[0.16] hover:bg-white/[0.08]"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="h-3.5 w-3.5" />
             返回上一页
           </button>
         </div>
@@ -185,31 +183,27 @@ export default function MovieDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 text-white">
+    <div className="relative min-h-screen bg-background text-foreground">
       <DetailBackground fanartSrc={fanartSrc} />
 
       <div className="relative z-10">
         <button
           onClick={() => navigate(getBackTarget(location.state, "/"))}
-          className="fixed left-5 top-5 z-50 flex items-center gap-2 rounded-full border border-white/10 bg-zinc-950/55 px-4 py-2.5 text-sm font-medium text-zinc-200 backdrop-blur-xl transition-colors duration-200 hover:bg-zinc-900/80 hover:text-white md:left-6 md:top-6"
+          className="fixed left-5 top-5 z-50 inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-background/80 px-3 py-1.5 text-sm font-medium text-foreground backdrop-blur-xl transition-colors hover:border-white/[0.16] hover:bg-white/[0.04] md:left-6 md:top-6"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="h-4 w-4" />
           Back
         </button>
 
-        <div className="max-w-7xl mx-auto px-6 pt-20 pb-8">
-          <div className="flex flex-col lg:flex-row gap-10">
-            <div className="flex-shrink-0 mx-auto lg:mx-0">
-              <div className="w-72 aspect-[2/3] bg-zinc-800/50 rounded-2xl overflow-hidden shadow-2xl border border-zinc-700/50 backdrop-blur-sm">
+        <div className="mx-auto max-w-7xl px-6 pb-12 pt-20">
+          <div className="flex flex-col gap-10 lg:flex-row">
+            <div className="mx-auto flex-shrink-0 lg:mx-0">
+              <div className="aspect-[2/3] w-72 overflow-hidden rounded-2xl border border-white/[0.06] bg-card">
                 {posterSrc ? (
-                  <img
-                    src={posterSrc}
-                    alt={movie.title}
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={posterSrc} alt={movie.title} className="h-full w-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-                    <Film className="w-20 h-20 text-zinc-600" />
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Film className="h-16 w-16 text-white/15" />
                   </div>
                 )}
               </div>
@@ -217,130 +211,97 @@ export default function MovieDetail() {
 
             <div className="flex-1 space-y-6">
               <div>
-                <h1 className="text-4xl lg:text-5xl font-bold mb-3 bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent">
+                <h1 className="mb-2 text-4xl font-semibold tracking-tight text-foreground lg:text-5xl">
                   {movie.title}
                 </h1>
-                {movie.year && (
-                  <p className="text-zinc-400 text-lg">{movie.year}</p>
-                )}
+                {movie.year && <p className="text-base text-muted-foreground">{movie.year}</p>}
               </div>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={handlePlay}
-                  className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-teal-400 to-emerald-400 px-6 py-4 font-semibold text-zinc-950 shadow-[0_18px_42px_rgba(20,184,166,0.28)] transition-transform duration-200 hover:-translate-y-0.5"
+                  className="inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
                 >
-                  <Play className="w-6 h-6" fill="currentColor" />
+                  <Play className="h-4 w-4" fill="currentColor" />
                   {history && history.last_position > 0
-                    ? `Continue Playing (${Math.floor(history.last_position / 60)}m)`
+                    ? `Continue (${Math.floor(history.last_position / 60)}m)`
                     : "Play"}
                 </button>
 
                 <button
                   onClick={handleToggleWatched}
-                  className={`flex items-center gap-2 rounded-2xl border px-5 py-4 font-medium transition-colors ${
+                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition-colors ${
                     movie.is_watched === 1
-                      ? "border-teal-400/20 bg-teal-400/12 text-teal-100 hover:bg-teal-400/16"
-                      : "border-white/10 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.08]"
+                      ? "border-white/[0.16] bg-white/[0.08] text-foreground"
+                      : "border-white/[0.08] bg-transparent text-muted-foreground hover:border-white/[0.16] hover:bg-white/[0.04] hover:text-foreground"
                   }`}
                 >
                   {movie.is_watched === 1 ? (
                     <>
-                      <Eye className="w-5 h-5" />
+                      <Eye className="h-4 w-4" />
                       Watched
                     </>
                   ) : (
                     <>
-                      <EyeOff className="w-5 h-5" />
+                      <EyeOff className="h-4 w-4" />
                       Mark as Watched
                     </>
                   )}
                 </button>
               </div>
 
-              <InteractiveRating
-                rating={movie.rating}
-                isRating={isRating}
-                onRate={handleRating}
-              />
+              <InteractiveRating rating={movie.rating} isRating={isRating} onRate={handleRating} />
 
               <MetadataChips title="Genres" items={movie.genres} />
 
               {movie.plot && (
                 <div>
-                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-3 font-medium">Plot</h3>
-                  <p className="text-zinc-200 leading-relaxed text-lg">{movie.plot}</p>
+                  <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Plot
+                  </h3>
+                  <p className="text-base leading-relaxed text-foreground/90">{movie.plot}</p>
                 </div>
               )}
 
               {movie.director && (
                 <div>
-                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider mb-2 font-medium">Director</h3>
-                  <p className="text-zinc-100 text-lg">{movie.director}</p>
+                  <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Director
+                  </h3>
+                  <p className="text-sm text-foreground">{movie.director}</p>
                 </div>
               )}
 
               <CastList actors={movie.actors} />
 
-              <div className="pt-6 border-t border-zinc-800/50">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-zinc-400 text-sm uppercase tracking-wider font-medium">File Info</h3>
+              <div className="border-t border-white/[0.06] pt-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    File Info
+                  </h3>
                   <button
                     onClick={handleShowInFileManager}
-                    className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/[0.08]"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-transparent px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-white/[0.16] hover:bg-white/[0.04] hover:text-foreground"
                   >
-                    <FolderOpen className="w-4 h-4" />
+                    <FolderOpen className="h-3.5 w-3.5" />
                     Show in File Manager
                   </button>
                 </div>
-                <div className="space-y-3 text-sm bg-zinc-800/30 rounded-xl p-4 border border-zinc-700/30">
-                  <div className="flex items-start gap-3">
-                    <span className="text-zinc-500 min-w-[60px]">Path:</span>
-                    <span className="text-zinc-300 font-mono text-xs break-all">{movie.file_path}</span>
-                  </div>
-                  {movie.file_size && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-zinc-500 min-w-[60px]">Size:</span>
-                      <span className="text-zinc-300 font-medium">
-                        {formatBytes(movie.file_size)}
-                      </span>
-                    </div>
-                  )}
+                <div className="space-y-2.5 rounded-xl border border-white/[0.06] bg-black/40 p-4 text-sm">
+                  <InfoRow label="Path" value={movie.file_path} mono />
+                  {movie.file_size && <InfoRow label="Size" value={formatBytes(movie.file_size)} />}
                   {movie.duration_seconds && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-zinc-500 min-w-[60px]">Duration:</span>
-                      <span className="text-zinc-300 font-medium">
-                        {formatDuration(movie.duration_seconds)}
-                      </span>
-                    </div>
+                    <InfoRow label="Duration" value={formatDuration(movie.duration_seconds)} />
                   )}
                   {movie.width && movie.height && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-zinc-500 min-w-[60px]">Resolution:</span>
-                      <span className="text-zinc-300 font-medium">
-                        {movie.width}x{movie.height}
-                      </span>
-                    </div>
+                    <InfoRow label="Resolution" value={`${movie.width}×${movie.height}`} />
                   )}
-                  <div className="flex items-center gap-3">
-                    <span className="text-zinc-500 min-w-[60px]">Added:</span>
-                    <span className="text-zinc-300 font-medium">
-                      {formatDate(movie.added_at)}
-                    </span>
-                  </div>
+                  <InfoRow label="Added" value={formatDate(movie.added_at)} />
                   {movie.last_accessed && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-zinc-500 min-w-[60px]">Last Accessed:</span>
-                      <span className="text-zinc-300 font-medium">
-                        {formatDate(movie.last_accessed)}
-                      </span>
-                    </div>
+                    <InfoRow label="Last Accessed" value={formatDate(movie.last_accessed)} />
                   )}
                   {history && history.play_count > 0 && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-gray-500 min-w-[60px]">Played:</span>
-                      <span className="text-gray-300 font-medium">{history.play_count} times</span>
-                    </div>
+                    <InfoRow label="Played" value={`${history.play_count} times`} />
                   )}
                 </div>
               </div>
@@ -348,6 +309,17 @@ export default function MovieDetail() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="min-w-[80px] text-xs text-muted-foreground">{label}</span>
+      <span className={`text-foreground/90 ${mono ? "break-all font-mono text-xs" : "text-sm"}`}>
+        {value}
+      </span>
     </div>
   );
 }

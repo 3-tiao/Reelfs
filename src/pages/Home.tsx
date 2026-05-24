@@ -36,8 +36,20 @@ export default function Home() {
   const movieListRef = useRef<MovieListRef>(null);
   const actorGridRef = useRef<ActorGridRef>(null);
   const didRequestInitialMovies = useRef(false);
+  const headerRef = useRef<HTMLElement>(null);
   const [actors, setActors] = useState<ActorInfo[]>([]);
   const [isLoadingActors, setIsLoadingActors] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(0);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const update = () => setHeaderHeight(el.offsetHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const displayActors = useMemo(() => {
     let result = [...actors];
@@ -141,93 +153,107 @@ export default function Home() {
   const activeCount = viewMode === "actors" ? displayActors.length : movies.length;
   const activeSearchQuery = viewMode === "actors" ? actorSearchQuery : searchQuery;
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.12),transparent_20%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.1),transparent_18%),linear-gradient(180deg,#09090b_0%,#0a0f10_46%,#09090b_100%)]">
-      <ScrollProgressVertical progress={scrollProgress} onSeek={handleSeek} />
+    <div className="min-h-screen bg-background">
+      <ScrollProgressVertical
+        progress={scrollProgress}
+        onSeek={handleSeek}
+        topOffset={headerHeight + 12}
+        bottomOffset={16}
+      />
 
-      <header className="sticky top-0 z-40 border-b border-zinc-800/70 bg-zinc-950/72 backdrop-blur-2xl shadow-[0_18px_48px_rgba(0,0,0,0.24)] transition-all duration-300">
+      <header
+        ref={headerRef}
+        className="sticky top-0 z-40 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl"
+      >
         <div className="mx-auto w-full max-w-[1600px] px-5 py-4 md:px-8">
-          <div className="rounded-[26px] border border-zinc-800/80 bg-[linear-gradient(135deg,rgba(24,24,27,0.82),rgba(13,18,20,0.88))] p-3 shadow-[0_18px_36px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
-            <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
-                  <h1 className="bg-gradient-to-r from-zinc-50 via-white to-zinc-400 bg-clip-text text-2xl font-semibold tracking-tight text-transparent md:text-3xl">Reelfs</h1>
-                  <span className="rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1 text-[11px] font-medium text-zinc-500">NAS Movie Browser</span>
-                  <span className="rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1 text-[11px] font-medium text-zinc-300">{activeCount} items</span>
-                  {activeSearchQuery && <span className="rounded-full border border-teal-900/60 bg-teal-950/50 px-3 py-1 text-[11px] font-medium text-teal-200/80">{activeSearchQuery}</span>}
-                  {isUsingFilters && <span className="rounded-full border border-amber-900/60 bg-amber-950/50 px-3 py-1 text-[11px] font-medium text-amber-200/80">Filters on</span>}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1 rounded-[22px] border border-zinc-800/80 bg-zinc-900/80 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl">
-                  <button
-                    onClick={() => setViewMode("grid")}
-                    className={`rounded-xl p-2.5 transition-all duration-300 ${
-                      viewMode === "grid"
-                        ? "bg-teal-950/80 text-teal-200 shadow-[0_10px_20px_rgba(0,0,0,0.18)]"
-                        : "text-zinc-500 hover:bg-zinc-800/80 hover:text-zinc-300"
-                    }`}
-                    title="Grid View"
-                  >
-                    <Grid className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setViewMode("list")}
-                    className={`rounded-xl p-2.5 transition-all duration-300 ${
-                      viewMode === "list"
-                        ? "bg-teal-950/80 text-teal-200 shadow-[0_10px_20px_rgba(0,0,0,0.18)]"
-                        : "text-zinc-500 hover:bg-zinc-800/80 hover:text-zinc-300"
-                    }`}
-                    title="List View"
-                  >
-                    <List className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setViewMode("actors")}
-                    className={`rounded-xl p-2.5 transition-all duration-300 ${
-                      viewMode === "actors"
-                        ? "bg-amber-950/80 text-amber-200 shadow-[0_10px_20px_rgba(0,0,0,0.18)]"
-                        : "text-zinc-500 hover:bg-zinc-800/80 hover:text-zinc-300"
-                    }`}
-                    title="Actor View"
-                  >
-                    <Users className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <button
-                  onClick={toggleShowThumbnails}
-                  className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition-all duration-300 shadow-[0_16px_32px_rgba(0,0,0,0.18)] ${
-                    showThumbnails
-                      ? "border-teal-900/70 bg-teal-950/70 text-teal-100 hover:bg-teal-950"
-                      : "border-zinc-800/80 bg-zinc-900/80 text-zinc-300 hover:bg-zinc-800"
-                  }`}
-                  title={showThumbnails ? "Hide NSFW Thumbnails" : "Show NSFW Thumbnails"}
-                >
-                  {showThumbnails ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                  {showThumbnails ? "Previews on" : "Previews off"}
-                </button>
-
-                <button
-                  onClick={() => navigate("/settings")}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-zinc-800/80 bg-zinc-900/80 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-all duration-300 hover:bg-zinc-800 hover:text-white"
-                  title="Settings"
-                >
-                  <SettingsIcon className="w-4 h-4" />
-                  Settings
-                </button>
-              </div>
+          <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Reelfs</h1>
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                NAS Browser
+              </span>
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
+                {activeCount} items
+              </span>
+              {activeSearchQuery && (
+                <span className="rounded-full border border-white/[0.1] bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-medium text-foreground">
+                  "{activeSearchQuery}"
+                </span>
+              )}
+              {isUsingFilters && (
+                <span className="rounded-full border border-white/[0.1] bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-medium text-foreground">
+                  Filters on
+                </span>
+              )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-[280px] flex-1 md:max-w-[560px]">
-                <SearchBar
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-0.5 rounded-lg border border-white/[0.06] bg-white/[0.03] p-0.5">
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={`rounded p-1.5 transition-colors ${
+                    viewMode === "grid"
+                      ? "bg-white/[0.08] text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Grid View"
+                >
+                  <Grid className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`rounded p-1.5 transition-colors ${
+                    viewMode === "list"
+                      ? "bg-white/[0.08] text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="List View"
+                >
+                  <List className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewMode("actors")}
+                  className={`rounded p-1.5 transition-colors ${
+                    viewMode === "actors"
+                      ? "bg-white/[0.08] text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Actor View"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <button
+                onClick={toggleShowThumbnails}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/[0.06] bg-transparent px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-white/[0.12] hover:bg-white/[0.04] hover:text-foreground"
+                title={showThumbnails ? "Hide thumbnails" : "Show thumbnails"}
+              >
+                {showThumbnails ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                {showThumbnails ? "Previews on" : "Previews off"}
+              </button>
+
+              <button
+                onClick={() => navigate("/settings")}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/[0.06] bg-transparent px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-white/[0.12] hover:bg-white/[0.04] hover:text-foreground"
+                title="Settings"
+              >
+                <SettingsIcon className="h-3.5 w-3.5" />
+                Settings
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-[280px] flex-1 md:max-w-[560px]">
+              <SearchBar
                 onSearch={handleSearch}
                 initialValue={viewMode === "actors" ? actorSearchQuery : searchQuery}
                 placeholder={viewMode === "actors" ? "Search actors..." : "Search movies..."}
               />
-              </div>
-
-              <FilterSortBar viewMode={viewMode} onFilterChange={handleFilterChange} />
             </div>
+
+            <FilterSortBar viewMode={viewMode} onFilterChange={handleFilterChange} />
           </div>
         </div>
       </header>
@@ -235,38 +261,30 @@ export default function Home() {
       <main className="mx-auto w-full max-w-[1600px] px-5 py-6 md:px-8 md:py-8">
         {viewMode === "actors" ? (
           isLoadingActors ? (
-            <div className="flex h-96 items-center justify-center rounded-[34px] border border-white/8 bg-white/[0.03] text-center backdrop-blur-xl">
-              <div>
-                <div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-2 border-violet-300/20 border-t-violet-300"></div>
-                <p className="text-base font-medium text-zinc-200">Building your actor index</p>
-                <p className="mt-2 text-sm text-zinc-500">Curating the people behind your library.</p>
-              </div>
-            </div>
+            <EmptyState
+              loading
+              title="Building your actor index"
+              description="Curating the people behind your library."
+            />
           ) : displayActors.length > 0 ? (
             <ActorGrid ref={actorGridRef} actors={displayActors} onScroll={handleScroll} />
           ) : actors.length > 0 ? (
-            <div className="flex h-96 items-center justify-center rounded-[34px] border border-dashed border-white/10 bg-white/[0.02] text-center backdrop-blur-xl">
-              <div>
-                <p className="text-lg font-medium text-white">No actors match your search</p>
-                <p className="mt-2 text-sm text-zinc-500">Try a different keyword or clear the search.</p>
-              </div>
-            </div>
+            <EmptyState
+              title="No actors match your search"
+              description="Try a different keyword or clear the search."
+            />
           ) : (
-            <div className="flex h-96 items-center justify-center rounded-[34px] border border-dashed border-white/10 bg-white/[0.02] text-center backdrop-blur-xl">
-              <div>
-                <p className="text-lg font-medium text-white">No actors surfaced yet</p>
-                <p className="mt-2 text-sm text-zinc-500">Once your library metadata fills in, this view becomes a fast people-first browser.</p>
-              </div>
-            </div>
+            <EmptyState
+              title="No actors surfaced yet"
+              description="Once your library metadata fills in, this view becomes a fast people-first browser."
+            />
           )
         ) : isLoading ? (
-          <div className="flex h-96 items-center justify-center rounded-[34px] border border-white/8 bg-white/[0.03] text-center backdrop-blur-xl">
-            <div>
-              <div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-2 border-teal-300/20 border-t-teal-300"></div>
-              <p className="text-base font-medium text-zinc-200">Loading your cinema shelf</p>
-              <p className="mt-2 text-sm text-zinc-500">Warming up posters, metadata, and resume state.</p>
-            </div>
-          </div>
+          <EmptyState
+            loading
+            title="Loading your cinema shelf"
+            description="Warming up posters, metadata, and resume state."
+          />
         ) : movies.length > 0 ? (
           <>
             {viewMode === "grid" ? (
@@ -288,33 +306,61 @@ export default function Home() {
             )}
             {isLoadingMore && (
               <div className="mt-5 flex items-center justify-center">
-                <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-zinc-300 backdrop-blur-xl">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-teal-300/20 border-t-teal-300"></div>
-                  Loading deeper into the library
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-muted-foreground">
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-foreground" />
+                  Loading more
                 </div>
               </div>
             )}
           </>
         ) : (
-          <div className="flex h-96 items-center justify-center rounded-[34px] border border-dashed border-white/10 bg-white/[0.02] text-center backdrop-blur-xl">
-            <div className="max-w-md px-6">
-              <p className="text-xl font-medium text-white">Nothing matches this view yet</p>
-              <p className="mt-3 text-sm leading-6 text-zinc-500">Try loosening filters, changing the sort, or clearing the current query to return to your full collection.</p>
-              <button
-                onClick={() => {
-                  clearFilters();
-                  reset();
-                  fetchMovies(0);
-                }}
-                className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/[0.09]"
-              >
-                Reset library view
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+          <EmptyState
+            title="Nothing matches this view"
+            description="Try loosening filters, changing the sort, or clearing the current query to return to your full collection."
+            action={{
+              label: "Reset library view",
+              onClick: () => {
+                clearFilters();
+                reset();
+                fetchMovies(0);
+              },
+            }}
+          />
         )}
       </main>
+    </div>
+  );
+}
+
+function EmptyState({
+  loading,
+  title,
+  description,
+  action,
+}: {
+  loading?: boolean;
+  title: string;
+  description: string;
+  action?: { label: string; onClick: () => void };
+}) {
+  return (
+    <div className="flex h-96 items-center justify-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.02] text-center">
+      <div className="max-w-md px-6">
+        {loading && (
+          <div className="mx-auto mb-4 h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-foreground" />
+        )}
+        <p className="text-base font-medium text-foreground">{title}</p>
+        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{description}</p>
+        {action && (
+          <button
+            onClick={action.onClick}
+            className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:border-white/[0.16] hover:bg-white/[0.08]"
+          >
+            {action.label}
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

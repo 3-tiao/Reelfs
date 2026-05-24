@@ -59,37 +59,25 @@ function ActorCard({ actor }: ActorCardProps) {
     <div
       ref={cardRef}
       onClick={() => navigate(`/actor/${encodeURIComponent(actor.name)}`, { state: routeState })}
-      className="group cursor-pointer transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1"
+      className="group cursor-pointer"
     >
-      <div className="relative aspect-[2/3] bg-zinc-800/80 backdrop-blur-sm rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-violet-500/10 border border-zinc-700/50 group-hover:border-violet-500/30 transition-all duration-300">
+      <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-white/[0.06] bg-card transition-colors duration-200 group-hover:border-white/[0.14]">
         {imageSrc ? (
           <img
             src={imageSrc}
             alt={actor.name}
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-            <User className="w-16 h-16 text-zinc-600" />
+          <div className="flex h-full w-full items-center justify-center">
+            <User className="h-12 w-12 text-white/15" />
           </div>
         )}
-        
-        {/* Always-visible bottom overlay with actor info */}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950/95 via-zinc-950/70 to-transparent pt-12 pb-3 px-3">
-          <h3 className="text-white font-semibold text-sm truncate">{actor.name}</h3>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="text-violet-400 text-xs font-medium">
-              {actor.movie_count} 部作品
-            </span>
-          </div>
-        </div>
 
-        {/* Hover overlay with play-like action */}
-        <div className="absolute inset-0 bg-violet-500/10 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-violet-500/80 backdrop-blur-sm flex items-center justify-center transform scale-75 group-hover:scale-100 transition-transform duration-300">
-            <User className="w-6 h-6 text-white" />
-          </div>
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent px-3 pb-3 pt-12">
+          <h3 className="truncate text-sm font-semibold text-white">{actor.name}</h3>
+          <p className="mt-0.5 text-xs text-white/60">{actor.movie_count} 部作品</p>
         </div>
       </div>
     </div>

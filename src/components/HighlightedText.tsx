@@ -10,7 +10,7 @@ interface HighlightedTextProps {
 export default function HighlightedText({
   text,
   query,
-  highlightClassName = "bg-teal-500/20 text-teal-100 rounded px-0.5",
+  highlightClassName = "bg-white/15 text-foreground rounded px-0.5",
   className,
 }: HighlightedTextProps) {
   if (!text) {

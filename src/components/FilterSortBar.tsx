@@ -1,25 +1,55 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowUpDown, Filter, ChevronDown, ChevronUp, Film, Calendar, Star, Clock, User, Eye, EyeOff } from "lucide-react";
+import { useEffect, useRef, useCallback } from "react";
+import {
+  ArrowUpDown,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  Film,
+  Calendar,
+  Star,
+  Clock,
+  User,
+  Eye,
+  EyeOff,
+  Check,
+  X,
+} from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import { useViewStore } from "../stores/viewStore";
 import { Filters, SortOptions } from "../services/tauri";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
 interface FilterSortBarProps {
-  viewMode: 'grid' | 'list' | 'actors';
+  viewMode: "grid" | "list" | "actors";
   onFilterChange: () => void;
 }
 
 const movieSortOptions = [
-  { value: 'title', label: '名称', icon: Film },
-  { value: 'year', label: '年份', icon: Calendar },
-  { value: 'rating', label: '评分', icon: Star },
-  { value: 'added_at', label: '添加时间', icon: Clock },
-  { value: 'last_accessed', label: '最近播放', icon: User },
+  { value: "title", label: "名称", icon: Film },
+  { value: "year", label: "年份", icon: Calendar },
+  { value: "rating", label: "评分", icon: Star },
+  { value: "added_at", label: "添加时间", icon: Clock },
+  { value: "last_accessed", label: "最近播放", icon: User },
 ];
 
 const actorSortOptions = [
-  { value: 'name', label: '姓名', icon: User },
-  { value: 'movie_count', label: '作品数', icon: Film },
+  { value: "name", label: "姓名", icon: User },
+  { value: "movie_count", label: "作品数", icon: Film },
 ];
 
 export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBarProps) {
@@ -35,17 +65,8 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
     fetchAvailableActors,
   } = useMovieStore();
 
-  const {
-    actorSortBy,
-    actorSortOrder,
-    setActorSortBy,
-    setActorSortOrder,
-  } = useViewStore();
+  const { actorSortBy, actorSortOrder, setActorSortBy, setActorSortOrder } = useViewStore();
 
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
-  const sortMenuRef = useRef<HTMLDivElement>(null);
-  const filterMenuRef = useRef<HTMLDivElement>(null);
   const filterChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -59,20 +80,6 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
   }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
-        setSortMenuOpen(false);
-      }
-      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target as Node)) {
-        setFilterMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
     return () => {
       if (filterChangeTimerRef.current) {
         clearTimeout(filterChangeTimerRef.current);
@@ -80,23 +87,21 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
     };
   }, []);
 
-  const handleMovieSortChange = (sortBy: SortOptions['sortBy']) => {
+  const handleMovieSortChange = (sortBy: SortOptions["sortBy"]) => {
     const newSortOptions: SortOptions = { ...sortOptions, sortBy };
     setSortOptions(newSortOptions);
-    setSortMenuOpen(false);
     onFilterChange();
   };
 
-  const handleActorSortChange = (sortBy: 'name' | 'movie_count') => {
+  const handleActorSortChange = (sortBy: "name" | "movie_count") => {
     setActorSortBy(sortBy);
-    setSortMenuOpen(false);
   };
 
   const handleSortOrderToggle = () => {
     if (viewMode === "actors") {
-      setActorSortOrder(actorSortOrder === 'ASC' ? 'DESC' : 'ASC');
+      setActorSortOrder(actorSortOrder === "ASC" ? "DESC" : "ASC");
     } else {
-      const newSortOrder: 'ASC' | 'DESC' = sortOptions.sortOrder === 'ASC' ? 'DESC' : 'ASC';
+      const newSortOrder: "ASC" | "DESC" = sortOptions.sortOrder === "ASC" ? "DESC" : "ASC";
       const newSortOptions: SortOptions = { ...sortOptions, sortOrder: newSortOrder };
       setSortOptions(newSortOptions);
       onFilterChange();
@@ -117,29 +122,30 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
         onFilterChange();
       }, 300);
     },
-    [filters, setFilters, onFilterChange]
+    [filters, setFilters, onFilterChange],
   );
 
   const handleClearFilters = () => {
     clearFilters();
-    setFilterMenuOpen(false);
     onFilterChange();
   };
 
   const hasActiveFilters = () => {
-    return Object.keys(filters).some(key => {
-      const value = filters[key as keyof Filters];
-      return value !== undefined && value !== null && value !== '';
-    }) || filters.isWatched !== undefined;
+    return (
+      Object.keys(filters).some((key) => {
+        const value = filters[key as keyof Filters];
+        return value !== undefined && value !== null && value !== "";
+      }) || filters.isWatched !== undefined
+    );
   };
 
   const getSortLabel = () => {
     if (viewMode === "actors") {
-      const option = actorSortOptions.find(opt => opt.value === actorSortBy);
-      return option ? option.label : '排序';
+      const option = actorSortOptions.find((opt) => opt.value === actorSortBy);
+      return option ? option.label : "排序";
     }
-    const option = movieSortOptions.find(opt => opt.value === sortOptions.sortBy);
-    return option ? option.label : '排序';
+    const option = movieSortOptions.find((opt) => opt.value === sortOptions.sortBy);
+    return option ? option.label : "排序";
   };
 
   const currentSortOrder = viewMode === "actors" ? actorSortOrder : sortOptions.sortOrder;
@@ -152,234 +158,214 @@ export default function FilterSortBar({ viewMode, onFilterChange }: FilterSortBa
     filters.actors,
     filters.genres,
     filters.isWatched,
-  ].filter((value) => value !== undefined && value !== null && value !== '').length;
+  ].filter((value) => value !== undefined && value !== null && value !== "").length;
+
+  const currentSortBy = viewMode === "actors" ? actorSortBy : sortOptions.sortBy;
+  const sortOptionsList = viewMode === "actors" ? actorSortOptions : movieSortOptions;
 
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="relative" ref={sortMenuRef}>
-        <button
-          onClick={() => setSortMenuOpen(!sortMenuOpen)}
-          className="flex items-center gap-2 rounded-2xl border border-zinc-800/80 bg-[linear-gradient(135deg,rgba(39,39,42,0.82),rgba(17,24,24,0.82))] px-4 py-2.5 text-white shadow-[0_14px_32px_rgba(0,0,0,0.2)] transition-all duration-200 hover:border-zinc-700 hover:bg-[linear-gradient(135deg,rgba(39,39,42,0.9),rgba(18,30,29,0.88))]"
-        >
-          <ArrowUpDown className={`w-4 h-4 flex-shrink-0 ${viewMode === "actors" ? "text-amber-300" : "text-teal-300"}`} />
-          <span className="text-sm font-medium whitespace-nowrap">{getSortLabel()}</span>
-          <ChevronDown className={`w-4 h-4 flex-shrink-0 text-zinc-400 transition-transform duration-200 ${sortMenuOpen ? 'rotate-180' : ''}`} />
-        </button>
+    <div className="flex items-center gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2">
+            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>{getSortLabel()}</span>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-[180px]">
+          {sortOptionsList.map((option) => {
+            const Icon = option.icon;
+            const isActive = currentSortBy === option.value;
+            return (
+              <DropdownMenuItem
+                key={option.value}
+                onSelect={() => {
+                  if (viewMode === "actors") {
+                    handleActorSortChange(option.value as "name" | "movie_count");
+                  } else {
+                    handleMovieSortChange(option.value as SortOptions["sortBy"]);
+                  }
+                }}
+                className={cn(isActive && "bg-white/[0.06] text-foreground")}
+              >
+                <Icon className="h-4 w-4 text-muted-foreground" />
+                <span>{option.label}</span>
+                {isActive && <Check className="ml-auto h-3.5 w-3.5" />}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        {sortMenuOpen && (
-          <div className="absolute top-full left-0 z-50 mt-3 min-w-[240px] rounded-[26px] border border-zinc-800/80 bg-[linear-gradient(160deg,rgba(24,24,27,0.98),rgba(16,23,24,0.96))] p-3 shadow-[0_28px_56px_rgba(0,0,0,0.38)] backdrop-blur-2xl">
-            <div className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">排序方式</div>
-            <div className="space-y-1.5">
-              {(viewMode === "actors" ? actorSortOptions : movieSortOptions).map((option) => {
-                const Icon = option.icon;
-                const isActive = viewMode === "actors"
-                  ? actorSortBy === option.value
-                  : sortOptions.sortBy === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    onClick={() => {
-                      if (viewMode === "actors") {
-                        handleActorSortChange(option.value as 'name' | 'movie_count');
-                      } else {
-                        handleMovieSortChange(option.value as SortOptions['sortBy']);
-                      }
-                    }}
-                    className={`w-full rounded-2xl px-3 py-3 text-left transition-all duration-200 ${
-                      isActive ? 'bg-teal-950/80 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]' : 'text-zinc-300 hover:bg-zinc-900/80'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`rounded-xl border p-2 ${isActive ? 'border-teal-900 bg-teal-950/70 text-teal-200' : 'border-zinc-800/80 bg-zinc-900/70 text-zinc-500'}`}>
-                        <Icon className="w-4 h-4 flex-shrink-0" />
-                      </div>
-                      <span className="text-sm font-medium whitespace-nowrap">{option.label}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <button
+      <Button
+        variant="outline"
+        size="sm"
         onClick={handleSortOrderToggle}
-        className="flex items-center gap-2 rounded-2xl border border-zinc-800/80 bg-[linear-gradient(135deg,rgba(39,39,42,0.82),rgba(17,24,24,0.82))] px-4 py-2.5 text-zinc-200 shadow-[0_14px_32px_rgba(0,0,0,0.2)] transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-800/80"
-        title={currentSortOrder === 'ASC' ? '当前正序，点击切换为逆序' : '当前逆序，点击切换为正序'}
+        className="gap-2"
+        title={currentSortOrder === "ASC" ? "正序" : "逆序"}
       >
-        {currentSortOrder === 'ASC' ? (
-          <>
-            <ChevronUp className={`w-4 h-4 flex-shrink-0 ${viewMode === "actors" ? "text-amber-300" : "text-teal-300"}`} />
-            <span className="text-sm font-medium whitespace-nowrap">正序</span>
-          </>
+        {currentSortOrder === "ASC" ? (
+          <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
         ) : (
-          <>
-            <ChevronDown className={`w-4 h-4 flex-shrink-0 ${viewMode === "actors" ? "text-amber-300" : "text-teal-300"}`} />
-            <span className="text-sm font-medium whitespace-nowrap">逆序</span>
-          </>
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
         )}
-      </button>
+        <span>{currentSortOrder === "ASC" ? "正序" : "逆序"}</span>
+      </Button>
 
       {viewMode !== "actors" && (
-        <div className="relative" ref={filterMenuRef}>
-          <button
-            onClick={() => setFilterMenuOpen(!filterMenuOpen)}
-             className={`flex items-center gap-2 rounded-2xl border px-4 py-2.5 transition-all duration-200 shadow-[0_14px_32px_rgba(0,0,0,0.2)] ${
-               hasActiveFilters()
-               ? 'border-teal-900 bg-teal-950/70 text-white hover:bg-teal-950'
-               : 'border-zinc-800/80 bg-[linear-gradient(135deg,rgba(39,39,42,0.82),rgba(17,24,24,0.82))] text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800/80'
-            }`}
-          >
-            <Filter className="w-4 h-4 flex-shrink-0" />
-            <span className="text-sm font-medium">筛选</span>
-            {hasActiveFilters() && (
-               <div className="flex h-5 min-w-5 items-center justify-center rounded-full bg-teal-200 px-1.5 text-[11px] font-bold text-zinc-950">
-               {activeFilterCount}
-             </div>
-           )}
-          </button>
-
-          {filterMenuOpen && (
-            <div className="absolute top-full left-0 z-50 mt-3 min-w-[320px] rounded-[28px] border border-zinc-800/80 bg-[linear-gradient(160deg,rgba(24,24,27,0.98),rgba(16,23,24,0.96))] p-5 shadow-[0_28px_56px_rgba(0,0,0,0.38)] backdrop-blur-2xl">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">筛选器</div>
-                  <div className="mt-1 text-sm text-zinc-400">精炼库里的结果</div>
-                </div>
-                {hasActiveFilters() && (
-                  <button
-                    onClick={handleClearFilters}
-                    className="rounded-full border border-rose-400/20 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/18"
-                  >
-                    清空
-                  </button>
-                )}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant={hasActiveFilters() ? "secondary" : "outline"}
+              size="sm"
+              className="gap-2"
+            >
+              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+              <span>筛选</span>
+              {hasActiveFilters() && (
+                <Badge variant="default" className="ml-1 h-4 min-w-[16px] rounded-full px-1 text-[10px]">
+                  {activeFilterCount}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[340px] p-0">
+            <div className="flex items-center justify-between p-4">
+              <div>
+                <div className="text-sm font-medium text-foreground">筛选器</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">精炼库里的结果</div>
               </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">年份范围</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      placeholder="最小年份"
-                      value={filters.minYear || ''}
-                      onChange={(e) => handleFilterChange('minYear', e.target.value ? parseInt(e.target.value) : undefined)}
-                      className="flex-1 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-zinc-500 focus:border-teal-400/35 focus:ring-2 focus:ring-teal-400/12"
-                    />
-                    <input
-                      type="number"
-                      placeholder="最大年份"
-                      value={filters.maxYear || ''}
-                      onChange={(e) => handleFilterChange('maxYear', e.target.value ? parseInt(e.target.value) : undefined)}
-                      className="flex-1 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-zinc-500 focus:border-teal-400/35 focus:ring-2 focus:ring-teal-400/12"
-                    />
-                  </div>
+              {hasActiveFilters() && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearFilters}
+                  className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                  清空
+                </Button>
+              )}
+            </div>
+            <Separator />
+            <div className="space-y-4 p-4">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">年份范围</label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="最小"
+                    value={filters.minYear || ""}
+                    onChange={(e) =>
+                      handleFilterChange("minYear", e.target.value ? parseInt(e.target.value) : undefined)
+                    }
+                  />
+                  <Input
+                    type="number"
+                    placeholder="最大"
+                    value={filters.maxYear || ""}
+                    onChange={(e) =>
+                      handleFilterChange("maxYear", e.target.value ? parseInt(e.target.value) : undefined)
+                    }
+                  />
                 </div>
+              </div>
 
-                <div>
-                  <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">评分范围</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      placeholder="最小评分"
-                      min="0"
-                      max="5"
-                      step="0.1"
-                      value={filters.minRating || ''}
-                      onChange={(e) => handleFilterChange('minRating', e.target.value ? parseFloat(e.target.value) : undefined)}
-                      className="flex-1 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-zinc-500 focus:border-teal-400/35 focus:ring-2 focus:ring-teal-400/12"
-                    />
-                    <input
-                      type="number"
-                      placeholder="最大评分"
-                      min="0"
-                      max="5"
-                      step="0.1"
-                      value={filters.maxRating || ''}
-                      onChange={(e) => handleFilterChange('maxRating', e.target.value ? parseFloat(e.target.value) : undefined)}
-                      className="flex-1 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-zinc-500 focus:border-teal-400/35 focus:ring-2 focus:ring-teal-400/12"
-                    />
-                  </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">评分范围</label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="最小"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    value={filters.minRating || ""}
+                    onChange={(e) =>
+                      handleFilterChange("minRating", e.target.value ? parseFloat(e.target.value) : undefined)
+                    }
+                  />
+                  <Input
+                    type="number"
+                    placeholder="最大"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    value={filters.maxRating || ""}
+                    onChange={(e) =>
+                      handleFilterChange("maxRating", e.target.value ? parseFloat(e.target.value) : undefined)
+                    }
+                  />
                 </div>
+              </div>
 
-                <div>
-                  <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">演员</label>
-                  <select
-                    value={filters.actors || ''}
-                    onChange={(e) => handleFilterChange('actors', e.target.value || undefined)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-teal-400/35 focus:ring-2 focus:ring-teal-400/12"
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">演员</label>
+                <select
+                  value={filters.actors || ""}
+                  onChange={(e) => handleFilterChange("actors", e.target.value || undefined)}
+                  className="flex h-9 w-full rounded-md border border-white/[0.08] bg-black/40 px-3 py-1 text-sm text-foreground transition-colors focus:border-white/[0.18] focus:outline-none focus:ring-1 focus:ring-white/[0.1]"
+                >
+                  <option value="">全部演员</option>
+                  {availableActors.slice(0, 50).map((actor) => (
+                    <option key={actor} value={actor}>
+                      {actor}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">类型</label>
+                <select
+                  value={filters.genres || ""}
+                  onChange={(e) => handleFilterChange("genres", e.target.value || undefined)}
+                  className="flex h-9 w-full rounded-md border border-white/[0.08] bg-black/40 px-3 py-1 text-sm text-foreground transition-colors focus:border-white/[0.18] focus:outline-none focus:ring-1 focus:ring-white/[0.1]"
+                >
+                  <option value="">全部类型</option>
+                  {availableGenres.slice(0, 50).map((genre) => (
+                    <option key={genre} value={genre}>
+                      {genre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">观看状态</label>
+                <div className="flex gap-1.5">
+                  <Button
+                    variant={filters.isWatched === undefined ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => handleFilterChange("isWatched", undefined)}
                   >
-                    <option value="">全部演员</option>
-                    {availableActors.slice(0, 50).map((actor) => (
-                      <option key={actor} value={actor}>
-                        {actor}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">类型</label>
-                  <select
-                    value={filters.genres || ''}
-                    onChange={(e) => handleFilterChange('genres', e.target.value || undefined)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-teal-400/35 focus:ring-2 focus:ring-teal-400/12"
+                    全部
+                  </Button>
+                  <Button
+                    variant={filters.isWatched === true ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 gap-1.5"
+                    onClick={() => handleFilterChange("isWatched", true)}
                   >
-                    <option value="">全部类型</option>
-                    {availableGenres.slice(0, 50).map((genre) => (
-                      <option key={genre} value={genre}>
-                        {genre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">观看状态</label>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleFilterChange('isWatched', undefined)}
-                      className={`flex-1 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                        filters.isWatched === undefined
-                          ? 'bg-white text-zinc-950'
-                          : 'border border-white/8 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      全部
-                    </button>
-                    <button
-                      onClick={() => handleFilterChange('isWatched', true)}
-                      className={`flex-1 flex items-center justify-center gap-1 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                        filters.isWatched === true
-                          ? 'bg-emerald-400 text-zinc-950'
-                          : 'border border-white/8 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      <Eye className="w-4 h-4" />
-                      已看
-                    </button>
-                    <button
-                      onClick={() => handleFilterChange('isWatched', false)}
-                      className={`flex-1 flex items-center justify-center gap-1 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                        filters.isWatched === false
-                          ? 'bg-amber-300 text-zinc-950'
-                          : 'border border-white/8 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      <EyeOff className="w-4 h-4" />
-                      未看
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-xs text-zinc-500">
-                  提示：筛选会与搜索关键词一起生效，结果会按当前排序方式更新。
+                    <Eye className="h-3.5 w-3.5" />
+                    已看
+                  </Button>
+                  <Button
+                    variant={filters.isWatched === false ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 gap-1.5"
+                    onClick={() => handleFilterChange("isWatched", false)}
+                  >
+                    <EyeOff className="h-3.5 w-3.5" />
+                    未看
+                  </Button>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+          </PopoverContent>
+        </Popover>
       )}
     </div>
   );

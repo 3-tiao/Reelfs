@@ -104,102 +104,96 @@ export default function ActorDetail() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-950 to-zinc-900 text-white">
+    <div className="min-h-screen bg-background text-foreground">
       <button
         onClick={() => navigate(getBackTarget(location.state, "/"))}
-        className="fixed top-6 left-6 flex items-center gap-2 px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/90 backdrop-blur-md rounded-xl transition-all duration-200 border border-zinc-700/50 shadow-lg z-50"
+        className="fixed left-6 top-6 z-50 inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-background/80 px-3 py-1.5 text-sm font-medium text-foreground backdrop-blur-xl transition-colors hover:border-white/[0.16] hover:bg-white/[0.04]"
       >
-        <ArrowLeft className="w-5 h-5" />
+        <ArrowLeft className="h-4 w-4" />
         Back
       </button>
 
-      <div className="max-w-7xl mx-auto px-6 pt-20 pb-8">
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center shadow-lg">
-              <User className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent">
-                {name ? decodeURIComponent(name) : "Actor"}
-              </h1>
-              <p className="text-zinc-400 text-lg mt-1">
-                {movies.length} {movies.length === 1 ? "movie" : "movies"}
-              </p>
-            </div>
+      <div className="mx-auto max-w-7xl px-6 pb-12 pt-20">
+        <div className="mb-8 flex items-center gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/[0.08] bg-card">
+            <User className="h-7 w-7 text-foreground" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+              {name ? decodeURIComponent(name) : "Actor"}
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {movies.length} {movies.length === 1 ? "movie" : "movies"}
+            </p>
           </div>
         </div>
 
         {movies.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-96 text-center">
-            <Film className="w-16 h-16 text-zinc-600 mb-4" />
-            <p className="text-zinc-400 text-lg">No movies found for this actor</p>
+          <div className="flex h-96 flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.02] text-center">
+            <Film className="mb-3 h-10 w-10 text-white/15" />
+            <p className="text-sm text-muted-foreground">No movies found for this actor</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {movies.map((movie) => {
               if (!posterCache.has(movie.id)) {
                 loadPoster(movie.id, movie.file_path);
               }
-              
+
               return (
                 <div
                   key={movie.id}
                   onClick={() => handleMovieClick(movie.id)}
-                  className="flex gap-4 bg-zinc-800/40 hover:bg-zinc-800/60 rounded-xl overflow-hidden cursor-pointer transition-all duration-200 border border-zinc-700/30 hover:border-zinc-700/50 backdrop-blur-sm"
+                  className="group flex cursor-pointer gap-4 overflow-hidden rounded-xl border border-white/[0.06] bg-card transition-colors hover:border-white/[0.12]"
                 >
-                  <div className="w-24 h-36 flex-shrink-0 bg-zinc-800">
+                  <div className="h-36 w-24 flex-shrink-0 bg-black/40">
                     {posterCache.get(movie.id) ? (
                       <img
                         src={posterCache.get(movie.id)}
                         alt={movie.title}
-                        className="w-full h-full object-cover"
+                        className="h-full w-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-                        <Film className="w-8 h-8 text-zinc-600" />
+                      <div className="flex h-full w-full items-center justify-center">
+                        <Film className="h-7 w-7 text-white/15" />
                       </div>
                     )}
                   </div>
-                  
-                  <div className="flex-1 py-3 pr-4 flex flex-col justify-center">
-                    <h3 className="text-lg font-semibold text-zinc-100 mb-1 line-clamp-1">
+
+                  <div className="flex flex-1 flex-col justify-center py-3 pr-4">
+                    <h3 className="line-clamp-1 text-base font-medium text-foreground">
                       {movie.title}
                     </h3>
-                    <div className="flex items-center gap-3 text-sm text-zinc-400">
-                      {movie.year && (
-                        <span>{movie.year}</span>
-                      )}
+                    <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                      {movie.year && <span>{movie.year}</span>}
                       {movie.rating && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-teal-400">★</span>
-                          <span>{movie.rating.toFixed(1)}</span>
+                        <div className="flex items-center gap-1 text-foreground">
+                          <span>★</span>
+                          <span className="tabular-nums">{movie.rating.toFixed(1)}</span>
                         </div>
                       )}
                       {movie.duration_seconds && (
-                        <span>
-                          {Math.floor(movie.duration_seconds / 60)} min
-                        </span>
+                        <span>{Math.floor(movie.duration_seconds / 60)} min</span>
                       )}
                     </div>
                     {movie.plot && (
-                      <p className="text-sm text-zinc-400 mt-2 line-clamp-2">
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                         {movie.plot}
                       </p>
                     )}
                     {movie.genres && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {movie.genres.split(",").slice(0, 3).map((genre, index) => (
                           <span
                             key={index}
-                            className="px-2 py-0.5 bg-zinc-700/50 rounded text-xs text-zinc-300"
+                            className="rounded border border-white/[0.06] bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground"
                           >
                             {genre.trim()}
                           </span>

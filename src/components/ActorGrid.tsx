@@ -104,8 +104,8 @@ export default forwardRef<ActorGridRef, ActorGridProps>(function ActorGrid({ act
 
   if (actors.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-gray-400 text-lg">No actors found</p>
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">No actors found</p>
       </div>
     );
   }

@@ -29,20 +29,20 @@ function SectionHeader({ rating, count }: { rating: RatingKey; count: number }) 
   const stars = rating ?? 0;
   return (
     <div className="flex items-center gap-3 px-1 pt-3 pb-2">
-      <div className="flex items-center gap-1.5 rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1.5 text-amber-200">
+      <div className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-foreground">
         {rating !== null ? (
           <>
             {Array.from({ length: stars }).map((_, i) => (
               <Star key={i} className="w-3.5 h-3.5" fill="currentColor" />
             ))}
-            <span className="ml-1 text-sm font-semibold tracking-wide">{ratingSectionLabel(rating)}</span>
+            <span className="ml-1 text-xs font-medium tracking-wide">{ratingSectionLabel(rating)}</span>
           </>
         ) : (
-          <span className="text-sm font-semibold tracking-wide text-zinc-300">{ratingSectionLabel(rating)}</span>
+          <span className="text-xs font-medium tracking-wide">{ratingSectionLabel(rating)}</span>
         )}
       </div>
-      <span className="text-xs text-zinc-500">{count}</span>
-      <div className="ml-2 h-px flex-1 bg-gradient-to-r from-zinc-700/60 to-transparent" />
+      <span className="text-xs text-muted-foreground">{count}</span>
+      <div className="ml-2 h-px flex-1 bg-white/[0.06]" />
     </div>
   );
 }
@@ -243,8 +243,8 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
 
   if (movies.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-gray-400 text-lg">No movies found</p>
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">No movies found</p>
       </div>
     );
   }

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Search as SearchIcon, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, SlidersHorizontal } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
 import FilterSortBar from "../components/FilterSortBar";
@@ -9,7 +9,16 @@ import { useMovieStore } from "../stores/movieStore";
 
 export default function Search() {
   const navigate = useNavigate();
-  const { movies, isLoading, searchMovies, isUsingFilters, fetchMoviesFiltered, reset, clearFilters, searchQuery } = useMovieStore();
+  const {
+    movies,
+    isLoading,
+    searchMovies,
+    isUsingFilters,
+    fetchMoviesFiltered,
+    reset,
+    clearFilters,
+    searchQuery,
+  } = useMovieStore();
   const [hasSearched, setHasSearched] = useState(Boolean(searchQuery) || isUsingFilters);
   const movieGridRef = useRef<MovieGridRef>(null);
   const hasHydratedSearchRef = useRef(false);
@@ -49,108 +58,131 @@ export default function Search() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.09),transparent_18%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.08),transparent_16%),linear-gradient(180deg,#09090b_0%,#0a1011_42%,#09090b_100%)] text-white">
-      <header className="sticky top-0 z-10 border-b border-white/8 bg-zinc-950/70 backdrop-blur-2xl shadow-[0_18px_48px_rgba(0,0,0,0.22)]">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl">
         <div className="mx-auto max-w-[1500px] px-5 py-5 md:px-8">
-          <div className="rounded-[34px] border border-white/8 bg-[linear-gradient(140deg,rgba(24,24,27,0.78),rgba(14,20,22,0.9))] p-5 shadow-[0_24px_56px_rgba(0,0,0,0.24)] backdrop-blur-xl md:p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-2xl">
-                <button
-                  onClick={() => navigate(-1)}
-                  className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back
-                </button>
-                <div className="flex items-center gap-3">
-                  <div className="rounded-2xl border border-teal-400/15 bg-teal-400/10 p-3 text-teal-200">
-                    <SearchIcon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-zinc-500">Precision search</div>
-                    <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white md:text-4xl">Find the right title in seconds</h1>
-                  </div>
-                </div>
-                <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400 md:text-[15px]">
-                  Search, refine, and keep your place while you inspect details. The result set stays fluid even when filters change.
-                </p>
+          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <button
+                onClick={() => navigate(-1)}
+                className="mb-4 inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-white/[0.16] hover:bg-white/[0.04] hover:text-foreground"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </button>
+              <div className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                Precision search
               </div>
+              <h1 className="mt-1.5 text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
+                Find the right title in seconds
+              </h1>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                Search, refine, and keep your place while you inspect details.
+              </p>
+            </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:w-[360px]">
-                <div className="rounded-[28px] border border-white/8 bg-white/[0.04] px-4 py-4 backdrop-blur-xl">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Results</div>
-                  <div className="mt-3 text-3xl font-semibold text-white">{movies.length}</div>
+            <div className="flex gap-2">
+              <div className="rounded-xl border border-white/[0.06] bg-card px-4 py-3">
+                <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Results
                 </div>
-                <div className="rounded-[28px] border border-white/8 bg-white/[0.04] px-4 py-4 backdrop-blur-xl">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Refinement</div>
-                  <div className="mt-3 flex items-center gap-2 text-lg font-semibold text-white">
-                    <SlidersHorizontal className="h-4 w-4 text-amber-300" />
-                    {isUsingFilters ? "Active" : "Idle"}
-                  </div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+                  {movies.length}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-card px-4 py-3">
+                <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Refinement
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                  {isUsingFilters ? "Active" : "Idle"}
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-              <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-4 backdrop-blur-xl">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Query</div>
-                <div className="max-w-[520px]">
-                  <SearchBar onSearch={handleSearch} placeholder="Search for movies, cast, or directors..." initialValue={searchQuery} />
-                </div>
-              </div>
-              <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-4 backdrop-blur-xl">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Sort and refine</div>
-                <FilterSortBar viewMode="grid" onFilterChange={handleFilterChange} />
-              </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-[280px] flex-1 md:max-w-[560px]">
+              <SearchBar
+                onSearch={handleSearch}
+                placeholder="Search for movies, cast, or directors..."
+                initialValue={searchQuery}
+              />
             </div>
+            <FilterSortBar viewMode="grid" onFilterChange={handleFilterChange} />
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1500px] px-5 py-6 md:px-8 md:py-8">
         {hasSearched && (
-          <section className="mb-6 flex flex-col gap-4 rounded-[32px] border border-white/8 bg-[linear-gradient(135deg,rgba(24,24,27,0.55),rgba(14,20,22,0.72))] p-5 shadow-[0_24px_56px_rgba(0,0,0,0.18)] backdrop-blur-xl md:flex-row md:items-end md:justify-between md:p-6">
+          <section className="mb-6 flex flex-col gap-3 rounded-2xl border border-white/[0.06] bg-card p-5 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-zinc-500">Current query</div>
-              <h2 className="mt-2 text-2xl font-semibold text-white md:text-3xl">
-                {searchQuery ? `“${searchQuery}”` : "Filtered search results"}
+              <div className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                Current query
+              </div>
+              <h2 className="mt-1.5 text-xl font-semibold text-foreground md:text-2xl">
+                {searchQuery ? `"${searchQuery}"` : "Filtered search results"}
               </h2>
             </div>
-            <div className="flex flex-wrap gap-3 text-sm">
-              <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-zinc-200">{movies.length} matches</div>
-              {isUsingFilters && <div className="rounded-full border border-amber-300/18 bg-amber-300/10 px-4 py-2 text-amber-100">Filters active</div>}
+            <div className="flex flex-wrap gap-2 text-xs">
+              <div className="rounded-full border border-white/[0.06] bg-white/[0.03] px-3 py-1 text-muted-foreground tabular-nums">
+                {movies.length} matches
+              </div>
+              {isUsingFilters && (
+                <div className="rounded-full border border-white/[0.1] bg-white/[0.06] px-3 py-1 text-foreground">
+                  Filters active
+                </div>
+              )}
             </div>
           </section>
         )}
 
         {isLoading ? (
-          <div className="flex h-96 items-center justify-center rounded-[34px] border border-white/8 bg-white/[0.03] text-center backdrop-blur-xl">
-            <div>
-              <div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-2 border-teal-300/20 border-t-teal-300"></div>
-              <p className="text-base font-medium text-zinc-200">Scanning the catalogue</p>
-              <p className="mt-2 text-sm text-zinc-500">Matching titles, cast, and metadata against your query.</p>
-            </div>
-          </div>
+          <EmptyState
+            loading
+            title="Scanning the catalogue"
+            description="Matching titles, cast, and metadata against your query."
+          />
         ) : hasSearched ? (
           movies.length > 0 ? (
             <MovieGrid ref={movieGridRef} movies={movies} onScroll={handleScroll} />
           ) : (
-            <div className="flex h-96 items-center justify-center rounded-[34px] border border-dashed border-white/10 bg-white/[0.02] text-center backdrop-blur-xl">
-              <div className="max-w-md px-6">
-                <p className="text-xl font-medium text-white">No results landed for that search</p>
-                <p className="mt-3 text-sm leading-6 text-zinc-500">Try a broader title, remove a filter, or search by actor or director to widen the net.</p>
-              </div>
-            </div>
+            <EmptyState
+              title="No results landed for that search"
+              description="Try a broader title, remove a filter, or search by actor or director to widen the net."
+            />
           )
         ) : (
-          <div className="flex h-96 items-center justify-center rounded-[34px] border border-dashed border-white/10 bg-white/[0.02] text-center backdrop-blur-xl">
-            <div className="max-w-md px-6">
-              <p className="text-xl font-medium text-white">Start typing to search your library</p>
-              <p className="mt-3 text-sm leading-6 text-zinc-500">The search bar supports title, actor, and director matches, then lets you refine results without losing context.</p>
-            </div>
-          </div>
+          <EmptyState
+            title="Start typing to search your library"
+            description="The search bar supports title, actor, and director matches, then lets you refine results without losing context."
+          />
         )}
       </main>
+    </div>
+  );
+}
+
+function EmptyState({
+  loading,
+  title,
+  description,
+}: {
+  loading?: boolean;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex h-96 items-center justify-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.02] text-center">
+      <div className="max-w-md px-6">
+        {loading && (
+          <div className="mx-auto mb-4 h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-foreground" />
+        )}
+        <p className="text-base font-medium text-foreground">{title}</p>
+        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{description}</p>
+      </div>
     </div>
   );
 }

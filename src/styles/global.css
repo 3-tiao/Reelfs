@@ -1,43 +1,85 @@
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    /* Neutral dark — shadcn-style tokens */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 4%;            /* #0a0a0a */
+    --card-elevated: 0 0% 6%;   /* #0f0f0f */
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 64%;
+
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 100%;          /* used as hsl(var(--border) / <alpha>) */
+    --border-strong: 0 0% 100%;
+    --input: 0 0% 14%;
+    --ring: 0 0% 83%;
+
+    --radius: 0.75rem;
+  }
+
+  * {
+    border-color: hsl(var(--border) / 0.08);
+  }
+
+  html,
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
 body {
   margin: 0;
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Helvetica Neue", sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #09090b 0%, #18181b 100%);
 }
 
 * {
   box-sizing: border-box;
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+/* Hide all native scrollbars — virtualized lists are scrolled via wheel/trackpad and
+ * the custom ScrollProgressVertical provides visual feedback + click-to-seek. */
+* {
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* IE/Edge legacy */
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(20, 184, 166, 0.3);
-  border-radius: 5px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(20, 184, 166, 0.5);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-corner {
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-corner {
   background: transparent;
 }

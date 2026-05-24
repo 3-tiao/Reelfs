@@ -1,31 +1,74 @@
+import { useEffect, useRef, useState } from "react";
+
 interface ScrollProgressVerticalProps {
   progress: number;
   onSeek?: (percentage: number) => void;
+  /** Distance in px from the top of the viewport where the track should start. */
+  topOffset?: number;
+  /** Distance in px from the bottom of the viewport where the track should end. */
+  bottomOffset?: number;
 }
 
-export default function ScrollProgressVertical({ progress, onSeek }: ScrollProgressVerticalProps) {
+const THUMB_HEIGHT_PX = 48;
+
+export default function ScrollProgressVertical({
+  progress,
+  onSeek,
+  topOffset = 16,
+  bottomOffset = 16,
+}: ScrollProgressVerticalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastProgressRef = useRef(progress);
+
+  useEffect(() => {
+    if (progress !== lastProgressRef.current) {
+      lastProgressRef.current = progress;
+      setIsVisible(true);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = setTimeout(() => setIsVisible(false), 900);
+    }
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, [progress]);
+
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!onSeek) return;
-    
     const rect = e.currentTarget.getBoundingClientRect();
+    const trackHeight = rect.height;
     const y = e.clientY - rect.top;
-    const percentage = (y / rect.height) * 100;
+    const targetThumbTop = Math.max(0, Math.min(trackHeight - THUMB_HEIGHT_PX, y - THUMB_HEIGHT_PX / 2));
+    const percentage =
+      trackHeight > THUMB_HEIGHT_PX
+        ? (targetThumbTop / (trackHeight - THUMB_HEIGHT_PX)) * 100
+        : 0;
     onSeek(Math.max(0, Math.min(100, percentage)));
   };
 
+  const shown = isVisible || isHovered;
+  const clampedProgress = Math.max(0, Math.min(100, progress));
+
   return (
-    <div 
-      className="fixed right-3 top-6 bottom-6 z-50 hidden w-3 cursor-pointer rounded-full border border-white/8 bg-zinc-950/55 shadow-[0_18px_36px_rgba(0,0,0,0.25)] backdrop-blur-xl md:block"
+    <div
+      className={`fixed right-1.5 z-40 hidden w-3 cursor-pointer md:block ${
+        shown ? "opacity-100" : "opacity-0"
+      } transition-opacity duration-300`}
+      style={{ top: topOffset, bottom: bottomOffset }}
       onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="absolute inset-1 rounded-full bg-white/[0.04]" />
+      <div className="absolute inset-y-0 right-1 w-px rounded-full bg-white/[0.08]" />
       <div
-        className="absolute inset-x-1 bottom-1 rounded-full bg-gradient-to-b from-emerald-300 via-teal-400 to-cyan-500 shadow-[0_0_24px_rgba(45,212,191,0.25)] transition-all duration-150 ease-out"
-        style={{ height: `calc(${progress}% - 0.5rem)` }}
-      />
-      <div 
-        className="absolute left-1/2 h-4 w-4 -translate-x-1/2 rounded-full border border-white/35 bg-white shadow-[0_4px_16px_rgba(255,255,255,0.28)] opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-        style={{ top: `clamp(0.75rem, ${progress}%, calc(100% - 0.75rem))`, transform: 'translate(-50%, -50%)' }}
+        className={`absolute right-0.5 w-1 rounded-full transition-colors duration-150 ${
+          isHovered ? "bg-white/80" : "bg-white/40"
+        }`}
+        style={{
+          top: `calc(${clampedProgress}% - ${(clampedProgress * THUMB_HEIGHT_PX) / 100}px)`,
+          height: `${THUMB_HEIGHT_PX}px`,
+        }}
       />
     </div>
   );

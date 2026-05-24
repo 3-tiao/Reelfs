@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
-import { Film, Eye, Layers } from "lucide-react";
+import { Film, Eye, Layers, Play } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { useMovieStore } from "../stores/movieStore";
 import { getCachedThumbnail } from "../lib/thumbnailCache";
@@ -54,7 +54,6 @@ function MovieCard({ movie }: MovieCardProps) {
 
   const loadThumbnail = async (checkMounted: () => boolean) => {
     if (movie.thumbnail_path) {
-      // Thumbnail file already exists — load from cache or read from disk
       const url = await getCachedThumbnail(movie.thumbnail_path);
       if (url) {
         if (checkMounted()) {
@@ -73,7 +72,6 @@ function MovieCard({ movie }: MovieCardProps) {
         }
       });
     } else {
-      // No thumbnail yet — enqueue background generation via Rust
       enqueueThumbnailGen(movie.id, (url) => {
         if (checkMounted()) {
           setImageSrc(url);
@@ -86,80 +84,81 @@ function MovieCard({ movie }: MovieCardProps) {
     <div
       ref={cardRef}
       onClick={() => movie.group_id ? navigate(`/video-group/${movie.group_id}`, { state: routeState }) : navigate(`/movie/${movie.id}`, { state: routeState })}
-      className="group cursor-pointer transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1"
+      className="group cursor-pointer"
     >
-      <div className="relative aspect-[2/3] bg-zinc-800/80 backdrop-blur-sm rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-teal-500/10 border border-zinc-700/50 group-hover:border-teal-500/30 transition-all duration-300">
+      <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-white/[0.06] bg-card transition-colors duration-200 group-hover:border-white/[0.14]">
         {imageSrc ? (
           <img
             src={imageSrc}
             alt={movie.title}
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Film className="w-16 h-16 text-zinc-600" />
+          <div className="flex h-full w-full items-center justify-center">
+            <Film className="h-12 w-12 text-white/15" />
           </div>
         )}
-        
-        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-900/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end">
-          <div className="p-4 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+
+        <div className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <div className="p-4">
             {movie.rating && (
-              <div className="text-teal-400 text-sm font-semibold mb-1.5 flex items-center gap-1">
-                ⭐ {movie.rating.toFixed(1)}
+              <div className="mb-1.5 flex items-center gap-1 text-sm font-medium text-white">
+                <span className="text-foreground">★</span>
+                <span>{movie.rating.toFixed(1)}</span>
               </div>
             )}
             {movie.plot && (
-              <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3 mb-2">
+              <p className="mb-3 line-clamp-3 text-xs leading-relaxed text-white/80">
                 <HighlightedText
                   text={movie.plot}
                   query={searchQuery}
-                  highlightClassName="bg-teal-500/25 text-teal-100 rounded px-0.5"
+                  highlightClassName="bg-white/15 text-white rounded px-0.5"
                 />
               </p>
             )}
-            <div className="flex items-center gap-2 mt-2 text-white font-medium text-sm">
-              <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center">
-                <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+            <div className="flex items-center gap-2 text-sm font-medium text-white">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-black">
+                <Play className="ml-0.5 h-3.5 w-3.5" fill="currentColor" />
               </div>
               Play
             </div>
           </div>
         </div>
-        
+
         {movie.is_watched === 1 && (
-          <div className="absolute top-2 right-2 bg-teal-500/80 rounded-full p-1 backdrop-blur-sm">
-            <Eye className="w-4 h-4 text-white" />
+          <div className="absolute right-2 top-2 rounded-full bg-black/60 p-1 ring-1 ring-white/[0.1] backdrop-blur-sm">
+            <Eye className="h-3.5 w-3.5 text-white" />
           </div>
         )}
-        
+
         {movie.group_id && (
-          <div 
-            className="absolute top-2 left-2 bg-purple-500/80 rounded-full p-1 backdrop-blur-sm cursor-pointer"
+          <div
+            className="absolute left-2 top-2 cursor-pointer rounded-full bg-black/60 p-1 ring-1 ring-white/[0.1] backdrop-blur-sm"
             onClick={(e) => {
               e.stopPropagation();
               navigate(`/video-group/${movie.group_id}`, { state: routeState });
             }}
           >
-            <Layers className="w-4 h-4 text-white" />
+            <Layers className="h-3.5 w-3.5 text-white" />
           </div>
         )}
       </div>
-      
+
       <div className="mt-2 px-1">
-        <h3 className="text-zinc-100 font-medium text-sm truncate">
+        <h3 className="truncate text-sm font-medium text-foreground">
           <HighlightedText text={movie.title} query={searchQuery} />
         </h3>
         {searchSecondaryText ? (
-          <p className="text-teal-200/80 text-xs truncate mt-0.5">
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
             <HighlightedText
               text={searchSecondaryText}
               query={searchQuery}
-              highlightClassName="bg-teal-500/20 text-teal-100 rounded px-0.5"
+              highlightClassName="bg-white/10 text-foreground rounded px-0.5"
             />
           </p>
         ) : movie.year && (
-          <p className="text-zinc-400 text-xs">{movie.year}</p>
+          <p className="text-xs text-muted-foreground">{movie.year}</p>
         )}
       </div>
     </div>
