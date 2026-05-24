@@ -23,6 +23,7 @@ export interface Movie {
   scan_state?: string;
   is_watched?: number;
   group_id?: number;
+  play_count: number;
 }
 
 export interface PlayHistory {
@@ -90,7 +91,7 @@ export interface Filters {
 }
 
 export interface SortOptions {
-  sortBy: 'title' | 'year' | 'rating' | 'added_at' | 'last_accessed';
+  sortBy: 'title' | 'year' | 'rating' | 'added_at' | 'last_accessed' | 'play_count';
   sortOrder: 'ASC' | 'DESC';
 }
 

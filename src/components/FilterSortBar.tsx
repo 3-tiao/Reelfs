@@ -13,6 +13,7 @@ import {
   EyeOff,
   Check,
   X,
+  Play,
 } from "lucide-react";
 import { useMovieStore } from "../stores/movieStore";
 import { useViewStore } from "../stores/viewStore";
@@ -45,6 +46,7 @@ const movieSortOptions = [
   { value: "rating", label: "评分", icon: Star },
   { value: "added_at", label: "添加时间", icon: Clock },
   { value: "last_accessed", label: "最近播放", icon: User },
+  { value: "play_count", label: "播放次数", icon: Play },
 ];
 
 const actorSortOptions = [

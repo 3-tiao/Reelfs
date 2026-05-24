@@ -213,6 +213,7 @@ mod tests {
                 scan_state: None,
                 is_watched: None,
                 group_id: None,
+                play_count: 0,
             },
             Movie {
                 id: 2,
@@ -236,6 +237,7 @@ mod tests {
                 scan_state: None,
                 is_watched: None,
                 group_id: None,
+                play_count: 0,
             },
         ];
 

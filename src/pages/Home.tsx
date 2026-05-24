@@ -293,7 +293,7 @@ export default function Home() {
                 movies={movies}
                 onScroll={handleScroll}
                 onLoadMore={hasMore ? loadMore : undefined}
-                groupByRating={sortOptions.sortBy === "rating"}
+                groupBy={sortOptions.sortBy}
               />
             ) : (
               <MovieList
@@ -301,7 +301,7 @@ export default function Home() {
                 movies={movies}
                 onScroll={handleScroll}
                 onLoadMore={hasMore ? loadMore : undefined}
-                groupByRating={sortOptions.sortBy === "rating"}
+                groupBy={sortOptions.sortBy}
               />
             )}
             {isLoadingMore && (

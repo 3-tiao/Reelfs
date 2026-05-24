@@ -223,9 +223,7 @@ export default function MovieDetail() {
                   className="inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
                 >
                   <Play className="h-4 w-4" fill="currentColor" />
-                  {history && history.last_position > 0
-                    ? `Continue (${Math.floor(history.last_position / 60)}m)`
-                    : "Play"}
+                  Play
                 </button>
 
                 <button

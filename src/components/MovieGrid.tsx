@@ -2,14 +2,13 @@ import { useEffect, useState, useCallback, useMemo, useRef, forwardRef, useImper
 import { FixedSizeGrid as Grid, VariableSizeList as VList } from "react-window";
 import MovieCard from "./MovieCard";
 import { Movie } from "../services/tauri";
-import { buildRatingSections, ratingSectionLabel, RatingKey } from "../lib/ratingSections";
-import { Star } from "lucide-react";
+import { buildSections, sectionConfigFor, SectionKey, SortBy } from "../lib/sections";
 
 interface MovieGridProps {
   movies: Movie[];
   onScroll?: () => void;
   onLoadMore?: () => void;
-  groupByRating?: boolean;
+  groupBy?: SortBy | null;
 }
 
 export interface MovieGridRef {
@@ -20,34 +19,26 @@ export interface MovieGridRef {
 }
 
 type SectionItem =
-  | { kind: "header"; key: RatingKey; count: number }
+  | { kind: "header"; key: SectionKey; label: string; count: number }
   | { kind: "row"; movies: Movie[] };
 
 const HEADER_HEIGHT = 56;
 
-function SectionHeader({ rating, count }: { rating: RatingKey; count: number }) {
-  const stars = rating ?? 0;
+function SectionHeader({ label, count }: { label: string; count: number }) {
   return (
     <div className="flex items-center gap-3 px-1 pt-3 pb-2">
-      <div className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-foreground">
-        {rating !== null ? (
-          <>
-            {Array.from({ length: stars }).map((_, i) => (
-              <Star key={i} className="w-3.5 h-3.5" fill="currentColor" />
-            ))}
-            <span className="ml-1 text-xs font-medium tracking-wide">{ratingSectionLabel(rating)}</span>
-          </>
-        ) : (
-          <span className="text-xs font-medium tracking-wide">{ratingSectionLabel(rating)}</span>
-        )}
+      <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium tracking-wide text-foreground">
+        {label}
       </div>
-      <span className="text-xs text-muted-foreground">{count}</span>
+      <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
       <div className="ml-2 h-px flex-1 bg-white/[0.06]" />
     </div>
   );
 }
 
-export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll, onLoadMore, groupByRating = false }, ref) {
+export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll, onLoadMore, groupBy = null }, ref) {
+  const sectionConfig = useMemo(() => sectionConfigFor(groupBy), [groupBy]);
+  const useSections = sectionConfig !== null;
   const gridRef = useRef<any>(null);
   const listRef = useRef<any>(null);
   const currentScrollTopRef = useRef(0);
@@ -70,17 +61,17 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
   }, [movies.length, columnCount]);
 
   const items = useMemo<SectionItem[]>(() => {
-    if (!groupByRating) return [];
-    const sections = buildRatingSections(movies);
+    if (!sectionConfig) return [];
+    const sections = buildSections(movies, sectionConfig);
     const result: SectionItem[] = [];
     for (const section of sections) {
-      result.push({ kind: "header", key: section.key, count: section.movies.length });
+      result.push({ kind: "header", key: section.key, label: section.label, count: section.movies.length });
       for (let i = 0; i < section.movies.length; i += columnCount) {
         result.push({ kind: "row", movies: section.movies.slice(i, i + columnCount) });
       }
     }
     return result;
-  }, [groupByRating, movies, columnCount]);
+  }, [sectionConfig, movies, columnCount]);
 
   const rowSize = cardHeight + gap;
   const getItemSize = useCallback(
@@ -93,19 +84,19 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
   );
 
   const totalSectionHeight = useMemo(() => {
-    if (!groupByRating) return 0;
+    if (!useSections) return 0;
     let total = 0;
     for (let i = 0; i < items.length; i++) {
       total += getItemSize(i);
     }
     return total;
-  }, [groupByRating, items, getItemSize]);
+  }, [useSections, items, getItemSize]);
 
   useEffect(() => {
-    if (groupByRating && listRef.current) {
+    if (useSections && listRef.current) {
       listRef.current.resetAfterIndex(0, false);
     }
-  }, [groupByRating, items]);
+  }, [useSections, items]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -122,7 +113,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
   useImperativeHandle(ref, () => ({
     scrollToPercentage: (percentage: number) => {
       const clientHeight = dimensions.height;
-      if (groupByRating) {
+      if (useSections) {
         if (!listRef.current) return;
         const scrollHeight = Math.max(0, totalSectionHeight - clientHeight);
         const targetScrollTop = scrollHeight * (percentage / 100);
@@ -139,7 +130,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
     getScrollPosition: () => currentScrollTopRef.current,
     scrollToPosition: (scrollTop: number) => {
       currentScrollTopRef.current = scrollTop;
-      if (groupByRating && listRef.current) {
+      if (useSections && listRef.current) {
         listRef.current.scrollTo(scrollTop);
       } else if (gridRef.current) {
         gridRef.current.scrollTo({ scrollLeft: 0, scrollTop });
@@ -147,7 +138,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
     },
     getScrollPercentage: () => {
       const clientHeight = dimensions.height;
-      const totalHeight = groupByRating ? totalSectionHeight : rowCount * rowSize;
+      const totalHeight = useSections ? totalSectionHeight : rowCount * rowSize;
       const scrollHeight = totalHeight - clientHeight;
       if (scrollHeight <= 0) return 0;
       return Math.min(100, (currentScrollTopRef.current / scrollHeight) * 100);
@@ -211,7 +202,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
       if (item.kind === "header") {
         return (
           <div style={style} className="px-2">
-            <SectionHeader rating={item.key} count={item.count} />
+            <SectionHeader label={item.label} count={item.count} />
           </div>
         );
       }
@@ -249,7 +240,7 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
     );
   }
 
-  if (groupByRating) {
+  if (useSections) {
     return (
       <VList
         ref={listRef}

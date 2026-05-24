@@ -23,6 +23,7 @@ pub struct Movie {
     pub scan_state: Option<String>,
     pub is_watched: Option<i32>,
     pub group_id: Option<i64>,
+    pub play_count: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

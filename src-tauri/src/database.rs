@@ -46,6 +46,7 @@ fn map_movie_row(row: &rusqlite::Row<'_>) -> Result<Movie> {
         scan_state: row.get(18)?,
         is_watched: row.get(19)?,
         group_id: row.get(20)?,
+        play_count: row.get(21)?,
     })
 }
 
@@ -93,6 +94,7 @@ fn resolve_sort_clause(
         "rating" => "COALESCE(vg.rating, m.rating)",
         "duration_seconds" => "COALESCE(vg.total_duration, m.duration_seconds)",
         "last_accessed" => "m.last_accessed",
+        "play_count" => "COALESCE(ph.play_count, 0)",
         _ => "m.added_at",
     };
 
@@ -102,6 +104,15 @@ fn resolve_sort_clause(
     };
 
     (sort_column, sort_direction)
+}
+
+fn nulls_last_suffix(sort_by: Option<&str>) -> &'static str {
+    // Push rows with missing data to the bottom regardless of sort direction
+    // so ASC/DESC stay visually distinguishable when most rows have NULLs.
+    match sort_by.unwrap_or("") {
+        "last_accessed" | "year" => " NULLS LAST",
+        _ => "",
+    }
 }
 
 fn build_order_clause(sort_by: Option<&str>, sort_order: Option<&str>) -> String {
@@ -114,7 +125,12 @@ fn build_order_clause(sort_by: Option<&str>, sort_order: Option<&str>) -> String
             sorted_col, sort_dir, sort_dir
         )
     } else {
-        format!("{} {}, m.id DESC", sorted_col, sort_dir)
+        format!(
+            "{} {}{}, m.id DESC",
+            sorted_col,
+            sort_dir,
+            nulls_last_suffix(sort_by)
+        )
     }
 }
 
@@ -348,6 +364,25 @@ impl Database {
             );
         }
 
+        // Backfill movies.last_accessed from play_history.last_played for rows
+        // played before increment_play_count started touching last_accessed.
+        // Idempotent: only fills NULL targets that have a matching play_history row.
+        let backfilled_last_accessed = tx.execute(
+            "UPDATE movies
+                SET last_accessed = (
+                    SELECT last_played FROM play_history WHERE play_history.movie_id = movies.id
+                )
+              WHERE last_accessed IS NULL
+                AND EXISTS (SELECT 1 FROM play_history WHERE play_history.movie_id = movies.id)",
+            [],
+        )?;
+        if backfilled_last_accessed > 0 {
+            info!(
+                "[数据库] 已从 play_history.last_played 回填 {} 条 last_accessed",
+                backfilled_last_accessed
+            );
+        }
+
         // Always run; the pass is O(N) and a no-op when there are no NFC/NFD
         // drifts, so it doubles as a safety net against future regressions
         // (external writes, rolled-back versions, etc.).
@@ -567,20 +602,22 @@ impl Database {
         debug!("[数据库] 获取电影列表: offset={}, limit={}", offset, limit);
 
         let mut stmt = self.conn.prepare(
-            "SELECT m.id, m.file_path, 
-                    COALESCE(vg.title, m.title) as title, 
-                    COALESCE(vg.year, m.year) as year, 
-                    COALESCE(vg.plot, m.plot) as plot, 
-                    COALESCE(vg.rating, m.rating) as rating, 
-                    COALESCE(vg.genres, m.genres) as genres, 
-                    COALESCE(vg.director, m.director) as director, 
-                    COALESCE(vg.actors, m.actors) as actors, 
-                    COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path, 
-                    m.file_size, 
+            "SELECT m.id, m.file_path,
+                    COALESCE(vg.title, m.title) as title,
+                    COALESCE(vg.year, m.year) as year,
+                    COALESCE(vg.plot, m.plot) as plot,
+                    COALESCE(vg.rating, m.rating) as rating,
+                    COALESCE(vg.genres, m.genres) as genres,
+                    COALESCE(vg.director, m.director) as director,
+                    COALESCE(vg.actors, m.actors) as actors,
+                    COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path,
+                    m.file_size,
                     COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
-                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id,
+                    COALESCE(ph.play_count, 0) as play_count
              FROM movies m
              LEFT JOIN video_groups vg ON m.group_id = vg.id
+             LEFT JOIN play_history ph ON ph.movie_id = m.id
              WHERE m.group_id IS NULL OR m.id = (
                  SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
              )
@@ -607,9 +644,11 @@ impl Database {
                     COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path,
                     m.file_size,
                     COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
-                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id,
+                    COALESCE(ph.play_count, 0) as play_count
              FROM movies m
              LEFT JOIN video_groups vg ON m.group_id = vg.id
+             LEFT JOIN play_history ph ON ph.movie_id = m.id
              WHERE m.group_id IS NULL OR m.id = (
                  SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
              )
@@ -625,10 +664,13 @@ impl Database {
         debug!("[数据库] 获取电影详情: id={}", id);
 
         let movie = self.conn.query_row(
-            "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
-                    thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
-             FROM movies WHERE id = ?1",
+            "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors,
+                    m.thumbnail_path, m.file_size, m.duration_seconds,
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id,
+                    COALESCE(ph.play_count, 0) as play_count
+             FROM movies m
+             LEFT JOIN play_history ph ON ph.movie_id = m.id
+             WHERE m.id = ?1",
             params![id],
             map_movie_row,
         );
@@ -646,10 +688,13 @@ impl Database {
         debug!("[数据库] 根据路径获取电影: file_path={}", file_path);
 
         let movie = self.conn.query_row(
-            "SELECT id, file_path, title, year, plot, rating, genres, director, actors,
-                    thumbnail_path, file_size, duration_seconds,
-                    width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
-             FROM movies WHERE file_path = ?1",
+            "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors,
+                    m.thumbnail_path, m.file_size, m.duration_seconds,
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id,
+                    COALESCE(ph.play_count, 0) as play_count
+             FROM movies m
+             LEFT JOIN play_history ph ON ph.movie_id = m.id
+             WHERE m.file_path = ?1",
             params![file_path],
             map_movie_row,
         );
@@ -699,10 +744,12 @@ impl Database {
                     COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path, 
                     m.file_size, 
                     COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
-                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
+                    m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id,
+                    COALESCE(ph.play_count, 0) as play_count
              FROM movie_fts
              JOIN movies m ON m.id = movie_fts.rowid
              LEFT JOIN video_groups vg ON m.group_id = vg.id
+             LEFT JOIN play_history ph ON ph.movie_id = m.id
              WHERE movie_fts MATCH ?1
                AND (m.group_id IS NULL OR m.id = (
                      SELECT movie_id FROM video_parts WHERE group_id = m.group_id ORDER BY part_number LIMIT 1
@@ -1084,7 +1131,10 @@ impl Database {
                offset, limit, &search_query, (min_year, max_year, min_rating, max_rating, &actors, &genres, is_watched), sort_by, sort_order);
 
         let mut where_clauses = Vec::new();
-        let mut joins = vec!["LEFT JOIN video_groups vg ON m.group_id = vg.id".to_string()];
+        let mut joins = vec![
+            "LEFT JOIN video_groups vg ON m.group_id = vg.id".to_string(),
+            "LEFT JOIN play_history ph ON ph.movie_id = m.id".to_string(),
+        ];
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         let mut order_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         let mut order_clause = String::new();
@@ -1117,10 +1167,11 @@ impl Database {
                     .unwrap_or(true);
                 let is_rating_sort = sort_by.as_deref().map(|v| v == "rating").unwrap_or(false);
 
+                let nulls = nulls_last_suffix(sort_by.as_deref());
                 if prefers_relevance {
                     order_clause = format!(
-                        "{}, {}, {} {}, m.id DESC",
-                        relevance_clause, bm25_clause, sorted_col, sort_dir
+                        "{}, {}, {} {}{}, m.id DESC",
+                        relevance_clause, bm25_clause, sorted_col, sort_dir, nulls
                     );
                 } else if is_rating_sort {
                     order_clause = format!(
@@ -1129,8 +1180,8 @@ impl Database {
                     );
                 } else {
                     order_clause = format!(
-                        "{} {}, {}, {}, m.id DESC",
-                        sorted_col, sort_dir, relevance_clause, bm25_clause
+                        "{} {}{}, {}, {}, m.id DESC",
+                        sorted_col, sort_dir, nulls, relevance_clause, bm25_clause
                     );
                 }
 
@@ -1211,7 +1262,8 @@ impl Database {
                     COALESCE(vg.poster_path, m.thumbnail_path) as thumbnail_path, 
                     m.file_size, 
                      COALESCE(vg.total_duration, m.duration_seconds) as duration_seconds,
-                     m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id
+                     m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id,
+                     COALESCE(ph.play_count, 0) as play_count
               FROM movies m
              {}
               {}

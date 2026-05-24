@@ -9,40 +9,30 @@ import { getCachedThumbnail } from "../lib/thumbnailCache";
 import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
 import { getRouteState } from "../lib/navigation";
 import { getSearchSecondaryText } from "../lib/search";
-import { buildRatingSections, ratingSectionLabel, RatingKey } from "../lib/ratingSections";
+import { buildSections, sectionConfigFor, SectionKey, SortBy } from "../lib/sections";
 import HighlightedText from "./HighlightedText";
 
 interface MovieListProps {
   movies: Movie[];
   onScroll?: () => void;
   onLoadMore?: () => void;
-  groupByRating?: boolean;
+  groupBy?: SortBy | null;
 }
 
 type ListRowItem =
-  | { kind: "header"; key: RatingKey; count: number }
+  | { kind: "header"; key: SectionKey; label: string; count: number }
   | { kind: "movie"; movie: Movie; displayIndex: number };
 
 const HEADER_HEIGHT = 56;
 const ROW_HEIGHT = 72;
 
-function ListSectionHeader({ rating, count }: { rating: RatingKey; count: number }) {
-  const stars = rating ?? 0;
+function ListSectionHeader({ label, count }: { label: string; count: number }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3">
-      <div className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-foreground">
-        {rating !== null ? (
-          <>
-            {Array.from({ length: stars }).map((_, i) => (
-              <Star key={i} className="w-3.5 h-3.5" fill="currentColor" />
-            ))}
-            <span className="ml-1 text-xs font-medium tracking-wide">{ratingSectionLabel(rating)}</span>
-          </>
-        ) : (
-          <span className="text-xs font-medium tracking-wide">{ratingSectionLabel(rating)}</span>
-        )}
+      <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium tracking-wide text-foreground">
+        {label}
       </div>
-      <span className="text-xs text-muted-foreground">{count}</span>
+      <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
       <div className="ml-2 h-px flex-1 bg-white/[0.06]" />
     </div>
   );
@@ -195,7 +185,9 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
   );
 });
 
-export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ movies, onScroll, onLoadMore, groupByRating = false }, ref) {
+export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ movies, onScroll, onLoadMore, groupBy = null }, ref) {
+  const sectionConfig = useMemo(() => sectionConfigFor(groupBy), [groupBy]);
+  const useSections = sectionConfig !== null;
   const navigate = useNavigate();
   const location = useLocation();
   const { showThumbnails } = useNsfwStore();
@@ -210,19 +202,19 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   });
 
   const items = useMemo<ListRowItem[]>(() => {
-    if (!groupByRating) return [];
-    const sections = buildRatingSections(movies);
+    if (!sectionConfig) return [];
+    const sections = buildSections(movies, sectionConfig);
     const result: ListRowItem[] = [];
     let displayIndex = 0;
     for (const section of sections) {
-      result.push({ kind: "header", key: section.key, count: section.movies.length });
+      result.push({ kind: "header", key: section.key, label: section.label, count: section.movies.length });
       for (const movie of section.movies) {
         result.push({ kind: "movie", movie, displayIndex });
         displayIndex += 1;
       }
     }
     return result;
-  }, [groupByRating, movies]);
+  }, [sectionConfig, movies]);
 
   const getItemSize = useCallback(
     (index: number) => {
@@ -234,19 +226,19 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   );
 
   const totalSectionHeight = useMemo(() => {
-    if (!groupByRating) return 0;
+    if (!useSections) return 0;
     let total = 0;
     for (let i = 0; i < items.length; i++) {
       total += getItemSize(i);
     }
     return total;
-  }, [groupByRating, items, getItemSize]);
+  }, [useSections, items, getItemSize]);
 
   useEffect(() => {
-    if (groupByRating && vListRef.current) {
+    if (useSections && vListRef.current) {
       vListRef.current.resetAfterIndex(0, false);
     }
-  }, [groupByRating, items]);
+  }, [useSections, items]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -263,11 +255,11 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   useImperativeHandle(ref, () => ({
     scrollToPercentage: (percentage: number) => {
       const clientHeight = dimensions.height;
-      const totalHeight = groupByRating ? totalSectionHeight : movies.length * ROW_HEIGHT;
+      const totalHeight = useSections ? totalSectionHeight : movies.length * ROW_HEIGHT;
       const scrollHeight = Math.max(0, totalHeight - clientHeight);
       const targetScrollTop = scrollHeight * (percentage / 100);
       currentScrollTopRef.current = targetScrollTop;
-      if (groupByRating && vListRef.current) {
+      if (useSections && vListRef.current) {
         vListRef.current.scrollTo(targetScrollTop);
       } else if (listRef.current) {
         listRef.current.scrollTo(targetScrollTop);
@@ -278,14 +270,14 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     },
     scrollToPosition: (scrollTop: number) => {
       currentScrollTopRef.current = scrollTop;
-      if (groupByRating && vListRef.current) {
+      if (useSections && vListRef.current) {
         vListRef.current.scrollTo(scrollTop);
       } else if (listRef.current) {
         listRef.current.scrollTo(scrollTop);
       }
     },
     getScrollPercentage: () => {
-      const totalHeight = groupByRating ? totalSectionHeight : movies.length * ROW_HEIGHT;
+      const totalHeight = useSections ? totalSectionHeight : movies.length * ROW_HEIGHT;
       const clientHeight = dimensions.height;
       const scrollHeight = totalHeight - clientHeight;
       if (scrollHeight <= 0) return 0;
@@ -301,7 +293,7 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     }
 
     if (onLoadMore && !loadingRef.current) {
-      const totalHeight = groupByRating ? totalSectionHeight : movies.length * ROW_HEIGHT;
+      const totalHeight = useSections ? totalSectionHeight : movies.length * ROW_HEIGHT;
       const clientHeight = dimensions.height;
       const scrollHeight = totalHeight - clientHeight;
 
@@ -313,7 +305,7 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
         }, 500);
       }
     }
-  }, [onScroll, onLoadMore, movies.length, groupByRating, totalSectionHeight, dimensions.height]);
+  }, [onScroll, onLoadMore, movies.length, useSections, totalSectionHeight, dimensions.height]);
 
   const formatDuration = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -349,7 +341,7 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     if (item.kind === "header") {
       return (
         <div style={style}>
-          <ListSectionHeader rating={item.key} count={item.count} />
+          <ListSectionHeader label={item.label} count={item.count} />
         </div>
       );
     }
@@ -368,7 +360,7 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
     );
   }, [items, showThumbnails, formatDuration, navigate, routeState]);
 
-  if (groupByRating) {
+  if (useSections) {
     return (
       <VList
         ref={vListRef}

@@ -224,10 +224,13 @@ impl<'a> VideoGroupManager<'a> {
             let movie_ids: Vec<String> = parts.iter().map(|p| p.movie_id.to_string()).collect();
             let placeholders = movie_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
             let query = format!(
-                "SELECT id, file_path, title, year, plot, rating, genres, director, actors, 
-                        thumbnail_path, file_size, duration_seconds,
-                        width, height, added_at, updated_at, last_accessed, last_checked_at, scan_state, is_watched, group_id
-                 FROM movies WHERE id IN ({})",
+                "SELECT m.id, m.file_path, m.title, m.year, m.plot, m.rating, m.genres, m.director, m.actors,
+                        m.thumbnail_path, m.file_size, m.duration_seconds,
+                        m.width, m.height, m.added_at, m.updated_at, m.last_accessed, m.last_checked_at, m.scan_state, m.is_watched, m.group_id,
+                        COALESCE(ph.play_count, 0) as play_count
+                 FROM movies m
+                 LEFT JOIN play_history ph ON ph.movie_id = m.id
+                 WHERE m.id IN ({})",
                 placeholders
             );
 
@@ -263,6 +266,7 @@ impl<'a> VideoGroupManager<'a> {
                     scan_state: row.get(18)?,
                     is_watched: row.get(19)?,
                     group_id: row.get(20)?,
+                    play_count: row.get(21)?,
                 })
             })?;
 
