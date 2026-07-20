@@ -900,6 +900,29 @@ async fn get_video_group_detail(
 }
 
 #[tauri::command]
+async fn set_video_group_rating(
+    state: tauri::State<'_, AppState>,
+    group_id: i64,
+    rating: Option<f64>,
+) -> Result<(), String> {
+    info!(
+        "[API] set_video_group_rating 调用: group_id={}, rating={:?}",
+        group_id, rating
+    );
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| format!("Database lock error: {}", e))?;
+    VideoGroupManager::new(db.get_connection())
+        .set_video_group_rating(group_id, rating)
+        .map_err(|e| {
+            error!("[API] 设置合集评分失败: {}", e);
+            format!("Failed to set video group rating: {}", e)
+        })
+}
+
+#[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn create_video_group(
     state: tauri::State<'_, AppState>,
@@ -1170,6 +1193,7 @@ fn main() {
             set_watched_status,
             get_video_groups,
             get_video_group_detail,
+            set_video_group_rating,
             create_video_group,
             add_video_part,
             delete_video_group,

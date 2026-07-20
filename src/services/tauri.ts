@@ -181,6 +181,10 @@ export const getVideoGroupDetail = async (id: number): Promise<VideoGroupWithPar
   return await invoke<VideoGroupWithParts>("get_video_group_detail", { id });
 };
 
+export const setVideoGroupRating = async (groupId: number, rating: number | null): Promise<void> => {
+  return await invoke("set_video_group_rating", { groupId, rating });
+};
+
 export const createVideoGroup = async (
   title: string,
   year?: number,

@@ -174,6 +174,22 @@ impl<'a> VideoGroupManager<'a> {
         Ok(())
     }
 
+    /// Sets the user's rating for the whole collection. Individual part ratings remain unchanged.
+    pub fn set_video_group_rating(&self, group_id: i64, rating: Option<f64>) -> Result<()> {
+        let rating = rating.filter(|value| (0.0..=5.0).contains(value));
+        info!(
+            "[VideoGroup] 设置合集评分: group_id={}, rating={:?}",
+            group_id, rating
+        );
+
+        self.conn.execute(
+            "UPDATE video_groups SET rating = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+            params![rating, group_id],
+        )?;
+
+        Ok(())
+    }
+
     pub fn get_video_group(&self, id: i64) -> Result<Option<VideoGroup>> {
         debug!("[VideoGroup] 获取视频组: id={}", id);
 

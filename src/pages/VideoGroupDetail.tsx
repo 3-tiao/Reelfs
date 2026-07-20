@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { getVideoGroupDetail, VideoGroupWithParts, playMovie, showInFileManager, logger } from "../services/tauri";
+import { getVideoGroupDetail, VideoGroupWithParts, playMovie, setVideoGroupRating, showInFileManager, logger } from "../services/tauri";
 import { Play, ArrowLeft, Film, FolderOpen, AlertCircle } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { formatBytes, formatDuration } from "../lib/utils";
@@ -22,6 +22,7 @@ export default function VideoGroupDetail() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [posterSrc, setPosterSrc] = useState<string | null>(null);
   const [fanartSrc, setFanartSrc] = useState<string | null>(null);
+  const [isRating, setIsRating] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -77,6 +78,23 @@ export default function VideoGroupDetail() {
     }
   };
 
+  const handleRating = async (rating: number | null) => {
+    if (!groupData) return;
+
+    setIsRating(true);
+    try {
+      await setVideoGroupRating(groupData.group.id, rating);
+      setGroupData({
+        ...groupData,
+        group: { ...groupData.group, rating: rating ?? undefined },
+      });
+    } catch (error) {
+      logger.error("Failed to set video group rating:", error);
+    } finally {
+      setIsRating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -119,7 +137,7 @@ export default function VideoGroupDetail() {
   // Fallbacks correctly cascade missing group information to the first part's movie metadata
   const displayTitle = group.title;
   const displayYear = group.year || firstPartMovie?.year;
-  const displayRating = group.rating !== undefined && group.rating !== null ? group.rating : firstPartMovie?.rating;
+  const fallbackRating = firstPartMovie?.rating;
   const displayGenres = group.genres || firstPartMovie?.genres;
   const displayPlot = group.plot || firstPartMovie?.plot;
   const displayDirector = group.director || firstPartMovie?.director;
@@ -169,7 +187,14 @@ export default function VideoGroupDetail() {
                 </button>
               </div>
 
-              <InteractiveRating rating={displayRating} />
+              <InteractiveRating
+                title="合集评分"
+                rating={group.rating}
+                fallbackRating={fallbackRating}
+                fallbackLabel="当前显示第 1 段评分；点击星级可为合集单独评分"
+                isRating={isRating}
+                onRate={handleRating}
+              />
 
               <MetadataChips title="Genres" items={displayGenres} />
 

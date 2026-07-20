@@ -1,12 +1,24 @@
 import { Star } from "lucide-react";
 
 interface InteractiveRatingProps {
+  /** The score owned by the entity currently being edited. */
   rating?: number | null;
+  /** A read-only score to display until this entity receives its own score. */
+  fallbackRating?: number | null;
+  fallbackLabel?: string;
+  title?: string;
   isRating?: boolean;
   onRate?: (value: number | null) => void;
 }
 
-export default function InteractiveRating({ rating, isRating, onRate }: InteractiveRatingProps) {
+export default function InteractiveRating({
+  rating,
+  fallbackRating,
+  fallbackLabel,
+  title = "Rating",
+  isRating,
+  onRate,
+}: InteractiveRatingProps) {
   if (!onRate) {
     if (rating === undefined || rating === null) return null;
     return (
@@ -25,16 +37,19 @@ export default function InteractiveRating({ rating, isRating, onRate }: Interact
     );
   }
 
-  const filled = rating === undefined || rating === null ? 0 : Math.round(rating);
+  const hasOwnRating = rating !== undefined && rating !== null;
+  const displayRating = hasOwnRating ? rating : fallbackRating;
+  const isFallback = !hasOwnRating && displayRating !== undefined && displayRating !== null;
+  const filled = displayRating === undefined || displayRating === null ? 0 : Math.round(displayRating);
 
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-card p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-          Rating
+          {title}
         </h3>
-        {rating !== undefined && rating !== null && (
-          <span className="text-xs font-medium text-foreground">{rating.toFixed(1)} / 5</span>
+        {displayRating !== undefined && displayRating !== null && (
+          <span className="text-xs font-medium text-foreground">{displayRating.toFixed(1)} / 5</span>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -59,7 +74,10 @@ export default function InteractiveRating({ rating, isRating, onRate }: Interact
             </button>
           ))}
         </div>
-        {rating !== undefined && rating !== null && (
+        {isFallback && fallbackLabel && (
+          <span className="text-xs text-muted-foreground">{fallbackLabel}</span>
+        )}
+        {hasOwnRating && (
           <button
             onClick={() => onRate(null)}
             disabled={isRating}
