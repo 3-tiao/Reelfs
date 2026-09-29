@@ -2,8 +2,8 @@
 name = "reelfs"
 version = "0.1.0"
 description = "NAS Local Movie Browser"
-authors = ["you"]
-license = ""
+authors = ["caiguo"]
+license = "MIT"
 repository = ""
 edition = "2021"
 
@@ -23,7 +23,6 @@ image = "0.24"
 tokio = { version = "1", features = ["full"] }
 webp = "0.2"
 log = { version = "0.4", features = ["std"] }
-env_logger = "0.11"
 chrono = { version = "0.4", features = ["serde"] }
 mp4 = "0.14"
 regex = "1.10"

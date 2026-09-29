@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ActorInfo } from "../services/tauri";
 import { User } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
-import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
 import { getRouteState } from "../lib/navigation";
 
 interface ActorCardProps {
@@ -25,11 +25,21 @@ function ActorCard({ actor }: ActorCardProps) {
     }
 
     let isMounted = true;
+    // Path whose Blob URL this card renders; released on unmount so the LRU evicts it.
+    let pinnedPath: string | null = null;
+
+    const pin = (path: string) => {
+      if (isMounted) {
+        pinnedPath = path;
+      } else {
+        releaseThumbnail(path);
+      }
+    };
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          loadThumbnail(() => isMounted);
+          loadThumbnail(() => isMounted, pin);
           observer.disconnect();
         }
       },
@@ -43,14 +53,21 @@ function ActorCard({ actor }: ActorCardProps) {
     return () => {
       isMounted = false;
       observer.disconnect();
+      if (pinnedPath) {
+        releaseThumbnail(pinnedPath);
+      }
     };
   }, [actor, showThumbnails]);
 
-  const loadThumbnail = async (checkMounted: () => boolean) => {
+  const loadThumbnail = async (checkMounted: () => boolean, pin: (path: string) => void) => {
     if (actor.representative_thumbnail) {
-      const url = await getCachedThumbnail(actor.representative_thumbnail);
-      if (checkMounted() && url) {
-        setImageSrc(url);
+      const path = actor.representative_thumbnail;
+      const url = await acquireThumbnail(path);
+      if (url) {
+        pin(path);
+        if (checkMounted()) {
+          setImageSrc(url);
+        }
       }
     }
   };

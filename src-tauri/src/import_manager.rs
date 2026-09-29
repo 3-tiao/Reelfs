@@ -1,4 +1,4 @@
-use crate::database::{Database, MovieBatchRow};
+use crate::database::{Database, MovieBatchRow, MovieUpdateRow};
 use crate::indexer;
 use crate::models::{AppConfig, ImportStage, ScanCompletion, ScanResult, ScanStatus};
 use crate::path_utils::normalize_path;
@@ -433,17 +433,7 @@ impl ImportManager {
 
         // Separate into new files and existing files needing update
         type NewRow = MovieBatchRow;
-        type UpdateRow = (
-            i64,
-            String,
-            Option<i32>,
-            Option<String>,
-            Option<f64>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<i64>,
-        );
+        type UpdateRow = MovieUpdateRow;
         let mut new_batch: Vec<NewRow> = Vec::new();
         let mut existing_updates: Vec<UpdateRow> = Vec::new();
 
@@ -527,36 +517,49 @@ impl ImportManager {
             }
         }
 
-        // Update existing files with re-parsed metadata (full mode only)
+        // Update existing files with re-parsed metadata (full mode only).
+        // Chunked so the DB mutex is released between batches: a single pass over a
+        // 10k-row library used to hold the lock for the whole loop, blocking every
+        // UI query and ignoring stop requests.
         let mut updated_count: i64 = 0;
         if !existing_updates.is_empty() {
-            info!(
-                "[导入管理器] 开始更新 {} 个已有文件的元数据",
-                existing_updates.len()
-            );
-            let db = self.db.lock_recover();
-            for (movie_id, title, year, plot, rating, genres, director, actors, file_size) in
-                &existing_updates
-            {
-                match db.update_movie_metadata(
-                    *movie_id,
-                    title,
-                    *year,
-                    plot.as_deref(),
-                    *rating,
-                    genres.as_deref(),
-                    director.as_deref(),
-                    actors.as_deref(),
-                    *file_size,
-                ) {
-                    Ok(true) => updated_count += 1,
-                    Ok(false) => {}
-                    Err(e) => error!(
-                        "[导入管理器] 更新电影元数据失败: id={}, error={}",
-                        movie_id, e
-                    ),
+            const UPDATE_BATCH_SIZE: usize = 200;
+            let total_updates = existing_updates.len();
+            info!("[导入管理器] 开始更新 {} 个已有文件的元数据", total_updates);
+
+            let mut processed_updates = 0usize;
+            for chunk in existing_updates.chunks(UPDATE_BATCH_SIZE) {
+                if self.stop_requested() {
+                    info!(
+                        "[导入管理器] 元数据更新被停止: 已完成 {}/{}",
+                        processed_updates, total_updates
+                    );
+                    break;
                 }
+
+                let rows: Vec<MovieUpdateRow> = chunk.to_vec();
+                let changed = {
+                    let db = self.db.lock_recover();
+                    match db.batch_update_movie_metadata(&rows) {
+                        Ok(changed) => changed,
+                        Err(e) => {
+                            error!("[导入管理器] 批量更新元数据失败: {}", e);
+                            0
+                        }
+                    }
+                };
+                updated_count += changed as i64;
+                processed_updates += rows.len();
+
+                {
+                    let mut status = self.scan_status.lock_recover();
+                    status.scanned_files = processed_updates.min(total_updates);
+                    status.stage_message =
+                        format!("更新元数据 {}/{}", processed_updates, total_updates);
+                }
+                self.emit_progress_throttled();
             }
+
             info!("[导入管理器] 元数据更新完成: {} 个文件", updated_count);
         }
 

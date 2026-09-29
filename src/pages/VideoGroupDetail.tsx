@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getVideoGroupDetail, VideoGroupWithParts, playMovie, setVideoGroupRating, showInFileManager, logger } from "../services/tauri";
 import { Play, ArrowLeft, Film, FolderOpen, AlertCircle } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { formatBytes, formatDuration } from "../lib/utils";
-import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
 import { findPosterAndFanart } from "../lib/imageUtils";
 import DetailBackground from "../components/DetailBackground";
 import MetadataChips from "../components/MetadataChips";
@@ -22,6 +22,19 @@ export default function VideoGroupDetail() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [posterSrc, setPosterSrc] = useState<string | null>(null);
   const [fanartSrc, setFanartSrc] = useState<string | null>(null);
+  // Blob URLs this page renders; pinned while mounted so LRU eviction cannot
+  // revoke them, and released on unmount.
+  const pinnedImagesRef = useRef<string[]>([]);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      pinnedImagesRef.current.forEach((path) => releaseThumbnail(path));
+      pinnedImagesRef.current = [];
+    };
+  }, []);
   const [isRating, setIsRating] = useState(false);
 
   useEffect(() => {
@@ -52,11 +65,22 @@ export default function VideoGroupDetail() {
 
   const loadImagesFromFirstPart = async (firstPartFilePath: string) => {
     const { posterPath, fanartPath } = await findPosterAndFanart(firstPartFilePath);
+    const loadPinned = (path: string, apply: (url: string) => void) => {
+      acquireThumbnail(path, true).then((url) => {
+        if (!url) return;
+        if (!isMountedRef.current) {
+          releaseThumbnail(path);
+          return;
+        }
+        pinnedImagesRef.current.push(path);
+        apply(url);
+      });
+    };
     if (posterPath) {
-      getCachedThumbnail(posterPath, true).then((url) => url && setPosterSrc(url));
+      loadPinned(posterPath, setPosterSrc);
     }
     if (fanartPath) {
-      getCachedThumbnail(fanartPath, true).then((url) => url && setFanartSrc(url));
+      loadPinned(fanartPath, setFanartSrc);
     }
   };
 

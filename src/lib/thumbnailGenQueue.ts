@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/tauri';
-import { getCachedThumbnail } from './thumbnailCache';
+import { acquireThumbnail } from './thumbnailCache';
 import { logger } from '../services/tauri';
 
 /**
@@ -20,7 +20,7 @@ const pendingQueue: number[] = [];
 // set of movieIds currently enqueued or being processed (dedup guard)
 const pendingSet = new Set<number>();
 // callbacks to invoke once a thumbnail is ready (by movieId)
-const callbacks = new Map<number, (url: string) => void>();
+const callbacks = new Map<number, (url: string, thumbnailPath: string) => void>();
 
 let activeCount = 0;
 
@@ -42,12 +42,13 @@ async function generateOne(movieId: number): Promise<void> {
     const thumbnailPath = await invoke<string>('generate_thumbnail', { movieId });
     logger.info(`[ThumbnailGen] 生成成功: movieId=${movieId}, path=${thumbnailPath}`);
 
-    // Load into cache and get a Blob URL, using high-priority to avoid queuing
-    const url = await getCachedThumbnail(thumbnailPath, true);
+    // Load into cache and get a Blob URL, using high-priority to avoid queuing.
+    // Pinned so LRU eviction cannot revoke it while the card renders it.
+    const url = await acquireThumbnail(thumbnailPath, true);
     if (url) {
       const cb = callbacks.get(movieId);
       if (cb) {
-        cb(url);
+        cb(url, thumbnailPath);
       }
     }
   } catch (error) {
@@ -68,7 +69,7 @@ async function generateOne(movieId: number): Promise<void> {
  */
 export function enqueueThumbnailGen(
   movieId: number,
-  onSuccess: (url: string) => void
+  onSuccess: (url: string, thumbnailPath: string) => void
 ): void {
   if (pendingSet.has(movieId)) {
     // Already queued or generating — update callback to latest (e.g. after re-mount)

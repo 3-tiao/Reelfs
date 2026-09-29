@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus, logger } from "../services/tauri";
 import { formatBytes, formatDuration } from "../lib/utils";
-import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
 import { findPosterAndFanart } from "../lib/imageUtils";
 import DetailBackground from "../components/DetailBackground";
 import MetadataChips from "../components/MetadataChips";
@@ -42,6 +42,31 @@ export default function MovieDetail() {
   const [posterSrc, setPosterSrc] = useState<string | null>(null);
   const [fanartSrc, setFanartSrc] = useState<string | null>(null);
   const [isRating, setIsRating] = useState(false);
+  // Blob URLs this page renders; pinned while mounted so LRU eviction cannot
+  // revoke them, and released on unmount.
+  const pinnedImagesRef = useRef<string[]>([]);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      pinnedImagesRef.current.forEach((path) => releaseThumbnail(path));
+      pinnedImagesRef.current = [];
+    };
+  }, []);
+
+  const loadPinned = (path: string, apply: (url: string) => void) => {
+    acquireThumbnail(path, true).then((url) => {
+      if (!url) return;
+      if (!isMountedRef.current) {
+        releaseThumbnail(path);
+        return;
+      }
+      pinnedImagesRef.current.push(path);
+      apply(url);
+    });
+  };
 
   useEffect(() => {
     if (id) {
@@ -60,10 +85,10 @@ export default function MovieDetail() {
       // 并行查找 poster 和 fanart，与主数据渲染完全解耦
       findPosterAndFanart(movieData.file_path).then(({ posterPath, fanartPath }) => {
         if (posterPath) {
-          getCachedThumbnail(posterPath, true).then((url) => url && setPosterSrc(url));
+          loadPinned(posterPath, setPosterSrc);
         }
         if (fanartPath) {
-          getCachedThumbnail(fanartPath, true).then((url) => url && setFanartSrc(url));
+          loadPinned(fanartPath, setFanartSrc);
         }
       });
 

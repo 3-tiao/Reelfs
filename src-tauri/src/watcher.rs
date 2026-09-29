@@ -7,7 +7,9 @@ use crate::thumbnail;
 use log::{debug, error, info, warn};
 use notify::{event::*, Event, EventKind, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::channel;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Window within which we treat a same-directory Remove + Create pair as a rename fallback.
@@ -27,11 +29,46 @@ fn is_nfo_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Owns a running filesystem watcher. Dropping it (or calling [`WatcherHandle::stop`])
+/// shuts the event loop down and joins the worker thread, so the caller can restart
+/// watching a different set of paths.
+pub struct WatcherHandle {
+    watcher: Option<notify::RecommendedWatcher>,
+    shutdown: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    watched_paths: Vec<String>,
+}
+
+impl WatcherHandle {
+    pub fn watched_paths(&self) -> &[String] {
+        &self.watched_paths
+    }
+
+    pub fn stop(&mut self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+        // Dropping the watcher closes the event channel, so the worker wakes up
+        // immediately on `Disconnected` instead of waiting for the next timeout.
+        self.watcher.take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        info!("[文件监听] 监听器已停止");
+    }
+}
+
+impl Drop for WatcherHandle {
+    fn drop(&mut self) {
+        if self.thread.is_some() {
+            self.stop();
+        }
+    }
+}
+
 pub fn start_watcher(
     paths: Vec<String>,
     db_path: String,
     cache_dir: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<WatcherHandle, Box<dyn std::error::Error>> {
     info!("[文件监听] 监听器启动: {:?}", paths);
 
     let (tx, rx) = channel();
@@ -42,17 +79,21 @@ pub fn start_watcher(
         }
     })?;
 
+    let mut watched_paths = Vec::new();
     for path in &paths {
         if Path::new(path).exists() {
             watcher.watch(Path::new(path), RecursiveMode::Recursive)?;
+            watched_paths.push(path.clone());
             info!("[文件监听] 开始监听路径: {}", path);
         } else {
             warn!("[文件监听] 路径不存在，跳过: {}", path);
         }
     }
 
-    std::thread::spawn(move || {
-        let _watcher = watcher;
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let thread_shutdown = Arc::clone(&shutdown);
+
+    let thread = std::thread::spawn(move || {
         info!("[文件监听] 监听线程启动");
 
         let db = match Database::new(&db_path) {
@@ -69,6 +110,11 @@ pub fn start_watcher(
         let mut pending_removes: Vec<PendingRemove> = Vec::new();
 
         loop {
+            if thread_shutdown.load(Ordering::SeqCst) {
+                debug!("[文件监听] 收到停止信号，退出监听线程");
+                break;
+            }
+
             match rx.recv_timeout(Duration::from_secs(1)) {
                 Ok(event) => {
                     handle_fs_event(&db, &cache_dir, event, &mut pending_removes);
@@ -85,7 +131,12 @@ pub fn start_watcher(
         }
     });
 
-    Ok(())
+    Ok(WatcherHandle {
+        watcher: Some(watcher),
+        shutdown,
+        thread: Some(thread),
+        watched_paths,
+    })
 }
 
 fn nfo_removed_path_matches_video(nfo_path: &Path, video_path: &Path) -> bool {

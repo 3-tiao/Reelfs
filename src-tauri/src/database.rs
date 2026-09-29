@@ -2,7 +2,20 @@ use crate::models::{Movie, PlayHistory};
 use crate::path_utils::normalize_path_str;
 use log::{debug, error, info};
 use rusqlite::{params, Connection, Result};
+use std::collections::HashSet;
 use std::path::Path;
+
+pub type MovieUpdateRow = (
+    i64,
+    String,
+    Option<i32>,
+    Option<String>,
+    Option<f64>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+);
 
 pub struct Database {
     conn: Connection,
@@ -151,6 +164,12 @@ impl Database {
         }
 
         let conn = Connection::open(db_path)?;
+        // Multiple connections exist (UI commands, watcher thread, indexer threads).
+        // Without these, concurrent writers hit SQLITE_BUSY immediately.
+        conn.busy_timeout(std::time::Duration::from_secs(10))?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         let db = Database { conn };
         db.init_schema()?;
 
@@ -395,9 +414,13 @@ impl Database {
         Ok(())
     }
 
-    /// One-shot migration: collapse rows whose `file_path` differs only in Unicode
+    /// Migration: collapse rows whose `file_path` differs only in Unicode
     /// normalization form (NFD vs NFC, common on macOS) into a single canonical
-    /// NFC row, merging useful per-movie state. Gated by `PRAGMA user_version`.
+    /// NFC row, merging useful per-movie state.
+    ///
+    /// Runs on every connection open (there is no `user_version` gate) so it also
+    /// acts as a safety net against NFD/NFC drift introduced outside the app.
+    /// Measured cost: ~200ms for a 10k-row library in a debug build.
     fn migrate_path_nfc(tx: &rusqlite::Transaction<'_>) -> Result<()> {
         use std::collections::HashMap;
 
@@ -841,12 +864,55 @@ impl Database {
         )?;
 
         if changed > 0 {
-            info!("[数据库] 电影元数据更新成功: movie_id={}", movie_id);
+            debug!("[数据库] 电影元数据更新成功: movie_id={}", movie_id);
         } else {
             debug!("[数据库] 电影元数据无变化: movie_id={}", movie_id);
         }
 
         Ok(changed > 0)
+    }
+
+    /// Same semantics as [`Database::update_movie_metadata`], but all rows are applied
+    /// in one transaction. The caller is expected to chunk large passes so the
+    /// surrounding mutex is released between batches.
+    pub fn batch_update_movie_metadata(&self, rows: &[MovieUpdateRow]) -> Result<usize> {
+        if rows.is_empty() {
+            return Ok(0);
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+        let mut changed_total = 0usize;
+
+        {
+            let mut stmt = tx.prepare(
+                "UPDATE movies SET title = ?1, year = ?2, plot = ?3, rating = COALESCE(movies.rating, ?4),
+                  genres = ?5, director = ?6, actors = ?7, file_size = ?8,
+                  last_checked_at = CURRENT_TIMESTAMP, scan_state = 'checked',
+                  updated_at = CURRENT_TIMESTAMP WHERE id = ?9 AND (
+                     title IS NOT ?1 OR year IS NOT ?2 OR plot IS NOT ?3 OR
+                     (rating IS NULL AND ?4 IS NOT NULL) OR genres IS NOT ?5 OR
+                     director IS NOT ?6 OR actors IS NOT ?7 OR file_size IS NOT ?8
+                  )",
+            )?;
+
+            for row in rows {
+                let rating = sanitize_rating(row.4);
+                let changed = stmt.execute(params![
+                    &row.1, row.2, &row.3, rating, &row.5, &row.6, &row.7, row.8, row.0
+                ])?;
+                changed_total += changed;
+            }
+        }
+
+        tx.commit()?;
+
+        debug!(
+            "[数据库] 批量更新电影元数据: {} 条记录，{} 条有变化",
+            rows.len(),
+            changed_total
+        );
+
+        Ok(changed_total)
     }
 
     pub fn get_all_file_paths(&self) -> Result<Vec<(i64, String)>> {
@@ -1128,7 +1194,7 @@ impl Database {
         is_watched: Option<bool>,
     ) -> Result<Vec<Movie>> {
         debug!("[数据库] 获取筛选电影列表: offset={}, limit={}, query={:?}, filters={:?}, sort={:?} {:?}",
-               offset, limit, &search_query, (min_year, max_year, min_rating, max_rating, &actors, &genres, is_watched), sort_by, sort_order);
+               offset, limit, search_query, (min_year, max_year, min_rating, max_rating, &actors, &genres, is_watched), sort_by, sort_order);
 
         let mut where_clauses = Vec::new();
         let mut joins = vec![
@@ -1304,16 +1370,17 @@ impl Database {
             Ok(genres_str)
         })?;
 
-        let mut all_genres = Vec::new();
+        let mut all_genres: HashSet<String> = HashSet::new();
         for genres_str in genres_iter.flatten() {
             for genre in genres_str.split(',') {
                 let genre = genre.trim();
-                if !genre.is_empty() && !all_genres.contains(&genre.to_string()) {
-                    all_genres.push(genre.to_string());
+                if !genre.is_empty() {
+                    all_genres.insert(genre.to_string());
                 }
             }
         }
 
+        let mut all_genres: Vec<String> = all_genres.into_iter().collect();
         all_genres.sort();
         debug!("[数据库] 获取类型成功: {} 个类型", all_genres.len());
 
@@ -1332,16 +1399,17 @@ impl Database {
             Ok(actors_str)
         })?;
 
-        let mut all_actors = Vec::new();
+        let mut all_actors: HashSet<String> = HashSet::new();
         for actors_str in actors_iter.flatten() {
             for actor in actors_str.split(',') {
                 let actor = actor.trim();
-                if !actor.is_empty() && !all_actors.contains(&actor.to_string()) {
-                    all_actors.push(actor.to_string());
+                if !actor.is_empty() {
+                    all_actors.insert(actor.to_string());
                 }
             }
         }
 
+        let mut all_actors: Vec<String> = all_actors.into_iter().collect();
         all_actors.sort();
         debug!("[数据库] 获取演员成功: {} 个演员", all_actors.len());
 
@@ -1409,5 +1477,251 @@ impl Database {
         info!("[数据库] 所有电影数据已清空");
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use unicode_normalization::UnicodeNormalization;
+
+    /// Unique temp path per test; the DB file is removed before use.
+    fn temp_db_path(name: &str) -> String {
+        let path =
+            std::env::temp_dir().join(format!("reelfs_test_{}_{}.db", std::process::id(), name));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{}", path.display(), suffix));
+        }
+        path.to_string_lossy().to_string()
+    }
+
+    fn insert_movie(conn: &Connection, path: &str, title: &str) {
+        conn.execute(
+            "INSERT INTO movies (file_path, title) VALUES (?1, ?2)",
+            params![path, title],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn pragmas_are_applied_at_open() {
+        let path = temp_db_path("pragmas");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        let journal_mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        let busy_timeout: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        let foreign_keys: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(journal_mode.to_lowercase(), "wal");
+        assert_eq!(busy_timeout, 10_000);
+        assert_eq!(foreign_keys, 1);
+    }
+
+    #[test]
+    fn foreign_key_cascade_deletes_dependents() {
+        let path = temp_db_path("cascade");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        insert_movie(conn, "/nas/a/movie.mkv", "A");
+        let movie_id: i64 = conn
+            .query_row("SELECT id FROM movies WHERE title = 'A'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        conn.execute(
+            "INSERT INTO play_history (movie_id, last_position) VALUES (?1, 12.0)",
+            params![movie_id],
+        )
+        .unwrap();
+
+        conn.execute("DELETE FROM movies WHERE id = ?1", params![movie_id])
+            .unwrap();
+
+        let orphans: i64 = conn
+            .query_row("SELECT COUNT(*) FROM play_history", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(orphans, 0, "play_history row must cascade on movie delete");
+    }
+
+    #[test]
+    fn unique_genres_and_actors_are_deduped_and_sorted() {
+        let path = temp_db_path("unique_terms");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        conn.execute(
+            "INSERT INTO movies (file_path, title, genres, actors) VALUES
+                ('/nas/1.mkv', 'One', 'Drama, Comedy', 'Alice, Bob'),
+                ('/nas/2.mkv', 'Two', 'comedy , Drama', 'bob, Carol')",
+            [],
+        )
+        .unwrap();
+
+        let genres = db.get_unique_genres().unwrap();
+        let actors = db.get_unique_actors().unwrap();
+
+        assert_eq!(
+            genres,
+            vec![
+                "Comedy".to_string(),
+                "Drama".to_string(),
+                "comedy".to_string()
+            ]
+        );
+        assert_eq!(
+            actors,
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Carol".to_string(),
+                "bob".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn nfc_migration_merges_duplicate_rows_and_rebinds_dependents() {
+        let path = temp_db_path("nfc_merge");
+        let nfc_path = "/nas/Café/movie.mkv";
+        let nfd_path: String = nfc_path.nfd().collect();
+
+        {
+            let db = Database::new(&path).unwrap();
+            let conn = db.get_connection();
+            insert_movie(conn, &nfd_path, "Duplicate");
+            insert_movie(conn, nfc_path, "Keeper");
+            conn.execute(
+                "INSERT INTO play_history (movie_id, last_position)
+                 SELECT id, 42.0 FROM movies WHERE title = 'Duplicate'",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Reopening runs the NFC migration pass.
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM movies", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "NFD/NFC duplicates must collapse into one row");
+
+        let rebound: i64 = conn
+            .query_row("SELECT COUNT(*) FROM play_history", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rebound, 1, "play_history must survive the merge");
+
+        let dangling = conn
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query_map([], |_| Ok(()))
+            .unwrap()
+            .count();
+        assert_eq!(dangling, 0, "no foreign key violations after the merge");
+    }
+
+    /// Covers the FK path flagged in the audit: `movies.group_id` has no
+    /// `ON DELETE` action, so deleting a group while a movie still references it
+    /// would fail once `foreign_keys=ON`. Also asserts the schema stays clean.
+    #[test]
+    fn deleting_video_group_leaves_no_foreign_key_violations() {
+        use crate::video_group::VideoGroupManager;
+
+        let path = temp_db_path("fk_group_delete");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        insert_movie(conn, "/nas/group/part1.mkv", "Part 1");
+        insert_movie(conn, "/nas/group/part2.mkv", "Part 2");
+        let ids: Vec<i64> = {
+            let mut stmt = conn.prepare("SELECT id FROM movies ORDER BY id").unwrap();
+            let rows = stmt.query_map([], |row| row.get::<_, i64>(0)).unwrap();
+            rows.map(|r| r.unwrap()).collect()
+        };
+
+        let manager = VideoGroupManager::new(conn);
+        let group_id = manager
+            .create_video_group("Trilogy", None, None, None, None, None, None, None)
+            .unwrap();
+        manager
+            .add_video_part(group_id, ids[0], 1, Some("Part 1"))
+            .unwrap();
+        manager
+            .add_video_part(group_id, ids[1], 2, Some("Part 2"))
+            .unwrap();
+
+        manager.delete_video_group(group_id).unwrap();
+
+        let violations: Vec<String> = conn
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert!(
+            violations.is_empty(),
+            "foreign key violations: {:?}",
+            violations
+        );
+
+        let still_grouped: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM movies WHERE group_id IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            still_grouped, 0,
+            "movies.group_id must be cleared on group delete"
+        );
+    }
+
+    #[test]
+    fn nfc_migration_cost_on_large_library() {
+        let path = temp_db_path("nfc_timing");
+        const ROWS: i64 = 10_000;
+
+        {
+            let db = Database::new(&path).unwrap();
+            let conn = db.get_connection();
+            let tx = conn.unchecked_transaction().unwrap();
+            for i in 0..ROWS {
+                tx.execute(
+                    "INSERT INTO movies (file_path, title) VALUES (?1, ?2)",
+                    params![
+                        format!("/nas/library/movie-{:05}.mkv", i),
+                        format!("Movie {}", i)
+                    ],
+                )
+                .unwrap();
+            }
+            tx.commit().unwrap();
+        }
+
+        let started = std::time::Instant::now();
+        let _db = Database::new(&path).unwrap();
+        let elapsed = started.elapsed();
+
+        println!(
+            "migrate_path_nfc over {} rows (reopen): {:?}",
+            ROWS, elapsed
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "reopening a {}-row library took {:?}",
+            ROWS,
+            elapsed
+        );
     }
 }

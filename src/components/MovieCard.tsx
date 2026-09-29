@@ -4,7 +4,7 @@ import { Movie } from "../services/tauri";
 import { Film, Eye, Layers, Play } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { useMovieStore } from "../stores/movieStore";
-import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
 import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
 import { getRouteState } from "../lib/navigation";
 import { getSearchSecondaryText } from "../lib/search";
@@ -31,11 +31,22 @@ function MovieCard({ movie }: MovieCardProps) {
     }
 
     let isMounted = true;
+    // Path whose Blob URL this card is currently rendering; the pin is released
+    // on unmount so the LRU is free to evict it.
+    let pinnedPath: string | null = null;
+
+    const pin = (path: string) => {
+      if (isMounted) {
+        pinnedPath = path;
+      } else {
+        releaseThumbnail(path);
+      }
+    };
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          loadThumbnail(() => isMounted);
+          loadThumbnail(() => isMounted, pin);
           observer.disconnect();
         }
       },
@@ -49,13 +60,18 @@ function MovieCard({ movie }: MovieCardProps) {
     return () => {
       isMounted = false;
       observer.disconnect();
+      if (pinnedPath) {
+        releaseThumbnail(pinnedPath);
+      }
     };
   }, [movie, showThumbnails]);
 
-  const loadThumbnail = async (checkMounted: () => boolean) => {
+  const loadThumbnail = async (checkMounted: () => boolean, pin: (path: string) => void) => {
     if (movie.thumbnail_path) {
-      const url = await getCachedThumbnail(movie.thumbnail_path);
+      const path = movie.thumbnail_path;
+      const url = await acquireThumbnail(path);
       if (url) {
+        pin(path);
         if (checkMounted()) {
           setImageSrc(url);
         }
@@ -66,13 +82,15 @@ function MovieCard({ movie }: MovieCardProps) {
         return;
       }
 
-      enqueueThumbnailGen(movie.id, (generatedUrl) => {
+      enqueueThumbnailGen(movie.id, (generatedUrl, generatedPath) => {
+        pin(generatedPath);
         if (checkMounted()) {
           setImageSrc(generatedUrl);
         }
       });
     } else {
-      enqueueThumbnailGen(movie.id, (url) => {
+      enqueueThumbnailGen(movie.id, (url, generatedPath) => {
+        pin(generatedPath);
         if (checkMounted()) {
           setImageSrc(url);
         }

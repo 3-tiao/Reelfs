@@ -5,7 +5,7 @@ import { Movie } from "../services/tauri";
 import { Film, Eye, Calendar, Star, Play } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { useMovieStore } from "../stores/movieStore";
-import { getCachedThumbnail } from "../lib/thumbnailCache";
+import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
 import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
 import { getRouteState } from "../lib/navigation";
 import { getSearchSecondaryText } from "../lib/search";
@@ -69,6 +69,16 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
     }
 
     let isMounted = true;
+    // Path whose Blob URL this row renders; released on unmount so the LRU evicts it.
+    let pinnedPath: string | null = null;
+
+    const pin = (path: string) => {
+      if (isMounted) {
+        pinnedPath = path;
+      } else {
+        releaseThumbnail(path);
+      }
+    };
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -76,21 +86,25 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
           observer.disconnect();
           if (movie.thumbnail_path) {
             // Thumbnail already exists — load from global cache
-            getCachedThumbnail(movie.thumbnail_path).then((url) => {
+            const path = movie.thumbnail_path;
+            acquireThumbnail(path).then((url) => {
               if (url) {
+                pin(path);
                 if (isMounted) setImageSrc(url);
                 return;
               }
 
               if (isMounted) {
-                enqueueThumbnailGen(movie.id, (generatedUrl) => {
+                enqueueThumbnailGen(movie.id, (generatedUrl, generatedPath) => {
+                  pin(generatedPath);
                   if (isMounted) setImageSrc(generatedUrl);
                 });
               }
             });
           } else {
             // No thumbnail — enqueue Rust generation
-            enqueueThumbnailGen(movie.id, (url) => {
+            enqueueThumbnailGen(movie.id, (url, generatedPath) => {
+              pin(generatedPath);
               if (isMounted) setImageSrc(url);
             });
           }
@@ -106,6 +120,9 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
     return () => {
       isMounted = false;
       observer.disconnect();
+      if (pinnedPath) {
+        releaseThumbnail(pinnedPath);
+      }
     };
   }, [movie.id, movie.thumbnail_path, showThumbnails]);
 

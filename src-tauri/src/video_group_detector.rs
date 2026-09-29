@@ -22,16 +22,17 @@ pub fn detect_video_groups(movies: &[Movie]) -> Vec<VideoGroupCandidate> {
     let mut groups: HashMap<String, Vec<MovieWithPart>> = HashMap::new();
 
     let patterns = vec![
-        r"(.+?)[\s\-_\.\[]([上中下])[\s\-_\.\]]?$",
+        r"(.+?)[\s\-_\.\[]([上中下])\s*[集部]?[\s\-_\.\]]?$",
         r"(.+?)[\s\-_\.]CD\s*(\d+)$",
         r"(.+?)[\s\-_\.]Part\s*(\d+)$",
         r"(.+?)[\s\-_\.]Disc\s*(\d+)$",
         r"(.+?)[\s\-_\.]EP?\s*(\d+)$",
-        r"(.+?)[\s\-_\.\[]([上中下])[\s\-_\.\]]",
+        r"(.+?)[\s\-_\.\[]([上中下])\s*[集部]?[\s\-_\.\]]",
         r"(.+?)[\s\-_\.\[]CD\s*(\d+)[\s\-_\.\]]",
         r"(.+?)[\s\-_\.\[]Part\s*(\d+)[\s\-_\.\]]",
         r"(.+?)[\s\-_\.\[]Disc\s*(\d+)[\s\-_\.\]]",
         r"(.+?)[\s\-_\.\[]EP?\s*(\d+)[\s\-_\.\]]",
+        r"(.+?)[\s\-_\.]第\s*(\d+)\s*[集部]$",
         r"(.+?)[\s\-_\[]第\s*(\d+)\s*[集部][\s\-_\]]",
         r"(.+?)[\s\-_\.](\d+)\s*\/\s*\d+",
     ];
@@ -193,7 +194,7 @@ mod tests {
         let movies = vec![
             Movie {
                 id: 1,
-                file_path: "/path/to/movie1.mp4".to_string(),
+                file_path: "/path/to/电影名称 [上集].mp4".to_string(),
                 title: "电影名称 [上集]".to_string(),
                 year: None,
                 plot: None,
@@ -217,7 +218,7 @@ mod tests {
             },
             Movie {
                 id: 2,
-                file_path: "/path/to/movie2.mp4".to_string(),
+                file_path: "/path/to/电影名称 [下集].mp4".to_string(),
                 title: "电影名称 [下集]".to_string(),
                 year: None,
                 plot: None,

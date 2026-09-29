@@ -26,6 +26,7 @@ import {
   logger,
 } from "../services/tauri";
 import { open } from "@tauri-apps/api/dialog";
+import { invalidateAllThumbnails } from "../lib/thumbnailCache";
 import ScanProgress from "../components/ScanProgress";
 import { formatBytes } from "../lib/utils";
 import { toast } from "sonner";
@@ -164,6 +165,9 @@ export default function Settings() {
   const handleRegenerateThumbnails = async () => {
     try {
       const result = await regenerateAllThumbnails();
+      // Regeneration overwrites `{cache}/thumbnails/{id}.jpg` in place, so the
+      // cache keys stay identical — without this the UI kept showing the old images.
+      invalidateAllThumbnails();
       toast.success(result);
       setTimeout(() => {
         loadStats();
