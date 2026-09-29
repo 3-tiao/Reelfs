@@ -539,6 +539,7 @@ Tauri v2 已发布，但仅凭“存在新主版本”不能把当前 v1 定义�
 | 17 | 虚拟列表升级（react-window 2 或 TanStack Virtual） | 决策 | 4～8 小时 | ⬜ 待决策 |
 | 18 | TypeScript `any` 收紧 | 维护 | 30 分钟 | ⬜ 与 #17 一起做 |
 | 19 | 文档合并重写 | 维护 | 40 分钟 | ⬜ 建议等 Tauri v2 决策后 |
+| 20 | 记录 Linux 构建约束（runner / webkit2gtk / wry） | 维护 | 15 分钟 | ✅ 完成，见第九节 |
 
 ### 本轮改动文件
 
@@ -553,3 +554,30 @@ cd src-tauri && cargo test          # 7 passed
 npm run typecheck && npm run build
 npm run tauri:dev                    # 手测：扫描大库时 UI 响应、增删 NAS 路径后监听是否立即生效
 ```
+
+---
+
+## 九、已知环境约束（Linux 构建）
+
+以下三条都由 CI 实测得出。本地 macOS 构建走 WKWebView，不会编译 `webkitgtk` 那段代码，**所以在 Mac 上永远是绿的，只有 Linux CI 能暴露问题**。任何一条被去掉都会让 CI 变红。
+
+### 1. `wry` 必须钉在 `0.24.12` 或更高
+
+`webkit2gtk 0.18.2` 把 `Settings` 的方法移进了 `SettingsExt` trait，而 `wry 0.24.11` 没有 import 这个 trait，于是 Tauri 1.8.x 在 Linux 上编译失败：
+
+```
+error[E0599]: no method named `set_enable_developer_extras` found for struct `webkit2gtk::Settings`
+ --> wry-0.24.11/src/webview/webkitgtk/mod.rs:294
+```
+
+- 证据：CI run `36545781127` 失败；`wry 0.24.11` 源码里 `SettingsExt` 出现 0 次，`0.24.12` 出现 1 次（上游已修，且 tauri 的 `^0.24` 约束允许该版本）
+- 处置：`cargo update -p wry --precise 0.24.12`，提交 `ab94c62`
+- **`Cargo.lock` 必须入库**（当前已入库），否则下次解析会重新拿到坏版本
+
+### 2. CI 的 Rust job 必须使用 `ubuntu-22.04`
+
+Ubuntu 24.04 已移除 `libwebkit2gtk-4.0-dev`，`apt-get install` 直接失败（CI run `36543533870`）。处置见提交 `8d2ed89`。
+
+### 3. 升级 Tauri 之前先看 Linux 结果
+
+Tauri 1.x 与新版 `webkit2gtk` 的组合在 Linux 上很脆。今后改动 `tauri`、`wry`、`webkit2gtk` 或 `Cargo.lock` 时，必须以 Linux CI 结果为准，不能只凭本机 macOS 编译通过或 clippy 通过就认为没问题。
