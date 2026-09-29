@@ -19,7 +19,7 @@
 
 ```bash
 # 1. 进入项目目录
-cd /Users/user/Documents/workspace/github/Reelfs
+cd $HOME/Documents/workspace/github/Reelfs
 
 # 2. 启动开发服务器
 npm run tauri:dev
@@ -188,7 +188,7 @@ mpv --version
 
 ```bash
 # 进入项目目录
-cd /Users/user/Documents/workspace/github/Reelfs
+cd $HOME/Documents/workspace/github/Reelfs
 
 # 启动开发服务器（首次启动需要编译，约2-3分钟）
 npm run tauri:dev

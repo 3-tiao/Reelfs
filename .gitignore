@@ -32,6 +32,10 @@ src-tauri/target
 # Cache
 cache
 
-# Temporary files
-reelfs@*
-tauri
+# Temporary files (anchored: only the repo root, so real directories named
+# "tauri" below src-tauri/ are not ignored)
+/reelfs@*
+/tauri
+
+# Local AI/editor notes (not for public repo)
+.trae/

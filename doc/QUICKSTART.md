@@ -6,7 +6,7 @@
 
 ```bash
 # 进入项目目录
-cd /Users/user/Documents/workspace/github/Reelfs
+cd $HOME/Documents/workspace/github/Reelfs
 
 # 启动开发服务器
 npm run tauri:dev
