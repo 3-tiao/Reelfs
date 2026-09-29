@@ -33,7 +33,9 @@ jobs:
 
   rust:
     name: Rust (fmt + clippy + test)
-    runs-on: ubuntu-latest
+    # Tauri 1.x links against webkit2gtk-4.0, which Ubuntu 24.04 (ubuntu-latest)
+    # no longer ships. Stay on 22.04 until the project moves to Tauri 2.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
