@@ -127,8 +127,8 @@ sudo pacman -S \
     base-devel \
     pkg-config \
     openssl \
-    webkit2gtk \
-    libsoup \
+    webkit2gtk-4.1 \
+    libsoup3 \
     gtk3 \
     librsvg \
     mpv

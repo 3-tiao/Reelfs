@@ -28,7 +28,8 @@ brew install pkg-config
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # 安装开发依赖
-sudo apt install -y libwebkit2gtk-4.0-dev \
+sudo apt install -y libwebkit2gtk-4.1-dev \
+    libsoup-3.0-dev \
     build-essential \
     curl \
     wget \
@@ -512,7 +513,7 @@ chore: 构建/工具相关
 
 ### 后端
 
-- **Tauri 1.5**: 应用框架
+- **Tauri 2.x**: 应用框架
 - **Rust 1.70+**: 编程语言
 - **rusqlite**: SQLite 绑定
 - **quick-xml**: XML 解析（NFO 文件）

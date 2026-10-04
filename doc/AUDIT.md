@@ -143,7 +143,7 @@ conn.pragma_update(None, "foreign_keys", "ON")?;
 
 ### ✅ 10. CI、npm scripts、测试（P1-5）
 
-- 新增 `.github/workflows/ci.yml`：前端 `npm ci` + `typecheck` + `build`；Rust `fmt --check` + `clippy --all-targets -- -D warnings` + `test`，并安装 Tauri 1 所需的 webkit2gtk 等系统依赖。
+- 新增 `.github/workflows/ci.yml`：前端 `npm ci` + `typecheck` + `build`；Rust `fmt --check` + `clippy --all-targets -- -D warnings` + `test`，并安装 Tauri 所需系统依赖（v2 起为 `libwebkit2gtk-4.1-dev`）。
 - `package.json` 新增 `typecheck`、`test:rust`、`lint:rust`。
 - 测试从 1 个增到 7 个，全部为临时数据库上的集成测试，覆盖：PRAGMA 生效、外键级联删除、genres/actors 去重与排序、NFC/NFD 合并与依赖重绑、删视频组无外键违规、`migrate_path_nfc` 在 1 万行上的耗时。
 
@@ -322,7 +322,7 @@ for (...) in &existing_updates {
 
 1. 加 npm scripts：`typecheck`、`lint`、`test`。
 2. CI 执行 `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`、`npm run typecheck`、`npm run build`。
-3. Linux 侧 CI 需要 webkit2gtk 等 Tauri 1 系统依赖，预算时不能漏掉这一步。
+3. Linux 侧 CI 需要 webkit2gtk 等 Tauri 系统依赖，预算时不能漏掉这一步。
 4. 优先测试纯函数：文件名标题提取、NFO 解析、LIKE 转义、路径 NFC 归一化、视频组检测。
 5. 给 SQLite migration、FTS trigger、级联删除和 watcher rename 匹配增加临时数据库测试。
 
@@ -467,19 +467,22 @@ Tauri v1 相关说明仍出现在 `DEVELOPMENT.md`、`OPERATIONS.md`、`DOCUMENT
 
 ## 六、升级决策（不是缺陷）
 
-### D-1 Tauri v1 → v2
+### D-1 Tauri v1 → v2 ✅ 已完成
 
-版本事实：
+迁移原因（Linux 实测）：
 
-- `Cargo.toml` 版本约束写的是 `tauri = "1.5"`。
-- `Cargo.lock` 实际解析为 `tauri 1.8.3`。
-- npm lock 实际为 `@tauri-apps/api 1.6.0`、CLI 1.6.3。
+- nixpkgs 26.11 已移除 `webkitgtk_4_0`（WebKitGTK 上游删除 4.0 API），而 Tauri 1.x 的 `webkit2gtk-rs 0.18` 只认 `webkit2gtk-4.0`。
+- 为编译 v1 只能钉 `nixos-24.11`，其 mesa/glvnd（24.2.8）与系统 mesa（26.2.3）混用后，WebKit 无法创建 EGL display（`EGL_BAD_PARAMETER`），窗口空白、dev server 收不到任何请求。
+- Tauri v2 使用 `webkit2gtk-4.1`，与当前系统图形栈完全一致。
 
-Tauri v2 已发布，但仅凭“存在新主版本”不能把当前 v1 定义成 P1 缺陷。迁移价值包括新的 capability 权限模型和后续生态支持；成本包括配置、插件和 API 调整。
+迁移内容：
 
-建议在完成 P1 运行时问题后单独开迁移分支，先运行官方 migrator，再逐项测试文件访问、对话框、shell open 和资源加载。
+- `tauri`/`tauri-build` 1.x → 2.x；`allowlist` 改为 `capabilities/default.json`（`fs:scope` 沿用 `$HOME/.reelfs/**`、`/Volumes/**`、`/mnt/**`）。
+- 不再需要 `shell-open`（打开文件走 Rust `std::process::Command`），移除 `tauri-plugin-shell`。
+- 前端：`@tauri-apps/api` v2（`invoke` 改从 `@tauri-apps/api/core`），`readBinaryFile` → 插件 `readFile`（`@tauri-apps/plugin-fs`），`dialog.open` 走 `@tauri-apps/plugin-dialog`。
+- Rust：`tauri::Window` → `tauri::WebviewWindow`，`.emit()` 需 `use tauri::Emitter`。
 
-预估：1～2 天，取决于平台回归范围。
+验证：`cargo test` 7 passed、`npm run typecheck`、`npm run build` 均通过；Linux 上首次正常渲染（dev server 收到 83 个请求，前端输出 `[MovieStore]` 日志）。CI 的 Rust job 已改回 `ubuntu-latest` + `libwebkit2gtk-4.1-dev`。
 
 ### D-2 react-window 1 → 2 或 TanStack Virtual
 
@@ -535,7 +538,7 @@ Tauri v2 已发布，但仅凭“存在新主版本”不能把当前 v1 定义�
 | 13 | 删除 env_logger、Cargo 元数据、空文件、.gitignore | 维护 | 20 分钟 | ✅ 完成（license/repository 保留为空） |
 | 14 | 修好历史失败测试 `test_detect_groups` | 维护 | 30 分钟 | ✅ 完成（顺带修复 `[上集]` 匹配缺口，正则新增 1 条、扩展 2 条） |
 | 15 | 真实片库跑一次 `PRAGMA foreign_key_check` | P1 | 10 分钟 | ⬜ 需你本地执行（代码路径已用测试覆盖） |
-| 16 | Tauri v2 迁移 | 决策 | 1～2 天 | ⬜ 待决策 |
+| 16 | Tauri v2 迁移 | 决策 | 1～2 天 | ✅ 完成（见 D-1） |
 | 17 | 虚拟列表升级（react-window 2 或 TanStack Virtual） | 决策 | 4～8 小时 | ⬜ 待决策 |
 | 18 | TypeScript `any` 收紧 | 维护 | 30 分钟 | ⬜ 与 #17 一起做 |
 | 19 | 文档合并重写 | 维护 | 40 分钟 | ⬜ 建议等 Tauri v2 决策后 |
@@ -557,7 +560,9 @@ npm run tauri:dev                    # 手测：扫描大库时 UI 响应、增�
 
 ---
 
-## 九、已知环境约束（Linux 构建）
+## 九、已知环境约束（Linux 构建）— 已随 Tauri v2 迁移失效
+
+> **历史记录。** 以下三条只适用于 Tauri 1.x + `webkit2gtk 4.0`。迁移到 Tauri v2（`webkit2gtk-4.1`）后，`wry` 钉版本和 `ubuntu-22.04` 约束都不再需要，CI 已改用 `ubuntu-latest` + `libwebkit2gtk-4.1-dev`。保留本节是为了说明当初为何会有那些约束。
 
 以下三条都由 CI 实测得出。本地 macOS 构建走 WKWebView，不会编译 `webkitgtk` 那段代码，**所以在 Mac 上永远是绿的，只有 Linux CI 能暴露问题**。任何一条被去掉都会让 CI 变红。
 
