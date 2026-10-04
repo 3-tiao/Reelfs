@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { acquireThumbnail } from './thumbnailCache';
 import { logger } from '../services/tauri';
 

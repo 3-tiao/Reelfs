@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Film, User } from "lucide-react";
 import { Movie, getMoviesFiltered, logger } from "../services/tauri";
-import { readBinaryFile, exists } from "@tauri-apps/api/fs";
+import { readFile, exists } from "@tauri-apps/plugin-fs";
 import { useScrollRestoration } from "../hooks/useScrollRestoration";
 import { getBackTarget, getRouteState } from "../lib/navigation";
 
@@ -88,7 +88,7 @@ export default function ActorDetail() {
     const posterPath = await getPosterPath(videoPath);
     if (posterPath) {
       try {
-        const data = await readBinaryFile(posterPath);
+        const data = await readFile(posterPath);
         const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
         const url = URL.createObjectURL(blob);
         setPosterCache(prev => new Map(prev).set(movieId, url));

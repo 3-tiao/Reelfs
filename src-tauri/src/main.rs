@@ -19,6 +19,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use tauri::Emitter;
 use video_group::VideoGroupManager;
 use video_group_detector::{detect_video_groups, VideoGroupCandidate};
 
@@ -153,7 +154,7 @@ async fn search_movies(
 #[tauri::command]
 async fn start_initial_scan(
     state: tauri::State<'_, AppState>,
-    window: tauri::Window,
+    window: tauri::WebviewWindow,
     scan_mode: String,
     delete_invalid: bool,
 ) -> Result<String, String> {
@@ -477,7 +478,7 @@ async fn generate_thumbnail(
 #[tauri::command]
 async fn regenerate_all_thumbnails(
     state: tauri::State<'_, AppState>,
-    window: tauri::Window,
+    window: tauri::WebviewWindow,
 ) -> Result<String, String> {
     info!("[缩略图生成] 开始重新生成所有缩略图");
 
@@ -1158,6 +1159,8 @@ fn main() {
     info!("[应用启动] 应用初始化完成，耗时: {}ms", elapsed.as_millis());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             db: Arc::new(Mutex::new(db)),
             config: Arc::new(Mutex::new(config)),

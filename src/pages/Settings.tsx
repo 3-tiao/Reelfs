@@ -25,7 +25,7 @@ import {
   ScanResult,
   logger,
 } from "../services/tauri";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { invalidateAllThumbnails } from "../lib/thumbnailCache";
 import ScanProgress from "../components/ScanProgress";
 import { formatBytes } from "../lib/utils";

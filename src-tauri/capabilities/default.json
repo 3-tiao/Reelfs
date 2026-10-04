@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions required by the Reelfs UI (file reads for posters/thumbnails and directory picking).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "fs:allow-read-file",
+    "fs:allow-exists",
+    {
+      "identifier": "fs:scope",
+      "allow": ["$HOME/.reelfs/**", "/Volumes/**", "/mnt/**"]
+    }
+  ]
+}

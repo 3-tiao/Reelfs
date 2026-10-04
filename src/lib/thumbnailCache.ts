@@ -1,4 +1,4 @@
-import { readBinaryFile } from "@tauri-apps/api/fs";
+import { readFile } from "@tauri-apps/plugin-fs";
 import { logger } from "../services/tauri";
 
 /**
@@ -71,7 +71,7 @@ function evictIfNeeded() {
 
 async function readAsBlob(path: string): Promise<string | null> {
   try {
-    const data = await readBinaryFile(path);
+    const data = await readFile(path);
     const blob = new Blob([data as BlobPart], { type: "image/jpeg" });
     const url = URL.createObjectURL(blob);
     cache.set(path, url);

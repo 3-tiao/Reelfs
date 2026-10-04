@@ -12,7 +12,7 @@ use std::sync::{
     Arc, Mutex, MutexGuard,
 };
 use std::time::{Duration, Instant};
-use tauri::Window;
+use tauri::{Emitter, WebviewWindow};
 
 trait LockExt<T> {
     fn lock_recover(&self) -> MutexGuard<'_, T>;
@@ -36,7 +36,7 @@ pub struct ImportManager {
     config: AppConfig,
     scan_status: Arc<Mutex<ScanStatus>>,
     stop_scan_flag: Arc<AtomicBool>,
-    window: Window,
+    window: WebviewWindow,
     scan_mode: String,
     delete_invalid: bool,
     last_emit_at: Arc<Mutex<Instant>>,
@@ -48,7 +48,7 @@ impl ImportManager {
         config: AppConfig,
         scan_status: Arc<Mutex<ScanStatus>>,
         stop_scan_flag: Arc<AtomicBool>,
-        window: Window,
+        window: WebviewWindow,
         scan_mode: String,
         delete_invalid: bool,
     ) -> Self {

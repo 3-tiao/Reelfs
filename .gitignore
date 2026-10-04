@@ -39,3 +39,6 @@ cache
 
 # Local AI/editor notes (not for public repo)
 .trae/
+
+# Tauri v2 generated capability schemas
+/src-tauri/gen/schemas

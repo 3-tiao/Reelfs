@@ -1,5 +1,5 @@
-import { readBinaryFile } from '@tauri-apps/api/fs';
-import { invoke } from '@tauri-apps/api/tauri';
+import { readFile } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 import { logger } from '../services/tauri';
 
 /**
@@ -69,7 +69,7 @@ export async function findPosterAndFanart(videoPath: string): Promise<{
  */
 export async function loadImageAsBlobUrl(path: string): Promise<string | null> {
   try {
-    const data = await readBinaryFile(path);
+    const data = await readFile(path);
     const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
     return URL.createObjectURL(blob);
   } catch (error) {
