@@ -29,6 +29,9 @@ src-tauri/target
 # App data
 .reelfs
 
+# Agent isolation sandbox (scripts/agent-env.sh)
+/.agentenv/
+
 # Cache
 cache
 
