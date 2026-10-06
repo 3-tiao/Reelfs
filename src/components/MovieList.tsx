@@ -1,15 +1,16 @@
-import { useRef, useCallback, forwardRef, useImperativeHandle, useState, useEffect, memo, useMemo } from "react";
+import { useRef, useState, useCallback, forwardRef, useImperativeHandle, useEffect, memo, useMemo } from "react";
 import { FixedSizeList as List, VariableSizeList as VList, ListChildComponentProps } from "react-window";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, Eye, Calendar, Star, Play } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { useMovieStore } from "../stores/movieStore";
-import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
+import { thumbnailUrl } from "../lib/thumbnailCache";
 import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
 import { getRouteState } from "../lib/navigation";
 import { getSearchSecondaryText } from "../lib/search";
 import { buildSections, sectionConfigFor, SectionKey, SortBy } from "../lib/sections";
+import { useViewportSize } from "../hooks/useViewportSize";
 import HighlightedText from "./HighlightedText";
 
 interface MovieListProps {
@@ -25,6 +26,17 @@ type ListRowItem =
 
 const HEADER_HEIGHT = 56;
 const ROW_HEIGHT = 72;
+
+// Module scope so its identity is stable across renders — passing a
+// fresh per-render closure to memoized rows would defeat `memo`.
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
 
 function ListSectionHeader({ label, count }: { label: string; count: number }) {
   return (
@@ -56,57 +68,51 @@ interface MovieListItemProps {
 
 const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails, formatDuration, navigate, routeState }: MovieListItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [generatedSrc, setGeneratedSrc] = useState<string | null>(null);
   const searchQuery = useMovieStore((state) => state.searchQuery);
   const secondaryText = searchQuery
     ? getSearchSecondaryText(movie, searchQuery) ?? movie.actors?.split(",")[0]?.trim() ?? movie.director
     : movie.actors?.split(",")[0]?.trim();
 
+  // Asset URL built straight from the DB row; `updated_at` (bumped by the
+  // backend whenever the thumbnail file is rewritten) doubles as the ?v=
+  // cache-busting token.
+  const dbSrc = showThumbnails && movie.thumbnail_path
+    ? thumbnailUrl(movie.thumbnail_path, movie.updated_at)
+    : null;
+  // Asset URL of a thumbnail generated on demand this session — nonce-busted
+  // because the store row (and its updated_at) predates the rewrite.
+  const imageSrc = showThumbnails ? generatedSrc ?? dbSrc : null;
+  // The src whose load already triggered one generation request — guards the
+  // onError self-heal against looping when the file never becomes loadable.
+  const generationRequestedForRef = useRef<string | null>(null);
+
+  // Virtualized lists reuse this row instance for another movie; drop the
+  // generated URL so the previous movie's poster is never flashed.
   useEffect(() => {
-    if (!showThumbnails) {
-      setImageSrc(null);
+    setGeneratedSrc(null);
+    generationRequestedForRef.current = null;
+  }, [movie.id]);
+
+  const requestGeneration = useCallback(() => {
+    enqueueThumbnailGen(movie.id, (url) => setGeneratedSrc(url));
+  }, [movie.id]);
+
+  // Only the on-demand generation needs visibility gating: when the DB row has
+  // no thumbnail yet, enqueue Rust generation once the row scrolls near the
+  // viewport. Asset URLs for existing thumbnails load natively.
+  useEffect(() => {
+    if (!showThumbnails || movie.thumbnail_path) {
       return;
     }
 
     let isMounted = true;
-    // Path whose Blob URL this row renders; released on unmount so the LRU evicts it.
-    let pinnedPath: string | null = null;
-
-    const pin = (path: string) => {
-      if (isMounted) {
-        pinnedPath = path;
-      } else {
-        releaseThumbnail(path);
-      }
-    };
-
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
           observer.disconnect();
-          if (movie.thumbnail_path) {
-            // Thumbnail already exists — load from global cache
-            const path = movie.thumbnail_path;
-            acquireThumbnail(path).then((url) => {
-              if (url) {
-                pin(path);
-                if (isMounted) setImageSrc(url);
-                return;
-              }
-
-              if (isMounted) {
-                enqueueThumbnailGen(movie.id, (generatedUrl, generatedPath) => {
-                  pin(generatedPath);
-                  if (isMounted) setImageSrc(generatedUrl);
-                });
-              }
-            });
-          } else {
-            // No thumbnail — enqueue Rust generation
-            enqueueThumbnailGen(movie.id, (url, generatedPath) => {
-              pin(generatedPath);
-              if (isMounted) setImageSrc(url);
-            });
+          if (isMounted) {
+            requestGeneration();
           }
         }
       },
@@ -120,11 +126,17 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
     return () => {
       isMounted = false;
       observer.disconnect();
-      if (pinnedPath) {
-        releaseThumbnail(pinnedPath);
-      }
     };
-  }, [movie.id, movie.thumbnail_path, showThumbnails]);
+  }, [movie.id, movie.thumbnail_path, showThumbnails, requestGeneration]);
+
+  // The DB row claims a thumbnail that failed to load (deleted cache file, …);
+  // one generation attempt per src keeps a broken file from looping invokes.
+  const handleImageError = () => {
+    if (dbSrc && generationRequestedForRef.current !== dbSrc) {
+      generationRequestedForRef.current = dbSrc;
+      requestGeneration();
+    }
+  };
 
   return (
     <div
@@ -142,8 +154,13 @@ const MovieListItem = memo(function MovieListItem({ movie, index, showThumbnails
       </div>
 
       <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded border border-white/[0.06] bg-card">
-        {showThumbnails && imageSrc ? (
-          <img src={imageSrc} alt={movie.title} className="h-full w-full object-cover" />
+        {imageSrc ? (
+          <img
+            src={imageSrc}
+            alt={movie.title}
+            className="h-full w-full object-cover"
+            onError={dbSrc ? handleImageError : undefined}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <Film className="h-5 w-5 text-white/15" />
@@ -208,15 +225,19 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
   const navigate = useNavigate();
   const location = useLocation();
   const { showThumbnails } = useNsfwStore();
-  const routeState = getRouteState(location);
-  const listRef = useRef<any>(null);
-  const vListRef = useRef<any>(null);
+  // Memoized: `getRouteState(location)` returns a fresh object per render, and
+  // passing it straight down would defeat `memo` on every row.
+  const routeState = useMemo(
+    () => getRouteState(location),
+    [location.pathname, location.search]
+  );
+  const listRef = useRef<List>(null);
+  const vListRef = useRef<VList>(null);
   const currentScrollTopRef = useRef(0);
-  const loadingRef = useRef(false);
-  const [dimensions, setDimensions] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight - 80,
-  });
+  const dimensions = useViewportSize();
+  // Store-level in-flight flag: loadMore flips it synchronously and no-ops
+  // duplicate calls, so no ref/timer throttle is needed on top of it.
+  const isLoadingMore = useMovieStore((state) => state.isLoadingMore);
 
   const items = useMemo<ListRowItem[]>(() => {
     if (!sectionConfig) return [];
@@ -256,18 +277,6 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
       vListRef.current.resetAfterIndex(0, false);
     }
   }, [useSections, items]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight - 80,
-      });
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   useImperativeHandle(ref, () => ({
     scrollToPercentage: (percentage: number) => {
@@ -309,29 +318,16 @@ export default forwardRef<MovieListRef, MovieListProps>(function MovieList({ mov
       onScroll();
     }
 
-    if (onLoadMore && !loadingRef.current) {
+    if (onLoadMore && !isLoadingMore) {
       const totalHeight = useSections ? totalSectionHeight : movies.length * ROW_HEIGHT;
       const clientHeight = dimensions.height;
       const scrollHeight = totalHeight - clientHeight;
 
       if (scrollHeight > 0 && scrollOffset >= scrollHeight * 0.8) {
-        loadingRef.current = true;
         onLoadMore();
-        setTimeout(() => {
-          loadingRef.current = false;
-        }, 500);
       }
     }
-  }, [onScroll, onLoadMore, movies.length, useSections, totalSectionHeight, dimensions.height]);
-
-  const formatDuration = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
-  };
+  }, [onScroll, onLoadMore, isLoadingMore, movies.length, useSections, totalSectionHeight, dimensions.height]);
 
   const Row = useCallback(({ index, style }: ListChildComponentProps) => {
     const movie = movies[index];

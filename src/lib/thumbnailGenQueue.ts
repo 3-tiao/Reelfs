@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { acquireThumbnail } from './thumbnailCache';
+import { thumbnailUrl } from './thumbnailCache';
 import { logger } from '../services/tauri';
 
 /**
@@ -9,8 +9,15 @@ import { logger } from '../services/tauri';
  *  - Accept enqueue(movieId, onSuccess) requests from card components
  *  - Deduplicate: each movieId only queued once at a time
  *  - Rate-limit: at most MAX_GENERATING concurrent Rust generate_thumbnail calls
- *  - On completion: read result into Blob URL via getCachedThumbnail, invoke onSuccess callback
+ *  - On completion: hand the callback an asset:// URL for the generated file
+ *    (nonce-busted, see below), never blocking on JS-side work
  *  - Non-blocking: uses Rust-side image processing, never touches JS canvas/main-thread IO
+ *
+ * The MAX_GENERATING limiter stays even though image *loading* moved to the
+ * asset protocol: `generate_thumbnail` runs CPU-bound image decode/resize/encode
+ * in `spawn_blocking` (main.rs), and an unbounded burst of those would saturate
+ * cores and NAS/disk IO on a large library. Loading itself needs no JS limiter
+ * — the webview's own network stack fetches asset:// URLs natively.
  */
 
 const MAX_GENERATING = 2; // max simultaneous Rust thumbnail generation calls
@@ -42,14 +49,13 @@ async function generateOne(movieId: number): Promise<void> {
     const thumbnailPath = await invoke<string>('generate_thumbnail', { movieId });
     logger.info(`[ThumbnailGen] 生成成功: movieId=${movieId}, path=${thumbnailPath}`);
 
-    // Load into cache and get a Blob URL, using high-priority to avoid queuing.
-    // Pinned so LRU eviction cannot revoke it while the card renders it.
-    const url = await acquireThumbnail(thumbnailPath, true);
-    if (url) {
-      const cb = callbacks.get(movieId);
-      if (cb) {
-        cb(url, thumbnailPath);
-      }
+    // The file was just (re)written in place, but the store's movie row — and
+    // with it `updated_at`, the passive ?v= token — may predate the rewrite.
+    // Bust with a nonce so the requesting card always re-fetches the new image.
+    const url = thumbnailUrl(thumbnailPath, Date.now());
+    const cb = callbacks.get(movieId);
+    if (cb) {
+      cb(url, thumbnailPath);
     }
   } catch (error) {
     // No poster found or generation failed — silently skip (card stays as placeholder)
@@ -63,7 +69,7 @@ async function generateOne(movieId: number): Promise<void> {
  * Request thumbnail generation for a movie that has no cached thumbnail yet.
  *
  * - Safe to call multiple times for the same movieId (deduplicated)
- * - onSuccess is called at most once, with the Blob URL of the generated thumbnail
+ * - onSuccess is called at most once, with the asset:// URL of the generated thumbnail
  * - If the component unmounts before generation finishes, the callback simply won't
  *   update anything meaningful (caller should guard with isMounted check)
  */

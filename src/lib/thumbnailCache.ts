@@ -1,197 +1,49 @@
-import { readFile } from "@tauri-apps/plugin-fs";
-import { logger } from "../services/tauri";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 /**
- * Global thumbnail cache — survives component unmount/remount.
- * Maps file paths to Blob URLs to avoid re-reading files on every navigation.
+ * Build the webview URL for an image on disk via Tauri's asset protocol.
  *
- * Bounded LRU: without a cap the renderer accumulated one Blob per movie ever
- * scrolled past (the project targets 10k+ libraries). Entries that a mounted
- * component still renders are "pinned" via `acquireThumbnail`, so eviction can
- * never revoke an in-use URL and break an <img>.
+ * This module replaced an older design that `readFile`'d every image over IPC,
+ * wrapped the bytes in a Blob and handed out `blob:` URLs from a bounded
+ * LRU cache with pin/inflight bookkeeping. None of that machinery survives the
+ * switch to `asset://` URLs, on purpose:
+ *
+ *  - A Blob URL held image bytes in the renderer JS heap for its whole lifetime;
+ *    the LRU cap (400 entries) was a high-water mark that never shrank below
+ *    full on a 10k+ library browse. An asset URL is a short string — the bytes
+ *    stay in the webview's native image/network cache, which evicts decoded
+ *    bitmaps for unmounted <img> elements on its own. Resident memory now
+ *    scales with visible rows (bounded by react-window virtualization), not
+ *    with how far the user has scrolled.
+ *  - Loading no longer costs a per-image IPC round trip; the OS/webview serve
+ *    the file straight from disk, with range-request support on the Rust side.
+ *  - There is nothing to revoke, so nothing can evict an in-use URL — the pin
+ *    mechanism existed only to make LRU eviction safe for Blob URLs.
+ *
+ * The former `acquireThumbnail`/`releaseThumbnail`/`invalidate*` API and the
+ * readFile concurrency limiter (6 slots) are gone; call sites now build their
+ * URL synchronously with this function.
+ *
+ * Cache busting: the asset protocol response carries no Cache-Control header
+ * (tauri src/protocol/asset.rs), so the webview caches heuristically and an
+ * in-place rewrite of `{cache}/thumbnails/{id}.jpg` would keep showing the old
+ * pixels. `version` appends a `?v=` query — ignored by the asset handler, which
+ * parses only the URI path — to force a re-fetch. `Movie.updated_at` is the
+ * token for DB-backed thumbnails: the backend bumps it exactly when a thumbnail
+ * path is written (database.rs `update_thumbnail_path`). For a thumbnail that
+ * was just generated on demand (the store's row is stale), callers pass a
+ * fresh nonce instead — see `thumbnailGenQueue`.
+ *
+ * @param path - Absolute file path inside the asset protocol scope.
+ * @param version - Optional cache-busting token (`Movie.updated_at`, a nonce…).
  */
-const cache = new Map<string, string>();
-const pins = new Map<string, number>();
-const inflight = new Map<string, Promise<string | null>>();
-
-const MAX_ENTRIES = 400;
-
-// Concurrency limit for homepage bulk thumbnail loading (low-priority).
-// Detail-page images (poster/fanart) bypass this limit via priority flag.
-const MAX_CONCURRENT = 6;
-let activeCount = 0;
-const queue: Array<() => void> = [];
-
-function acquireSlot(): Promise<void> {
-  if (activeCount < MAX_CONCURRENT) {
-    activeCount++;
-    return Promise.resolve();
-  }
-  return new Promise<void>((resolve) => {
-    queue.push(() => {
-      activeCount++;
-      resolve();
-    });
-  });
-}
-
-function releaseSlot() {
-  activeCount--;
-  if (queue.length > 0) {
-    const next = queue.shift()!;
-    next();
-  }
-}
-
-/** Mark an entry as most recently used. Map preserves insertion order. */
-function touch(path: string) {
-  const url = cache.get(path);
-  if (url !== undefined) {
-    cache.delete(path);
-    cache.set(path, url);
-  }
-}
-
-function isPinned(path: string): boolean {
-  return (pins.get(path) ?? 0) > 0;
-}
-
-/** Revoke and drop the oldest unpinned entries until the cache fits the cap. */
-function evictIfNeeded() {
-  if (cache.size <= MAX_ENTRIES) return;
-
-  for (const path of cache.keys()) {
-    if (cache.size <= MAX_ENTRIES) break;
-    if (isPinned(path)) continue;
-    const url = cache.get(path);
-    if (url) URL.revokeObjectURL(url);
-    cache.delete(path);
-  }
-}
-
-async function readAsBlob(path: string): Promise<string | null> {
-  try {
-    const data = await readFile(path);
-    const blob = new Blob([data as BlobPart], { type: "image/jpeg" });
-    const url = URL.createObjectURL(blob);
-    cache.set(path, url);
-    evictIfNeeded();
+export function thumbnailUrl(
+  path: string,
+  version?: string | number | null
+): string {
+  const url = convertFileSrc(path);
+  if (version === undefined || version === null || version === "") {
     return url;
-  } catch (error) {
-    logger.error("[ThumbnailCache] 加载失败:", path, String(error));
-    return null;
   }
-}
-
-function loadThumbnail(path: string, highPriority: boolean): Promise<string | null> {
-  const existing = inflight.get(path);
-  if (existing) return existing;
-
-  let promise: Promise<string | null>;
-
-  if (highPriority) {
-    // High-priority: read immediately without waiting for the slot queue
-    promise = readAsBlob(path).finally(() => {
-      inflight.delete(path);
-    });
-  } else {
-    // Low-priority (bulk homepage thumbnails): go through the concurrency limiter
-    promise = (async () => {
-      await acquireSlot();
-      try {
-        return await readAsBlob(path);
-      } finally {
-        releaseSlot();
-        inflight.delete(path);
-      }
-    })();
-  }
-
-  inflight.set(path, promise);
-  return promise;
-}
-
-/**
- * Get (or load) a cached Blob URL for the given file path.
- * Use this when the URL is transient (e.g. handed to another consumer) or when
- * the caller cannot pair it with `releaseThumbnail`.
- *
- * @param path - Absolute file path to read.
- * @param highPriority - When true (e.g., detail-page poster/fanart), the read
- *   bypasses the concurrency queue so it is never blocked by bulk homepage
- *   thumbnail loads. Default is false (low-priority, queued).
- */
-export async function getCachedThumbnail(
-  path: string,
-  highPriority = false
-): Promise<string | null> {
-  const cached = cache.get(path);
-  if (cached) {
-    touch(path);
-    return cached;
-  }
-  return loadThumbnail(path, highPriority);
-}
-
-/**
- * Like `getCachedThumbnail`, but pins the entry so LRU eviction will not revoke
- * the URL while a mounted component is still rendering it. Every successful
- * acquire must be paired with `releaseThumbnail` (typically in effect cleanup).
- */
-export async function acquireThumbnail(
-  path: string,
-  highPriority = false
-): Promise<string | null> {
-  pins.set(path, (pins.get(path) ?? 0) + 1);
-  const url = await getCachedThumbnail(path, highPriority);
-  if (!url) {
-    // Nothing was cached, so drop the pin we just added.
-    releasePin(path);
-  }
-  return url;
-}
-
-export function releaseThumbnail(path: string) {
-  releasePin(path);
-  evictIfNeeded();
-}
-
-function releasePin(path: string) {
-  const current = pins.get(path);
-  if (current === undefined) return;
-  if (current <= 1) {
-    pins.delete(path);
-  } else {
-    pins.set(path, current - 1);
-  }
-}
-
-/**
- * Drop one cached entry. Needed after a thumbnail is regenerated in place:
- * the stored path is reused (`{cache}/thumbnails/{id}.jpg`), so the cache key
- * stays the same and the UI would keep showing the stale image.
- */
-export function invalidateThumbnail(path: string) {
-  const url = cache.get(path);
-  if (url) {
-    URL.revokeObjectURL(url);
-  }
-  cache.delete(path);
-}
-
-export function invalidateAllThumbnails() {
-  for (const url of cache.values()) {
-    URL.revokeObjectURL(url);
-  }
-  cache.clear();
-}
-
-/** Cache statistics, for diagnostics. */
-export function getThumbnailCacheStats() {
-  return { entries: cache.size, pinned: pins.size, inflight: inflight.size };
-}
-
-/** @deprecated Use `invalidateAllThumbnails`; kept for the existing call sites. */
-export function clearThumbnailCache() {
-  invalidateAllThumbnails();
+  return `${url}?v=${encodeURIComponent(String(version))}`;
 }

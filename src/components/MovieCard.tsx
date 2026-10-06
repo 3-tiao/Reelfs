@@ -1,10 +1,10 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Movie } from "../services/tauri";
 import { Film, Eye, Layers, Play } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { useMovieStore } from "../stores/movieStore";
-import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
+import { thumbnailUrl } from "../lib/thumbnailCache";
 import { enqueueThumbnailGen } from "../lib/thumbnailGenQueue";
 import { getRouteState } from "../lib/navigation";
 import { getSearchSecondaryText } from "../lib/search";
@@ -19,35 +19,52 @@ function MovieCard({ movie }: MovieCardProps) {
   const location = useLocation();
   const { showThumbnails } = useNsfwStore();
   const searchQuery = useMovieStore((state) => state.searchQuery);
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const searchSecondaryText = searchQuery ? getSearchSecondaryText(movie, searchQuery) : null;
   const routeState = getRouteState(location);
 
+  // Asset URL built straight from the DB row. `updated_at` is bumped by the
+  // backend whenever the thumbnail file is (re)written (database.rs
+  // `update_thumbnail_path`), so it doubles as the ?v= cache-busting token.
+  const dbSrc =
+    showThumbnails && movie.thumbnail_path
+      ? thumbnailUrl(movie.thumbnail_path, movie.updated_at)
+      : null;
+  // Asset URL of a thumbnail generated on demand this session (row had none, or
+  // the file went missing) — nonce-busted because the store row is stale.
+  const [generatedSrc, setGeneratedSrc] = useState<string | null>(null);
+  const imageSrc = showThumbnails ? generatedSrc ?? dbSrc : null;
+  // The src whose load already triggered one generation request — guards the
+  // onError self-heal against looping when the file never becomes loadable.
+  const generationRequestedForRef = useRef<string | null>(null);
+
+  // Virtualized containers reuse this card instance for another movie; drop the
+  // generated URL so the previous movie's poster is never flashed.
   useEffect(() => {
-    if (!showThumbnails) {
-      setImageSrc(null);
+    setGeneratedSrc(null);
+    generationRequestedForRef.current = null;
+  }, [movie.id]);
+
+  const requestGeneration = useCallback(() => {
+    enqueueThumbnailGen(movie.id, (url) => setGeneratedSrc(url));
+  }, [movie.id]);
+
+  // Only the on-demand generation needs visibility gating (asset URLs load
+  // natively via loading="lazy"): when the DB row has no thumbnail yet, enqueue
+  // Rust generation once the card scrolls near the viewport.
+  useEffect(() => {
+    if (!showThumbnails || movie.thumbnail_path) {
       return;
     }
 
     let isMounted = true;
-    // Path whose Blob URL this card is currently rendering; the pin is released
-    // on unmount so the LRU is free to evict it.
-    let pinnedPath: string | null = null;
-
-    const pin = (path: string) => {
-      if (isMounted) {
-        pinnedPath = path;
-      } else {
-        releaseThumbnail(path);
-      }
-    };
-
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          loadThumbnail(() => isMounted, pin);
           observer.disconnect();
+          if (isMounted) {
+            requestGeneration();
+          }
         }
       },
       { rootMargin: "100px" }
@@ -60,41 +77,16 @@ function MovieCard({ movie }: MovieCardProps) {
     return () => {
       isMounted = false;
       observer.disconnect();
-      if (pinnedPath) {
-        releaseThumbnail(pinnedPath);
-      }
     };
-  }, [movie, showThumbnails]);
+  }, [movie.id, movie.thumbnail_path, showThumbnails, requestGeneration]);
 
-  const loadThumbnail = async (checkMounted: () => boolean, pin: (path: string) => void) => {
-    if (movie.thumbnail_path) {
-      const path = movie.thumbnail_path;
-      const url = await acquireThumbnail(path);
-      if (url) {
-        pin(path);
-        if (checkMounted()) {
-          setImageSrc(url);
-        }
-        return;
-      }
-
-      if (!checkMounted()) {
-        return;
-      }
-
-      enqueueThumbnailGen(movie.id, (generatedUrl, generatedPath) => {
-        pin(generatedPath);
-        if (checkMounted()) {
-          setImageSrc(generatedUrl);
-        }
-      });
-    } else {
-      enqueueThumbnailGen(movie.id, (url, generatedPath) => {
-        pin(generatedPath);
-        if (checkMounted()) {
-          setImageSrc(url);
-        }
-      });
+  // The DB row claims a thumbnail that failed to load (deleted cache file, …);
+  // the old flow re-generated via the failed readFile. One generation attempt
+  // per src keeps a pathologically broken file from looping invoke calls.
+  const handleImageError = () => {
+    if (dbSrc && generationRequestedForRef.current !== dbSrc) {
+      generationRequestedForRef.current = dbSrc;
+      requestGeneration();
     }
   };
 
@@ -111,6 +103,7 @@ function MovieCard({ movie }: MovieCardProps) {
             alt={movie.title}
             className="h-full w-full object-cover"
             loading="lazy"
+            onError={dbSrc ? handleImageError : undefined}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">

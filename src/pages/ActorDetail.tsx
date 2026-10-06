@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Film, User } from "lucide-react";
 import { Movie, getMoviesFiltered, logger } from "../services/tauri";
-import { readFile, exists } from "@tauri-apps/plugin-fs";
+import { findFirstExisting } from "../lib/imageUtils";
+import { thumbnailUrl } from "../lib/thumbnailCache";
 import { useScrollRestoration } from "../hooks/useScrollRestoration";
 import { getBackTarget, getRouteState } from "../lib/navigation";
 
@@ -12,7 +13,19 @@ export default function ActorDetail() {
   const location = useLocation();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [posterCache, setPosterCache] = useState<Map<number, string>>(new Map());
+  // movie.id → asset:// URL of the folder poster, rendered by this page.
+  const [posterUrls, setPosterUrls] = useState<Map<number, string>>(new Map());
+  // Guards against re-triggering a poster load while one is in flight.
+  const loadingIdsRef = useRef<Set<number>>(new Set());
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      loadingIdsRef.current.clear();
+    };
+  }, []);
 
   const { handleScroll } = useScrollRestoration({
     storageKey: name ? `actor:${name}` : "actor:unknown",
@@ -68,34 +81,26 @@ export default function ActorDetail() {
     }
   };
 
-  const getPosterPath = async (videoPath: string): Promise<string | null> => {
+  const loadPoster = (movieId: number, videoPath: string) => {
+    if (posterUrls.has(movieId) || loadingIdsRef.current.has(movieId)) return;
+
+    loadingIdsRef.current.add(movieId);
     const dir = videoPath.substring(0, videoPath.lastIndexOf('/'));
     const posterNames = ['poster.jpg', 'poster.png', 'folder.jpg', 'cover.jpg', 'fanart.jpg', 'fanart.png'];
-    
-    for (const name of posterNames) {
-      const posterPath = `${dir}/${name}`;
-      if (await exists(posterPath)) {
-        return posterPath;
-      }
-    }
-    
-    return null;
-  };
 
-  const loadPoster = async (movieId: number, videoPath: string) => {
-    if (posterCache.has(movieId)) return;
-    
-    const posterPath = await getPosterPath(videoPath);
-    if (posterPath) {
-      try {
-        const data = await readFile(posterPath);
-        const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
-        const url = URL.createObjectURL(blob);
-        setPosterCache(prev => new Map(prev).set(movieId, url));
-      } catch (error) {
-        logger.error("Failed to load poster:", posterPath, error);
-      }
-    }
+    findFirstExisting(posterNames.map((name) => `${dir}/${name}`))
+      .then((posterPath) => {
+        // findFirstExisting verified the file exists; hand out its asset URL
+        // directly instead of routing it through the old Blob cache.
+        if (!posterPath || !isMountedRef.current) return;
+        setPosterUrls((prev) => new Map(prev).set(movieId, thumbnailUrl(posterPath)));
+      })
+      .catch((error) => {
+        logger.error("Failed to load poster:", videoPath, error);
+      })
+      .finally(() => {
+        loadingIdsRef.current.delete(movieId);
+      });
   };
 
   const handleMovieClick = (movieId: number) => {
@@ -143,9 +148,7 @@ export default function ActorDetail() {
         ) : (
           <div className="space-y-2">
             {movies.map((movie) => {
-              if (!posterCache.has(movie.id)) {
-                loadPoster(movie.id, movie.file_path);
-              }
+              loadPoster(movie.id, movie.file_path);
 
               return (
                 <div
@@ -154,9 +157,9 @@ export default function ActorDetail() {
                   className="group flex cursor-pointer gap-4 overflow-hidden rounded-xl border border-white/[0.06] bg-card transition-colors hover:border-white/[0.12]"
                 >
                   <div className="h-36 w-24 flex-shrink-0 bg-black/40">
-                    {posterCache.get(movie.id) ? (
+                    {posterUrls.get(movie.id) ? (
                       <img
-                        src={posterCache.get(movie.id)}
+                        src={posterUrls.get(movie.id)}
                         alt={movie.title}
                         className="h-full w-full object-cover"
                       />

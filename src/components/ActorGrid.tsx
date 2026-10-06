@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react";
+import { useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
 import { FixedSizeGrid as Grid } from "react-window";
 import ActorCard from "./ActorCard";
 import { ActorInfo } from "../services/tauri";
+import { useViewportSize } from "../hooks/useViewportSize";
 
 interface ActorGridProps {
   actors: ActorInfo[];
@@ -16,12 +17,9 @@ export interface ActorGridRef {
 }
 
 export default forwardRef<ActorGridRef, ActorGridProps>(function ActorGrid({ actors, onScroll }, ref) {
-  const gridRef = useRef<any>(null);
+  const gridRef = useRef<Grid>(null);
   const currentScrollTopRef = useRef(0);
-  const [dimensions, setDimensions] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight - 80,
-  });
+  const dimensions = useViewportSize();
 
   const cardWidth = 200;
   const cardHeight = 350;
@@ -34,18 +32,6 @@ export default forwardRef<ActorGridRef, ActorGridProps>(function ActorGrid({ act
   const rowCount = useMemo(() => {
     return Math.ceil(actors.length / columnCount);
   }, [actors.length, columnCount]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight - 80,
-      });
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   useImperativeHandle(ref, () => ({
     scrollToPercentage: (percentage: number) => {

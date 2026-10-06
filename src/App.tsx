@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { HashRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import MovieDetail from "./pages/MovieDetail";
 import ActorDetail from "./pages/ActorDetail";
@@ -9,7 +9,7 @@ import { Toaster } from 'sonner';
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Toaster theme="dark" position="top-center" richColors />
       <div className="min-h-screen bg-gray-950 text-white">
         <Routes>
@@ -21,7 +21,7 @@ function App() {
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
+import { useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
 import { FixedSizeGrid as Grid, VariableSizeList as VList } from "react-window";
 import MovieCard from "./MovieCard";
 import { Movie } from "../services/tauri";
+import { useMovieStore } from "../stores/movieStore";
 import { buildSections, sectionConfigFor, SectionKey, SortBy } from "../lib/sections";
+import { useViewportSize } from "../hooks/useViewportSize";
 
 interface MovieGridProps {
   movies: Movie[];
@@ -39,14 +41,13 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
 export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ movies, onScroll, onLoadMore, groupBy = null }, ref) {
   const sectionConfig = useMemo(() => sectionConfigFor(groupBy), [groupBy]);
   const useSections = sectionConfig !== null;
-  const gridRef = useRef<any>(null);
-  const listRef = useRef<any>(null);
+  const gridRef = useRef<Grid>(null);
+  const listRef = useRef<VList>(null);
   const currentScrollTopRef = useRef(0);
-  const [dimensions, setDimensions] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight - 80,
-  });
-  const loadingRef = useRef(false);
+  const dimensions = useViewportSize();
+  // Store-level in-flight flag: loadMore flips it synchronously and no-ops
+  // duplicate calls, so no ref/timer throttle is needed on top of it.
+  const isLoadingMore = useMovieStore((state) => state.isLoadingMore);
 
   const cardWidth = 200;
   const cardHeight = 350;
@@ -98,18 +99,6 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
     }
   }, [useSections, items]);
 
-  useEffect(() => {
-    const handleResize = () => {
-      setDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight - 80,
-      });
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
   useImperativeHandle(ref, () => ({
     scrollToPercentage: (percentage: number) => {
       const clientHeight = dimensions.height;
@@ -147,17 +136,13 @@ export default forwardRef<MovieGridRef, MovieGridProps>(function MovieGrid({ mov
 
   const triggerLoadMore = useCallback(
     (scrollTop: number, totalHeight: number) => {
-      if (!onLoadMore || loadingRef.current) return;
+      if (!onLoadMore || isLoadingMore) return;
       const scrollHeight = totalHeight - dimensions.height;
       if (scrollHeight > 0 && scrollTop >= scrollHeight * 0.8) {
-        loadingRef.current = true;
         onLoadMore();
-        setTimeout(() => {
-          loadingRef.current = false;
-        }, 500);
       }
     },
-    [onLoadMore, dimensions.height]
+    [onLoadMore, isLoadingMore, dimensions.height]
   );
 
   const handleGridScroll = useCallback(

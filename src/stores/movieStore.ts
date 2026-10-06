@@ -1,5 +1,11 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { Movie, getMovies, playMovie, Filters, SortOptions, getMoviesFiltered, getUniqueGenres, getUniqueActors, logger } from "../services/tauri";
+
+// Single source of truth for every paged query and the hasMore derivation.
+// The Rust backend caps pages at this size, so a response shorter than it
+// means there is nothing left to load.
+export const PAGE_SIZE = 200;
 
 const hasActiveFilterValues = (filters: Filters) => {
   return Object.values(filters).some((value) => value !== undefined && value !== null && value !== "");
@@ -33,6 +39,7 @@ interface MovieStore {
   clearFilters: () => void;
   fetchAvailableGenres: () => Promise<void>;
   fetchAvailableActors: () => Promise<void>;
+  refreshThumbnailTokens: () => Promise<void>;
   setScrollPosition: (key: string, position: number) => void;
   setScrollProgress: (key: string, progress: number) => void;
   patchMovie: (id: number, partial: Partial<Movie>) => void;
@@ -66,7 +73,9 @@ const compareMovies = (a: Movie, b: Movie, sort: SortOptions): number => {
       return (b.id - a.id);
     }
     case "title": {
-      const cmp = a.title.localeCompare(b.title);
+      // Explicit locale so CJK titles sort by fixed collation rules instead of
+      // the system-default locale, which varies across machines.
+      const cmp = a.title.localeCompare(b.title, "zh-Hans-CN");
       if (cmp !== 0) return cmp * dir;
       return (b.id - a.id);
     }
@@ -86,7 +95,8 @@ const compareMovies = (a: Movie, b: Movie, sort: SortOptions): number => {
   }
 };
 
-export const useMovieStore = create<MovieStore>((set, get) => {
+export const useMovieStore = create<MovieStore>()(
+  persist((set, get) => {
   const withRequestId = async <T>(
     label: string,
     options: {
@@ -95,6 +105,11 @@ export const useMovieStore = create<MovieStore>((set, get) => {
       work: (requestId: number) => Promise<T>;
       onSuccess: (result: T) => Partial<MovieStore>;
       onError?: (error: unknown) => Partial<MovieStore>;
+      // Runs when the completion is stale. loadMore must release isLoadingMore
+      // here: it does not bump the id, so any bumpId request racing in front
+      // makes its completion stale, and a stranded isLoadingMore=true would
+      // trip the guard and kill infinite scroll for the rest of the session.
+      onStale?: () => Partial<MovieStore>;
     }
   ) => {
     const bumpId = options.bumpId ?? true;
@@ -102,15 +117,23 @@ export const useMovieStore = create<MovieStore>((set, get) => {
     const initial = options.initial ?? {};
     set({ ...initial, ...(bumpId ? { lastRequestId: requestId } : {}) });
 
+    const settleStale = () => {
+      logger.info(`[MovieStore] ${label} ignored: stale requestId=${requestId}`);
+      if (options.onStale) set(options.onStale());
+    };
+
     try {
       const result = await options.work(requestId);
       if (get().lastRequestId !== requestId) {
-        logger.info(`[MovieStore] ${label} ignored: stale requestId=${requestId}`);
+        settleStale();
         return;
       }
       set(options.onSuccess(result));
     } catch (error) {
-      if (get().lastRequestId !== requestId) return;
+      if (get().lastRequestId !== requestId) {
+        settleStale();
+        return;
+      }
       logger.error(`[MovieStore] ${label} failed: ${error}`);
       if (options.onError) set(options.onError(error));
     }
@@ -147,20 +170,20 @@ export const useMovieStore = create<MovieStore>((set, get) => {
         return shouldUseFilteredQuery
           ? await getMoviesFiltered(
               offset,
-              200,
+              PAGE_SIZE,
               state.isUsingFilters ? state.filters : undefined,
               state.sortOptions,
               undefined
             )
-          : await getMovies(offset, 200);
+          : await getMovies(offset, PAGE_SIZE);
       },
       onSuccess: (movies) => {
         logger.info(`[MovieStore] 获取电影数据: ${movies.length} 个电影`);
         return {
           movies,
           isLoading: false,
-          hasMore: movies.length === 200,
-          currentPage: Math.floor(offset / 200),
+          hasMore: movies.length === PAGE_SIZE,
+          currentPage: Math.floor(offset / PAGE_SIZE),
         };
       },
       onError: (error) => ({ error: String(error), isLoading: false }),
@@ -183,17 +206,17 @@ export const useMovieStore = create<MovieStore>((set, get) => {
       bumpId: false,
       initial: { isLoadingMore: true },
       work: async () => {
-        const offset = (state.currentPage + 1) * 200;
+        const offset = (state.currentPage + 1) * PAGE_SIZE;
         if (shouldUseFilteredQuery) {
           return await getMoviesFiltered(
             offset,
-            200,
+            PAGE_SIZE,
             state.isUsingFilters ? state.filters : undefined,
             state.sortOptions,
             state.searchQuery || undefined
           );
         }
-        return await getMovies(offset, 200);
+        return await getMovies(offset, PAGE_SIZE);
       },
       onSuccess: (newMovies) => {
         const current = get();
@@ -201,11 +224,12 @@ export const useMovieStore = create<MovieStore>((set, get) => {
         return {
           movies: [...current.movies, ...newMovies],
           isLoadingMore: false,
-          hasMore: newMovies.length === 200,
+          hasMore: newMovies.length === PAGE_SIZE,
           currentPage: current.currentPage + 1,
         };
       },
       onError: () => ({ isLoadingMore: false }),
+      onStale: () => ({ isLoadingMore: false }),
     });
   },
 
@@ -224,7 +248,7 @@ export const useMovieStore = create<MovieStore>((set, get) => {
         const state = get();
         return await getMoviesFiltered(
           0,
-          200,
+          PAGE_SIZE,
           state.isUsingFilters ? state.filters : undefined,
           state.sortOptions,
           normalizedQuery
@@ -235,7 +259,7 @@ export const useMovieStore = create<MovieStore>((set, get) => {
         return {
           movies,
           isLoading: false,
-          hasMore: movies.length === 200,
+          hasMore: movies.length === PAGE_SIZE,
           currentPage: 0,
         };
       },
@@ -311,6 +335,53 @@ export const useMovieStore = create<MovieStore>((set, get) => {
     }
   },
 
+  // Refetch only the pages already in memory and merge each row's fresh
+  // `updated_at`/`thumbnail_path` — the ?v= token that busts the webview's
+  // image cache after a thumbnail regeneration. Unlike fetchMovies(0) this
+  // never replaces the list, so deeply-loaded pages and currentPage survive;
+  // pages the user has not reached yet are fetched fresh by loadMore anyway.
+  refreshThumbnailTokens: async () => {
+    try {
+      const state = get();
+      if (state.movies.length === 0) return;
+
+      const shouldUseFilteredQuery =
+        Boolean(state.searchQuery) ||
+        state.isUsingFilters ||
+        state.sortOptions.sortBy !== "added_at" ||
+        state.sortOptions.sortOrder !== "DESC";
+
+      const fresh: Movie[] = [];
+      for (let page = 0; page <= state.currentPage; page++) {
+        const offset = page * PAGE_SIZE;
+        const rows = shouldUseFilteredQuery
+          ? await getMoviesFiltered(
+              offset,
+              PAGE_SIZE,
+              state.isUsingFilters ? state.filters : undefined,
+              state.sortOptions,
+              state.searchQuery || undefined
+            )
+          : await getMovies(offset, PAGE_SIZE);
+        fresh.push(...rows);
+      }
+
+      const freshById = new Map(fresh.map((m) => [m.id, m]));
+      set((current) => ({
+        movies: current.movies.map((m) => {
+          const updated = freshById.get(m.id);
+          return updated
+            ? { ...m, updated_at: updated.updated_at, thumbnail_path: updated.thumbnail_path }
+            : m;
+        }),
+      }));
+    } catch (error) {
+      // Token refresh is cosmetic; regeneration already succeeded, so a failure
+      // here must not surface as a failed regeneration.
+      logger.error(`[MovieStore] 刷新缩略图令牌失败: ${error}`);
+    }
+  },
+
   setScrollPosition: (key: string, position: number) => {
     set((state) => ({
       scrollPositions: {
@@ -346,4 +417,14 @@ export const useMovieStore = create<MovieStore>((set, get) => {
     });
   },
   };
-});
+  },
+  {
+    name: "movie-storage",
+    // Persist only the scroll bookkeeping so a restart can restore the
+    // browsing position; movies, filters and request state start fresh.
+    partialize: (state) => ({
+      scrollPositions: state.scrollPositions,
+      scrollProgresses: state.scrollProgresses,
+    }),
+  })
+);

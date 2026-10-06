@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Play, Film, FolderOpen, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { Movie, PlayHistory, getMovieDetail, playMovie, showInFileManager, setMovieRating, getAndUpdateVideoInfo, setWatchedStatus, logger } from "../services/tauri";
 import { formatBytes, formatDuration } from "../lib/utils";
-import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
+import { thumbnailUrl } from "../lib/thumbnailCache";
 import { findPosterAndFanart } from "../lib/imageUtils";
 import DetailBackground from "../components/DetailBackground";
 import MetadataChips from "../components/MetadataChips";
@@ -42,31 +42,6 @@ export default function MovieDetail() {
   const [posterSrc, setPosterSrc] = useState<string | null>(null);
   const [fanartSrc, setFanartSrc] = useState<string | null>(null);
   const [isRating, setIsRating] = useState(false);
-  // Blob URLs this page renders; pinned while mounted so LRU eviction cannot
-  // revoke them, and released on unmount.
-  const pinnedImagesRef = useRef<string[]>([]);
-  const isMountedRef = useRef(true);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      pinnedImagesRef.current.forEach((path) => releaseThumbnail(path));
-      pinnedImagesRef.current = [];
-    };
-  }, []);
-
-  const loadPinned = (path: string, apply: (url: string) => void) => {
-    acquireThumbnail(path, true).then((url) => {
-      if (!url) return;
-      if (!isMountedRef.current) {
-        releaseThumbnail(path);
-        return;
-      }
-      pinnedImagesRef.current.push(path);
-      apply(url);
-    });
-  };
 
   useEffect(() => {
     if (id) {
@@ -82,13 +57,15 @@ export default function MovieDetail() {
       setHistory(historyData);
       setIsLoading(false);
 
-      // 并行查找 poster 和 fanart，与主数据渲染完全解耦
+      // 并行查找 poster 和 fanart，与主数据渲染完全解耦。
+      // findPosterAndFanart already verified the files exist, so the asset URLs
+      // are rendered directly; onError clears a src that 404s anyway.
       findPosterAndFanart(movieData.file_path).then(({ posterPath, fanartPath }) => {
         if (posterPath) {
-          loadPinned(posterPath, setPosterSrc);
+          setPosterSrc(thumbnailUrl(posterPath));
         }
         if (fanartPath) {
-          loadPinned(fanartPath, setFanartSrc);
+          setFanartSrc(thumbnailUrl(fanartPath));
         }
       });
 
@@ -225,7 +202,12 @@ export default function MovieDetail() {
             <div className="mx-auto flex-shrink-0 lg:mx-0">
               <div className="aspect-[2/3] w-72 overflow-hidden rounded-2xl border border-white/[0.06] bg-card">
                 {posterSrc ? (
-                  <img src={posterSrc} alt={movie.title} className="h-full w-full object-cover" />
+                  <img
+                    src={posterSrc}
+                    alt={movie.title}
+                    className="h-full w-full object-cover"
+                    onError={() => setPosterSrc(null)}
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
                     <Film className="h-16 w-16 text-white/15" />

@@ -1,6 +1,4 @@
-import { readFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
-import { logger } from '../services/tauri';
 
 /**
  * 并行检查多个文件路径，返回第一个存在的路径。
@@ -61,19 +59,4 @@ export async function findPosterAndFanart(videoPath: string): Promise<{
   ]);
 
   return { posterPath, fanartPath };
-}
-
-/**
- * 直接读取图片文件并创建 Blob URL，不走首页缩略图的并发限制队列。
- * 适用于详情页这种一次只加载 1~2 张大图的场景。
- */
-export async function loadImageAsBlobUrl(path: string): Promise<string | null> {
-  try {
-    const data = await readFile(path);
-    const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
-    return URL.createObjectURL(blob);
-  } catch (error) {
-    logger.error('[imageUtils] 加载图片失败:', path, String(error));
-    return null;
-  }
 }

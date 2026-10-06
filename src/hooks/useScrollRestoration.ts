@@ -19,7 +19,10 @@ export function useScrollRestoration({
   itemCount,
   getController,
 }: UseScrollRestorationOptions) {
-  const { setScrollPosition, setScrollProgress } = useMovieStore();
+  // Atom selectors on the actions: their identity is stable, so the scroll
+  // writes (scrollPositions/scrollProgresses) never re-render this hook.
+  const setScrollPosition = useMovieStore((state) => state.setScrollPosition);
+  const setScrollProgress = useMovieStore((state) => state.setScrollProgress);
   const [scrollProgress, setLocalScrollProgress] = useState(0);
   const lastSavedPositionRef = useRef(0);
   const restoredKeyRef = useRef<string | null>(null);

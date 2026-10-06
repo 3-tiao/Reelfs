@@ -26,7 +26,6 @@ import {
   logger,
 } from "../services/tauri";
 import { open } from "@tauri-apps/plugin-dialog";
-import { invalidateAllThumbnails } from "../lib/thumbnailCache";
 import ScanProgress from "../components/ScanProgress";
 import { formatBytes } from "../lib/utils";
 import { toast } from "sonner";
@@ -45,7 +44,7 @@ import { Separator } from "@/components/ui/separator";
 export default function Settings() {
   const navigate = useNavigate();
   const { config, loadConfig, patchConfig } = useSettingsStore();
-  const { reset: resetMovies, fetchMovies } = useMovieStore();
+  const { reset: resetMovies, fetchMovies, refreshThumbnailTokens } = useMovieStore();
   const [nasPaths, setNasPaths] = useState<string[]>([]);
   const [cacheDir, setCacheDir] = useState<string>("");
   const [stats, setStats] = useState<Stats | null>(null);
@@ -166,8 +165,10 @@ export default function Settings() {
     try {
       const result = await regenerateAllThumbnails();
       // Regeneration overwrites `{cache}/thumbnails/{id}.jpg` in place, so the
-      // cache keys stay identical — without this the UI kept showing the old images.
-      invalidateAllThumbnails();
+      // asset:// URLs stay identical. Refresh the rows' `updated_at` (the ?v=
+      // token that busts the webview's image cache) in place — refetching from
+      // page 0 would truncate every page the user already scrolled through.
+      await refreshThumbnailTokens();
       toast.success(result);
       setTimeout(() => {
         loadStats();

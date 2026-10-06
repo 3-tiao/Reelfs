@@ -1,9 +1,9 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ActorInfo } from "../services/tauri";
 import { User } from "lucide-react";
 import { useNsfwStore } from "../stores/nsfwStore";
-import { acquireThumbnail, releaseThumbnail } from "../lib/thumbnailCache";
+import { thumbnailUrl } from "../lib/thumbnailCache";
 import { getRouteState } from "../lib/navigation";
 
 interface ActorCardProps {
@@ -14,67 +14,17 @@ function ActorCard({ actor }: ActorCardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { showThumbnails } = useNsfwStore();
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
   const routeState = getRouteState(location);
-
-  useEffect(() => {
-    if (!showThumbnails || !actor.representative_thumbnail) {
-      setImageSrc(null);
-      return;
-    }
-
-    let isMounted = true;
-    // Path whose Blob URL this card renders; released on unmount so the LRU evicts it.
-    let pinnedPath: string | null = null;
-
-    const pin = (path: string) => {
-      if (isMounted) {
-        pinnedPath = path;
-      } else {
-        releaseThumbnail(path);
-      }
-    };
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          loadThumbnail(() => isMounted, pin);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "100px" }
-    );
-
-    if (cardRef.current) {
-      observer.observe(cardRef.current);
-    }
-
-    return () => {
-      isMounted = false;
-      observer.disconnect();
-      if (pinnedPath) {
-        releaseThumbnail(pinnedPath);
-      }
-    };
-  }, [actor, showThumbnails]);
-
-  const loadThumbnail = async (checkMounted: () => boolean, pin: (path: string) => void) => {
-    if (actor.representative_thumbnail) {
-      const path = actor.representative_thumbnail;
-      const url = await acquireThumbnail(path);
-      if (url) {
-        pin(path);
-        if (checkMounted()) {
-          setImageSrc(url);
-        }
-      }
-    }
-  };
+  // Asset URL loads natively via loading="lazy". ActorInfo carries no mtime-like
+  // field, so unlike movie thumbnails there is no ?v= token here — a regenerated
+  // representative thumbnail refreshes when the actor grid is re-fetched.
+  const imageSrc =
+    showThumbnails && actor.representative_thumbnail
+      ? thumbnailUrl(actor.representative_thumbnail)
+      : null;
 
   return (
     <div
-      ref={cardRef}
       onClick={() => navigate(`/actor/${encodeURIComponent(actor.name)}`, { state: routeState })}
       className="group cursor-pointer"
     >

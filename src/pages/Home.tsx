@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useShallow } from "zustand/react/shallow";
 import { Settings as SettingsIcon, Eye, EyeOff, Grid, List, Users, ArrowRight } from "lucide-react";
-import { useMovieStore } from "../stores/movieStore";
+import { useMovieStore, PAGE_SIZE } from "../stores/movieStore";
 import { useNsfwStore } from "../stores/nsfwStore";
 import { useViewStore } from "../stores/viewStore";
 import MovieGrid, { MovieGridRef } from "../components/MovieGrid";
@@ -15,6 +16,8 @@ import { ActorInfo, getActorsWithCounts } from "../services/tauri";
 
 export default function Home() {
   const navigate = useNavigate();
+  // Shallow-selected slice: scrollPositions/scrollProgresses update on every
+  // scroll event, so this component must not subscribe to the whole store.
   const {
     movies,
     isLoading,
@@ -29,7 +32,23 @@ export default function Home() {
     hasMore,
     searchQuery,
     sortOptions,
-  } = useMovieStore();
+  } = useMovieStore(
+    useShallow((state) => ({
+      movies: state.movies,
+      isLoading: state.isLoading,
+      isLoadingMore: state.isLoadingMore,
+      fetchMovies: state.fetchMovies,
+      loadMore: state.loadMore,
+      searchMovies: state.searchMovies,
+      reset: state.reset,
+      isUsingFilters: state.isUsingFilters,
+      fetchMoviesFiltered: state.fetchMoviesFiltered,
+      clearFilters: state.clearFilters,
+      hasMore: state.hasMore,
+      searchQuery: state.searchQuery,
+      sortOptions: state.sortOptions,
+    }))
+  );
   const { showThumbnails, toggleShowThumbnails } = useNsfwStore();
   const { viewMode, setViewMode, actorSortBy, actorSortOrder, actorSearchQuery, setActorSearchQuery } = useViewStore();
   const movieGridRef = useRef<MovieGridRef>(null);
@@ -147,7 +166,7 @@ export default function Home() {
   };
 
   const handleFilterChange = () => {
-    fetchMoviesFiltered(0, 200);
+    fetchMoviesFiltered(0, PAGE_SIZE);
   };
 
   const activeCount = viewMode === "actors" ? displayActors.length : movies.length;
