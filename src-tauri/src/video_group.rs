@@ -382,3 +382,359 @@ impl<'a> VideoGroupManager<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::Database;
+    use crate::video_group_detector::{MovieWithPart, VideoGroupCandidate};
+
+    /// In-memory database with the full schema + migrations, so tests never
+    /// touch the developer's real files.
+    fn mem_db() -> Database {
+        Database::new(":memory:").unwrap()
+    }
+
+    fn insert_movie(conn: &Connection, path: &str, title: &str, duration: Option<i64>) -> i64 {
+        conn.execute(
+            "INSERT INTO movies (file_path, title, duration_seconds) VALUES (?1, ?2, ?3)",
+            params![path, title, duration],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn candidate(title: &str, parts: &[(i64, i32, &str)]) -> VideoGroupCandidate {
+        VideoGroupCandidate {
+            title: title.to_string(),
+            movies: parts
+                .iter()
+                .map(|(movie_id, part_number, part_title)| MovieWithPart {
+                    movie: crate::models::Movie {
+                        id: *movie_id,
+                        file_path: String::new(),
+                        title: String::new(),
+                        year: None,
+                        plot: None,
+                        rating: None,
+                        genres: None,
+                        director: None,
+                        actors: None,
+                        thumbnail_path: None,
+                        file_size: None,
+                        duration_seconds: None,
+                        width: None,
+                        height: None,
+                        added_at: String::new(),
+                        updated_at: String::new(),
+                        last_accessed: None,
+                        last_checked_at: None,
+                        scan_state: None,
+                        is_watched: None,
+                        group_id: None,
+                        play_count: 0,
+                    },
+                    part_number: *part_number,
+                    part_title: part_title.to_string(),
+                })
+                .collect(),
+        }
+    }
+
+    fn group_rating(conn: &Connection, group_id: i64) -> Option<f64> {
+        conn.query_row(
+            "SELECT rating FROM video_groups WHERE id = ?1",
+            params![group_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn batch_create_sets_membership_parts_and_stats() {
+        let db = mem_db();
+        let conn = db.get_connection();
+        let id1 = insert_movie(conn, "/nas/p1.mkv", "Part 1", Some(100));
+        let id2 = insert_movie(conn, "/nas/p2.mkv", "Part 2", Some(200));
+
+        let created = VideoGroupManager::new(conn)
+            .create_video_groups_batch(&[candidate(
+                "Trilogy",
+                &[(id1, 1, "上集"), (id2, 2, "下集")],
+            )])
+            .unwrap();
+
+        assert_eq!(created, 1);
+
+        let (total_duration, part_count): (Option<i64>, i32) = conn
+            .query_row(
+                "SELECT total_duration, part_count FROM video_groups WHERE title = 'Trilogy'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(total_duration, Some(300), "stats must sum part durations");
+        assert_eq!(part_count, 2);
+
+        let grouped: Vec<i64> = {
+            let mut stmt = conn
+                .prepare("SELECT id FROM movies WHERE group_id IS NOT NULL ORDER BY id")
+                .unwrap();
+            stmt.query_map([], |row| row.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert_eq!(grouped, vec![id1, id2], "both movies must join the group");
+
+        let parts: Vec<i32> = {
+            let mut stmt = conn
+                .prepare("SELECT part_number FROM video_parts ORDER BY part_number")
+                .unwrap();
+            stmt.query_map([], |row| row.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert_eq!(parts, vec![1, 2]);
+    }
+
+    #[test]
+    fn batch_create_does_not_steal_already_grouped_movies() {
+        let db = mem_db();
+        let conn = db.get_connection();
+        let manager = VideoGroupManager::new(conn);
+
+        let id1 = insert_movie(conn, "/nas/a1.mkv", "A1", Some(50));
+        let id2 = insert_movie(conn, "/nas/b1.mkv", "B1", Some(60));
+
+        let first = manager
+            .create_video_groups_batch(&[candidate("First Group", &[(id1, 1, "上集")])])
+            .unwrap();
+        assert_eq!(first, 1);
+        let original_group: i64 = conn
+            .query_row(
+                "SELECT group_id FROM movies WHERE id = ?1",
+                params![id1],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Re-running detection must not reassign a movie that already has a group
+        // — the UPDATE carries 'AND group_id IS NULL'.
+        let second = manager
+            .create_video_groups_batch(&[candidate(
+                "Second Group",
+                &[(id1, 1, "上集"), (id2, 2, "下集")],
+            )])
+            .unwrap();
+        assert_eq!(second, 1);
+
+        let now_grouped: i64 = conn
+            .query_row(
+                "SELECT group_id FROM movies WHERE id = ?1",
+                params![id1],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            now_grouped, original_group,
+            "a grouped movie must keep its original group on re-detection"
+        );
+
+        // The ungrouped movie from the same batch still got assigned.
+        let id2_group: i64 = conn
+            .query_row(
+                "SELECT group_id FROM movies WHERE id = ?1",
+                params![id2],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_ne!(id2_group, original_group);
+    }
+
+    #[test]
+    fn batch_create_with_empty_candidates_is_a_noop() {
+        let db = mem_db();
+        let conn = db.get_connection();
+        let created = VideoGroupManager::new(conn)
+            .create_video_groups_batch(&[])
+            .unwrap();
+        assert_eq!(created, 0);
+        let groups: i64 = conn
+            .query_row("SELECT COUNT(*) FROM video_groups", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(groups, 0);
+    }
+
+    #[test]
+    fn add_video_part_updates_group_stats() {
+        let db = mem_db();
+        let conn = db.get_connection();
+        let manager = VideoGroupManager::new(conn);
+
+        let m1 = insert_movie(conn, "/nas/s1.mkv", "S1", Some(90));
+        let m2 = insert_movie(conn, "/nas/s2.mkv", "S2", Some(110));
+        let group_id = manager
+            .create_video_group("Show", None, None, None, None, None, None, None)
+            .unwrap();
+
+        manager
+            .add_video_part(group_id, m1, 1, Some("上集"))
+            .unwrap();
+        manager
+            .add_video_part(group_id, m2, 2, Some("下集"))
+            .unwrap();
+
+        let (total_duration, part_count): (Option<i64>, i32) = conn
+            .query_row(
+                "SELECT total_duration, part_count FROM video_groups WHERE id = ?1",
+                params![group_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(total_duration, Some(200));
+        assert_eq!(part_count, 2);
+    }
+
+    #[test]
+    fn set_video_group_rating_clamps_out_of_range_to_null() {
+        let db = mem_db();
+        let conn = db.get_connection();
+        let manager = VideoGroupManager::new(conn);
+        let group_id = manager
+            .create_video_group("Rated", None, None, None, None, None, None, None)
+            .unwrap();
+
+        manager.set_video_group_rating(group_id, Some(4.5)).unwrap();
+        assert_eq!(group_rating(conn, group_id), Some(4.5));
+
+        manager.set_video_group_rating(group_id, Some(0.0)).unwrap();
+        assert_eq!(
+            group_rating(conn, group_id),
+            Some(0.0),
+            "0 is a legal rating"
+        );
+
+        manager.set_video_group_rating(group_id, Some(5.0)).unwrap();
+        assert_eq!(
+            group_rating(conn, group_id),
+            Some(5.0),
+            "5 is a legal rating"
+        );
+
+        manager.set_video_group_rating(group_id, Some(5.5)).unwrap();
+        assert_eq!(
+            group_rating(conn, group_id),
+            None,
+            "above 5 must be rejected (stored as NULL)"
+        );
+
+        manager
+            .set_video_group_rating(group_id, Some(-0.1))
+            .unwrap();
+        assert_eq!(
+            group_rating(conn, group_id),
+            None,
+            "below 0 must be rejected (stored as NULL)"
+        );
+
+        manager.set_video_group_rating(group_id, None).unwrap();
+        assert_eq!(group_rating(conn, group_id), None);
+    }
+
+    #[test]
+    fn get_video_group_with_parts_returns_parts_sorted_by_part_number() {
+        let db = mem_db();
+        let conn = db.get_connection();
+        let manager = VideoGroupManager::new(conn);
+
+        let m1 = insert_movie(conn, "/nas/x1.mkv", "X1", Some(10));
+        let m2 = insert_movie(conn, "/nas/x2.mkv", "X2", Some(20));
+        let m3 = insert_movie(conn, "/nas/x3.mkv", "X3", Some(30));
+        let group_id = manager
+            .create_video_group("Saga", None, None, None, None, None, None, None)
+            .unwrap();
+
+        // Insert deliberately out of order.
+        manager
+            .add_video_part(group_id, m2, 2, Some("中集"))
+            .unwrap();
+        manager
+            .add_video_part(group_id, m3, 3, Some("下集"))
+            .unwrap();
+        manager
+            .add_video_part(group_id, m1, 1, Some("上集"))
+            .unwrap();
+
+        let with_parts = manager
+            .get_video_group_with_parts(group_id)
+            .unwrap()
+            .expect("group must exist");
+
+        assert_eq!(with_parts.group.id, group_id);
+        assert_eq!(with_parts.group.title, "Saga");
+        let numbers: Vec<i32> = with_parts
+            .parts
+            .iter()
+            .map(|p| p.part.part_number)
+            .collect();
+        assert_eq!(
+            numbers,
+            vec![1, 2, 3],
+            "parts must come back ordered by part_number"
+        );
+        let titles: Vec<&str> = with_parts
+            .parts
+            .iter()
+            .map(|p| p.movie.title.as_str())
+            .collect();
+        assert_eq!(
+            titles,
+            vec!["X1", "X2", "X3"],
+            "each part must carry its movie"
+        );
+    }
+
+    #[test]
+    fn get_video_group_with_parts_returns_none_for_missing_group() {
+        let db = mem_db();
+        let conn = db.get_connection();
+        let result = VideoGroupManager::new(conn)
+            .get_video_group_with_parts(999)
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn delete_video_group_removes_parts_and_ungroups_movies() {
+        let db = mem_db();
+        let conn = db.get_connection();
+        let manager = VideoGroupManager::new(conn);
+
+        let m1 = insert_movie(conn, "/nas/d1.mkv", "D1", Some(10));
+        let group_id = manager
+            .create_video_group("Doomed", None, None, None, None, None, None, None)
+            .unwrap();
+        manager
+            .add_video_part(group_id, m1, 1, Some("上集"))
+            .unwrap();
+
+        manager.delete_video_group(group_id).unwrap();
+
+        let groups: i64 = conn
+            .query_row("SELECT COUNT(*) FROM video_groups", [], |row| row.get(0))
+            .unwrap();
+        let parts: i64 = conn
+            .query_row("SELECT COUNT(*) FROM video_parts", [], |row| row.get(0))
+            .unwrap();
+        let orphaned: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM movies WHERE group_id IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((groups, parts, orphaned), (0, 0, 0));
+    }
+}

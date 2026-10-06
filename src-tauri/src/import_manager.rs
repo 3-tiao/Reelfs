@@ -889,3 +889,34 @@ impl ImportManager {
         self.emit_completion("error", None, Some(message.to_string()));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ImportManager itself holds a WebviewWindow and emits progress through it
+    /// (import_manager.rs `window.emit("scan-progress", ...)`), so it cannot be
+    /// instantiated outside a running Tauri app. LockExt is the one extractable
+    /// pure piece: a poisoned mutex (a panicking scan thread) must NOT wedge the
+    /// whole import pipeline — the guard is recovered with the inner value.
+    #[test]
+    fn lock_recover_survives_a_poisoned_mutex() {
+        let mutex = Mutex::new(7i32);
+
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = mutex.lock().unwrap();
+            panic!("simulate a panicking scan worker");
+        }));
+        assert!(
+            poisoned.is_err(),
+            "precondition: the mutex must now be poisoned"
+        );
+        assert!(
+            mutex.lock().is_err(),
+            "precondition: plain lock() rejects poisoned mutexes"
+        );
+
+        let recovered = mutex.lock_recover();
+        assert_eq!(*recovered, 7, "lock_recover must hand back the inner data");
+    }
+}

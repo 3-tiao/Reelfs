@@ -467,3 +467,443 @@ fn handle_fs_event(db: &Database, cache_dir: &str, event: Event, pending: &mut V
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::Event;
+
+    /// Fresh in-memory database with the full schema + migrations applied.
+    fn mem_db() -> Database {
+        Database::new(":memory:").unwrap()
+    }
+
+    /// Unique writable directory per test (same pattern as database::tests::temp_db_path).
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("reelfs_watcher_{}_{}", std::process::id(), name));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn insert_movie_with_size(db: &Database, path: &str, title: &str, size: Option<i64>) -> i64 {
+        db.insert_movie(
+            path, title, None, None, None, None, None, None, size, None, None, None,
+        )
+        .unwrap()
+    }
+
+    fn write_file(path: &Path, len: usize) {
+        std::fs::write(path, vec![0u8; len]).unwrap();
+    }
+
+    fn movie_exists(db: &Database, path: &str) -> bool {
+        db.get_movie_by_path(path).unwrap().is_some()
+    }
+
+    #[test]
+    fn nfo_removed_matches_movie_nfo_and_same_stem_only() {
+        // movie.nfo is generic: it backs any video in the directory.
+        assert!(nfo_removed_path_matches_video(
+            Path::new("/nas/dir/movie.nfo"),
+            Path::new("/nas/dir/anything.mkv")
+        ));
+        assert!(nfo_removed_path_matches_video(
+            Path::new("/nas/dir/MOVIE.nfo"),
+            Path::new("/nas/dir/film.mp4")
+        ));
+        // Same-stem NFO only backs its own video.
+        assert!(nfo_removed_path_matches_video(
+            Path::new("/nas/dir/film.nfo"),
+            Path::new("/nas/dir/film.mkv")
+        ));
+        assert!(!nfo_removed_path_matches_video(
+            Path::new("/nas/dir/film.nfo"),
+            Path::new("/nas/dir/other.mkv")
+        ));
+        // Paths without a stem never match.
+        assert!(!nfo_removed_path_matches_video(
+            Path::new("/nas/dir/.nfo"),
+            Path::new("/nas/dir/film.mkv")
+        ));
+    }
+
+    #[test]
+    fn same_rename_context_requires_same_parent_and_extension() {
+        assert!(same_rename_context(
+            "/nas/dir/a.mkv",
+            Path::new("/nas/dir/b.mkv")
+        ));
+        assert!(!same_rename_context(
+            "/nas/dir/a.mkv",
+            Path::new("/nas/other/b.mkv")
+        ));
+        assert!(!same_rename_context(
+            "/nas/dir/a.mkv",
+            Path::new("/nas/dir/b.mp4")
+        ));
+        // Missing extensions compare as equal (None == None).
+        assert!(same_rename_context("/nas/dir/a", Path::new("/nas/dir/b")));
+        // .nfo rename must never be treated as a video rename.
+        assert!(!same_rename_context(
+            "/nas/dir/a.mkv",
+            Path::new("/nas/dir/a.nfo")
+        ));
+    }
+
+    #[test]
+    fn try_match_rename_matches_size_dir_and_window_then_updates_path() {
+        let db = mem_db();
+        let dir = temp_dir("match_rename");
+        let old_path = dir.join("original.mkv");
+        let new_path = dir.join("renamed.mkv");
+        write_file(&new_path, 123);
+
+        let movie_id =
+            insert_movie_with_size(&db, &old_path.to_string_lossy(), "Original", Some(123));
+        let mut pending = vec![PendingRemove {
+            movie_id,
+            file_path: old_path.to_string_lossy().to_string(),
+            file_size: Some(123),
+            removed_at: Instant::now(),
+        }];
+
+        let new_size = get_file_size(&new_path);
+        let matched = try_match_rename(&db, &mut pending, &new_path, new_size);
+
+        assert_eq!(matched, Some(movie_id));
+        assert!(
+            pending.is_empty(),
+            "matched entry must leave the pending list"
+        );
+        assert!(movie_exists(&db, &new_path.to_string_lossy()));
+        assert!(!movie_exists(&db, &old_path.to_string_lossy()));
+    }
+
+    #[test]
+    fn try_match_rename_rejects_size_or_dir_mismatch() {
+        let db = mem_db();
+        let dir = temp_dir("match_mismatch");
+        let other_dir = temp_dir("match_mismatch_other");
+
+        let movie_id = insert_movie_with_size(&db, "/nas/dir/a.mkv", "A", Some(100));
+
+        // Size mismatch: pending entry survives, no rename happens.
+        let wrong_size_file = dir.join("b.mkv");
+        write_file(&wrong_size_file, 999);
+        let mut pending = vec![PendingRemove {
+            movie_id,
+            file_path: "/nas/dir/a.mkv".to_string(),
+            file_size: Some(100),
+            removed_at: Instant::now(),
+        }];
+        assert_eq!(
+            try_match_rename(&db, &mut pending, &wrong_size_file, Some(999)),
+            None
+        );
+        assert_eq!(
+            pending.len(),
+            1,
+            "size mismatch must keep the pending entry"
+        );
+        assert!(movie_exists(&db, "/nas/dir/a.mkv"));
+
+        // Same size but a different directory: still not a rename.
+        let other_dir_file = other_dir.join("b.mkv");
+        write_file(&other_dir_file, 100);
+        assert_eq!(
+            try_match_rename(&db, &mut pending, &other_dir_file, Some(100)),
+            None
+        );
+        assert_eq!(
+            pending.len(),
+            1,
+            "directory mismatch must keep the pending entry"
+        );
+        assert!(movie_exists(&db, "/nas/dir/a.mkv"));
+    }
+
+    #[test]
+    fn try_match_rename_with_no_size_is_noop() {
+        let db = mem_db();
+        let mut pending = vec![PendingRemove {
+            movie_id: 1,
+            file_path: "/nas/dir/a.mkv".to_string(),
+            file_size: Some(100),
+            removed_at: Instant::now(),
+        }];
+
+        // get_file_size returned None (file vanished before the event was handled).
+        assert_eq!(
+            try_match_rename(&db, &mut pending, Path::new("/nas/dir/b.mkv"), None),
+            None
+        );
+        assert_eq!(pending.len(), 1);
+    }
+
+    #[test]
+    fn reap_pending_removes_commits_expired_and_keeps_fresh() {
+        let db = mem_db();
+        insert_movie_with_size(&db, "/nas/dir/old.mkv", "Expired", Some(10));
+        insert_movie_with_size(&db, "/nas/dir/new.mkv", "Fresh", Some(20));
+
+        let expired_id = db
+            .get_movie_by_path("/nas/dir/old.mkv")
+            .unwrap()
+            .unwrap()
+            .id;
+        let fresh_id = db
+            .get_movie_by_path("/nas/dir/new.mkv")
+            .unwrap()
+            .unwrap()
+            .id;
+
+        let mut pending = vec![
+            PendingRemove {
+                movie_id: expired_id,
+                file_path: "/nas/dir/old.mkv".to_string(),
+                file_size: Some(10),
+                removed_at: Instant::now() - RENAME_WINDOW - Duration::from_millis(50),
+            },
+            PendingRemove {
+                movie_id: fresh_id,
+                file_path: "/nas/dir/new.mkv".to_string(),
+                file_size: Some(20),
+                removed_at: Instant::now(),
+            },
+        ];
+
+        reap_pending_removes(&db, &mut pending);
+
+        assert!(
+            pending.len() == 1 && pending[0].movie_id == fresh_id,
+            "entry inside the window must stay pending"
+        );
+        assert!(
+            !movie_exists(&db, "/nas/dir/old.mkv"),
+            "expired entry must be deleted"
+        );
+        assert!(
+            movie_exists(&db, "/nas/dir/new.mkv"),
+            "fresh entry must survive"
+        );
+    }
+
+    #[test]
+    fn fs_event_rename_both_swaps_path_in_place() {
+        let db = mem_db();
+        let movie_id = insert_movie_with_size(&db, "/nas/dir/a.mkv", "A", Some(1));
+
+        let event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both)))
+            .add_path(PathBuf::from("/nas/dir/a.mkv"))
+            .add_path(PathBuf::from("/nas/dir/b.mkv"));
+        let mut pending = Vec::new();
+
+        handle_fs_event(&db, "/tmp", event, &mut pending);
+
+        assert!(pending.is_empty());
+        assert!(movie_exists(&db, "/nas/dir/b.mkv"));
+        assert!(!movie_exists(&db, "/nas/dir/a.mkv"));
+        assert_eq!(
+            db.get_movie_by_path("/nas/dir/b.mkv").unwrap().unwrap().id,
+            movie_id,
+            "rename must keep the same row (rating/history preserved)"
+        );
+    }
+
+    #[test]
+    fn fs_event_rename_both_with_one_path_is_ignored() {
+        let db = mem_db();
+        insert_movie_with_size(&db, "/nas/dir/a.mkv", "A", Some(1));
+
+        let event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both)))
+            .add_path(PathBuf::from("/nas/dir/a.mkv"));
+        let mut pending = Vec::new();
+
+        handle_fs_event(&db, "/tmp", event, &mut pending);
+
+        assert!(
+            pending.is_empty(),
+            "asymmetric rename must not enqueue a delete"
+        );
+        assert!(movie_exists(&db, "/nas/dir/a.mkv"));
+    }
+
+    #[test]
+    fn fs_event_from_then_to_is_a_rename_not_a_delete() {
+        let db = mem_db();
+        let dir = temp_dir("from_to");
+        let old_path = dir.join("a.mkv");
+        let new_path = dir.join("b.mkv");
+        write_file(&new_path, 100);
+
+        let movie_id = insert_movie_with_size(&db, &old_path.to_string_lossy(), "A", Some(100));
+        let mut pending = Vec::new();
+
+        let from_event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)))
+            .add_path(old_path.clone());
+        handle_fs_event(&db, "/tmp", from_event, &mut pending);
+        assert_eq!(pending.len(), 1, "From event defers the delete");
+        assert!(
+            movie_exists(&db, &old_path.to_string_lossy()),
+            "delete must not commit yet"
+        );
+
+        let to_event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To)))
+            .add_path(new_path.clone());
+        handle_fs_event(&db, "/tmp", to_event, &mut pending);
+
+        assert!(
+            pending.is_empty(),
+            "matching To event consumes the pending entry"
+        );
+        assert!(
+            movie_exists(&db, &new_path.to_string_lossy()),
+            "rename verdict: the movie row must survive under the new path"
+        );
+        assert!(!movie_exists(&db, &old_path.to_string_lossy()));
+        assert_eq!(
+            db.get_movie_by_path(&new_path.to_string_lossy())
+                .unwrap()
+                .unwrap()
+                .id,
+            movie_id
+        );
+    }
+
+    #[test]
+    fn fs_event_create_video_inserts_movie() {
+        let db = mem_db();
+        let dir = temp_dir("create_video");
+        let video = dir.join("new film.mkv");
+        write_file(&video, 5);
+
+        let event = Event::new(EventKind::Create(CreateKind::File)).add_path(video.clone());
+        let mut pending = Vec::new();
+
+        handle_fs_event(&db, "/tmp", event, &mut pending);
+
+        let movie = db
+            .get_movie_by_path(&video.to_string_lossy())
+            .unwrap()
+            .expect("Create(File) of a video must insert a movie");
+        assert_eq!(movie.title, "new film");
+        assert_eq!(movie.file_size, Some(5));
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn fs_event_remove_video_defers_instead_of_deleting() {
+        let db = mem_db();
+        let movie_id = insert_movie_with_size(&db, "/nas/dir/a.mkv", "A", Some(7));
+
+        let event = Event::new(EventKind::Remove(RemoveKind::File))
+            .add_path(PathBuf::from("/nas/dir/a.mkv"));
+        let mut pending = Vec::new();
+
+        handle_fs_event(&db, "/tmp", event, &mut pending);
+
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].movie_id, movie_id);
+        assert_eq!(pending[0].file_size, Some(7));
+        assert!(
+            movie_exists(&db, "/nas/dir/a.mkv"),
+            "row must survive during the grace window"
+        );
+    }
+
+    #[test]
+    fn fs_event_nfo_removed_falls_back_to_filename_title() {
+        let db = mem_db();
+        let dir = temp_dir("nfo_removed");
+        // The NFO is already gone from disk; only the video remains.
+        let video = dir.join("standalone title.mkv");
+        write_file(&video, 1);
+
+        insert_movie_with_size(&db, &video.to_string_lossy(), "Old NFO Title", Some(1));
+        let mut pending = Vec::new();
+
+        let event = Event::new(EventKind::Remove(RemoveKind::File))
+            .add_path(dir.join("standalone title.nfo"));
+        handle_fs_event(&db, "/tmp", event, &mut pending);
+
+        let movie = db
+            .get_movie_by_path(&video.to_string_lossy())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            movie.title, "standalone title",
+            "NFO removal must fall back to the filename"
+        );
+    }
+
+    #[test]
+    fn fs_event_create_folder_and_modify_video_are_ignored() {
+        let db = mem_db();
+        let mut pending = Vec::new();
+
+        let folder = Event::new(EventKind::Create(CreateKind::Folder))
+            .add_path(PathBuf::from("/nas/dir/new folder"));
+        handle_fs_event(&db, "/tmp", folder, &mut pending);
+
+        let video_data = Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Any)))
+            .add_path(PathBuf::from("/nas/dir/a.mkv"));
+        handle_fs_event(&db, "/tmp", video_data, &mut pending);
+
+        let create_nfo = Event::new(EventKind::Modify(ModifyKind::Any))
+            .add_path(PathBuf::from("/nas/dir/a.mkv"));
+        handle_fs_event(&db, "/tmp", create_nfo, &mut pending);
+
+        assert!(pending.is_empty());
+        assert_eq!(
+            db.get_total_count().unwrap(),
+            0,
+            "no movie may be inserted from these events"
+        );
+    }
+
+    #[test]
+    fn fs_event_modify_data_refreshes_metadata_from_nfo() {
+        let db = mem_db();
+        let dir = temp_dir("nfo_data");
+        let video = dir.join("film.mkv");
+        let nfo = dir.join("film.nfo");
+        write_file(&video, 1);
+        // NOTE: the NFO deliberately omits <plot>/<actor>: the movies_au trigger
+        // (database.rs) writes to the external-content FTS5 table with a plain
+        // UPDATE, which SQLite reports as "database disk image is malformed"
+        // when an indexed column transitions NULL -> value. Until that trigger
+        // is rewritten to the documented 'delete'+INSERT form, only value->value
+        // metadata refreshes survive. This test pins the refresh dispatch logic.
+        std::fs::write(
+            &nfo,
+            "<movie><title>NFO Title</title><year>1999</year></movie>",
+        )
+        .unwrap();
+
+        insert_movie_with_size(&db, &video.to_string_lossy(), "DB Title", Some(1));
+        let mut pending = Vec::new();
+
+        let event = Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Any))).add_path(nfo);
+        handle_fs_event(&db, "/tmp", event, &mut pending);
+
+        let movie = db
+            .get_movie_by_path(&video.to_string_lossy())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            movie.title, "NFO Title",
+            "NFO data change must refresh the movie"
+        );
+        assert_eq!(movie.year, Some(1999));
+    }
+
+    #[test]
+    fn is_nfo_file_detects_extension_case_insensitively() {
+        assert!(is_nfo_file(Path::new("/nas/a.nfo")));
+        assert!(is_nfo_file(Path::new("/nas/a.NFO")));
+        assert!(!is_nfo_file(Path::new("/nas/a.mkv")));
+        assert!(!is_nfo_file(Path::new("/nas/nfo")));
+    }
+}

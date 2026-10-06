@@ -274,3 +274,244 @@ fn get_video_info_ffprobe(path: &Path) -> Option<(i64, i32, i32)> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// Unique writable directory per test.
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("reelfs_indexer_{}_{}", std::process::id(), name));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn is_video_file_is_case_insensitive_and_strict() {
+        assert!(is_video_file(Path::new("/nas/movie.mkv")));
+        assert!(is_video_file(Path::new("/nas/movie.MKV")));
+        assert!(is_video_file(Path::new("/nas/home.Mp4")));
+        assert!(is_video_file(Path::new("/nas/clip.webm")));
+        assert!(!is_video_file(Path::new("/nas/movie.txt")));
+        assert!(!is_video_file(Path::new("/nas/movie.nfo")));
+        assert!(!is_video_file(Path::new("/nas/poster.jpg")));
+        assert!(!is_video_file(Path::new("/nas/noextension")));
+    }
+
+    #[test]
+    fn find_nfo_prefers_same_stem_then_movie_nfo() {
+        let dir = temp_dir("nfo_priority");
+        let video = dir.join("film.mkv");
+        std::fs::write(&video, b"x").unwrap();
+
+        assert_eq!(find_nfo_for_video(&video), None, "no NFO anywhere");
+
+        let movie_nfo = dir.join("movie.nfo");
+        std::fs::write(&movie_nfo, b"generic").unwrap();
+        assert_eq!(
+            find_nfo_for_video(&video).as_deref(),
+            Some(movie_nfo.as_path()),
+            "movie.nfo is the fallback"
+        );
+
+        let own_nfo = dir.join("film.nfo");
+        std::fs::write(&own_nfo, b"specific").unwrap();
+        assert_eq!(
+            find_nfo_for_video(&video).as_deref(),
+            Some(own_nfo.as_path()),
+            "same-stem NFO must win over movie.nfo"
+        );
+    }
+
+    #[test]
+    fn parse_nfo_joins_genres_and_filters_nameless_actors() {
+        let dir = temp_dir("nfo_parse");
+        let nfo = dir.join("film.nfo");
+        std::fs::write(
+            &nfo,
+            "<movie>\
+                <title>The Film</title>\
+                <year>1999</year>\
+                <rating>7.5</rating>\
+                <plot>Synopsis here</plot>\
+                <genre>Action</genre>\
+                <genre>Sci-Fi</genre>\
+                <director>Someone</director>\
+                <actor><name>Named Actor</name></actor>\
+                <actor><role>Cameo</role></actor>\
+                <actor><name>Other Actor</name></actor>\
+             </movie>",
+        )
+        .unwrap();
+
+        let meta = parse_nfo_file(&nfo).expect("well-formed NFO must parse");
+        assert_eq!(meta.title, "The Film");
+        assert_eq!(meta.year, Some(1999));
+        assert_eq!(meta.rating, Some(7.5));
+        assert_eq!(meta.genres.as_deref(), Some("Action, Sci-Fi"));
+        assert_eq!(meta.actors.as_deref(), Some("Named Actor, Other Actor"));
+    }
+
+    #[test]
+    fn parse_nfo_returns_none_for_malformed_or_missing_files() {
+        let dir = temp_dir("nfo_bad");
+        let bad = dir.join("bad.nfo");
+        std::fs::write(&bad, "<movie><title>unclosed").unwrap();
+        assert!(
+            parse_nfo_file(&bad).is_none(),
+            "malformed XML must yield None"
+        );
+
+        assert!(
+            parse_nfo_file(&dir.join("missing.nfo")).is_none(),
+            "unreadable file must yield None"
+        );
+
+        // An NFO without any recognized payload still parses to defaults.
+        let empty = dir.join("empty.nfo");
+        std::fs::write(&empty, "<movie></movie>").unwrap();
+        let meta = parse_nfo_file(&empty).unwrap();
+        assert_eq!(meta.title, "Unknown");
+    }
+
+    #[test]
+    fn extract_title_replaces_separators_and_collapses_space() {
+        assert_eq!(
+            extract_title_from_filename(Path::new("/nas/The.Matrix.1999.mkv")),
+            "The Matrix 1999"
+        );
+        assert_eq!(
+            extract_title_from_filename(Path::new("/nas/some_movie_name.mp4")),
+            "some movie name"
+        );
+        assert_eq!(
+            extract_title_from_filename(Path::new("/nas/dots..and___mix.mkv")),
+            "dots and mix"
+        );
+        assert_eq!(
+            extract_title_from_filename(Path::new("/nas/keeps-dash.mkv")),
+            "keeps-dash"
+        );
+    }
+
+    #[test]
+    fn extract_title_falls_back_to_unknown_without_stem() {
+        // A root path has no file stem.
+        assert_eq!(extract_title_from_filename(Path::new("/")), "Unknown");
+    }
+
+    #[test]
+    fn poster_priority_follows_documented_order() {
+        let dir = temp_dir("poster_priority");
+        let video = dir.join("film.mkv");
+        std::fs::write(&video, b"x").unwrap();
+
+        // Add candidates bottom-up and check the winner upgrades each time.
+        let fanart = dir.join("fanart.png");
+        std::fs::write(&fanart, b"1").unwrap();
+        assert_eq!(
+            get_poster_path(&video).as_deref(),
+            Some(fanart.to_str().unwrap())
+        );
+
+        let cover = dir.join("cover.jpg");
+        std::fs::write(&cover, b"2").unwrap();
+        assert_eq!(
+            get_poster_path(&video).as_deref(),
+            Some(cover.to_str().unwrap())
+        );
+
+        let folder = dir.join("folder.jpg");
+        std::fs::write(&folder, b"3").unwrap();
+        assert_eq!(
+            get_poster_path(&video).as_deref(),
+            Some(folder.to_str().unwrap())
+        );
+
+        let poster_png = dir.join("poster.png");
+        std::fs::write(&poster_png, b"4").unwrap();
+        assert_eq!(
+            get_poster_path(&video).as_deref(),
+            Some(poster_png.to_str().unwrap())
+        );
+
+        let poster_jpg = dir.join("poster.jpg");
+        std::fs::write(&poster_jpg, b"5").unwrap();
+        assert_eq!(
+            get_poster_path(&video).as_deref(),
+            Some(poster_jpg.to_str().unwrap())
+        );
+    }
+
+    #[test]
+    fn scan_collects_videos_recursively_with_progress() {
+        let dir = temp_dir("scan_full");
+        std::fs::write(dir.join("a.mkv"), b"x").unwrap();
+        std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+        let sub = dir.join("nested");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("b.MP4"), b"x").unwrap();
+        std::fs::write(sub.join("c.jpg"), b"x").unwrap();
+
+        let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen_clone = Arc::clone(&seen);
+        let results = scan_directory_with_stop_flag(
+            dir.to_str().unwrap(),
+            None,
+            Some(Arc::new(move |count| {
+                seen_clone.lock().unwrap().push(count)
+            })),
+        );
+
+        assert_eq!(
+            results.len(),
+            2,
+            "only video files, case-insensitive, recursive"
+        );
+        let counts = seen.lock().unwrap().clone();
+        assert_eq!(
+            counts.last(),
+            Some(&2),
+            "progress callback receives a 1-based running count"
+        );
+        assert_eq!(counts.len(), 2, "callback fires once per video");
+    }
+
+    #[test]
+    fn scan_stops_early_when_flag_is_set() {
+        let dir = temp_dir("scan_stop");
+        for i in 0..5 {
+            std::fs::write(dir.join(format!("v{}.mkv", i)), b"x").unwrap();
+        }
+
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        let flag_clone = Arc::clone(&stop_flag);
+        let results = scan_directory_with_stop_flag(
+            dir.to_str().unwrap(),
+            Some(Arc::clone(&stop_flag)),
+            Some(Arc::new(move |count| {
+                if count >= 2 {
+                    flag_clone.store(true, Ordering::Relaxed);
+                }
+            })),
+        );
+
+        assert_eq!(
+            results.len(),
+            2,
+            "setting the flag inside the callback must halt the walk right after that entry"
+        );
+    }
+
+    #[test]
+    fn get_file_size_reports_none_for_missing_files() {
+        let dir = temp_dir("file_size");
+        let file = dir.join("sized.bin");
+        std::fs::write(&file, vec![0u8; 1234]).unwrap();
+        assert_eq!(get_file_size(&file), Some(1234));
+        assert_eq!(get_file_size(&dir.join("ghost.bin")), None);
+    }
+}

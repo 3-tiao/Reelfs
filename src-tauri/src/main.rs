@@ -19,7 +19,9 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+use tauri_plugin_fs::FsExt;
+use tauri_plugin_opener::OpenerExt;
 use video_group::VideoGroupManager;
 use video_group_detector::{detect_video_groups, VideoGroupCandidate};
 
@@ -78,6 +80,52 @@ fn sync_watcher_with_config(
         Err(e) => {
             error!("[文件监听] 重启监听器失败: {}", e);
             Err(format!("Failed to restart file watcher: {}", e))
+        }
+    }
+}
+
+/// Extend the plugin-fs runtime scope with the user-configured directories:
+/// the thumbnail cache dir and every NAS media path.
+///
+/// The static `fs:scope` in `capabilities/default.json` only whitelists
+/// `$HOME/.reelfs/**`, `/Volumes/**` and `/mnt/**`. Anything else the user
+/// picks in Settings (an arbitrary media dir or a custom cache dir) would be
+/// rejected by the v2 ACL when the frontend calls plugin-fs (`readFile` for
+/// thumbnails/posters, `exists` for posters), so those directories must be
+/// allowed at runtime.
+///
+/// Called once during startup with the loaded config and again after every
+/// successful `update_config`. Requires the fs plugin to be initialized
+/// (registered in the builder chain) or `fs_scope` panics. `allow_directory`
+/// only appends glob patterns without touching the filesystem, so it cannot
+/// fail for currently-unmounted NAS paths; per-path errors are logged and
+/// skipped instead of failing config save.
+fn grant_fs_scope(app: &tauri::AppHandle, cache_dir: &str, nas_paths: &[String]) {
+    let scope = app.fs_scope();
+    for dir in std::iter::once(cache_dir).chain(nas_paths.iter().map(String::as_str)) {
+        match scope.allow_directory(dir, true) {
+            Ok(()) => info!("[fs:scope] 已放行目录: {}", dir),
+            Err(e) => warn!("[fs:scope] 放行目录失败: {} — {}", dir, e),
+        }
+    }
+}
+
+/// Extend the asset-protocol runtime scope with the same user-configured
+/// directories as `grant_fs_scope`.
+///
+/// The frontend loads thumbnails/posters through `convertFileSrc` (asset://
+/// URLs). The static `assetProtocol.scope` in `tauri.conf.json` does not
+/// expand `$HOME` at runtime, so even the default `~/.reelfs/cache` under the
+/// user profile gets rejected with "asset protocol not configured to allow
+/// the path"; allowing the configured directories here covers that, custom
+/// cache dirs and arbitrary NAS paths alike. Same call sites as
+/// `grant_fs_scope`: once at startup, once per successful `update_config`.
+fn grant_asset_scope(app: &tauri::AppHandle, cache_dir: &str, nas_paths: &[String]) {
+    let scope = app.asset_protocol_scope();
+    for dir in std::iter::once(cache_dir).chain(nas_paths.iter().map(String::as_str)) {
+        match scope.allow_directory(dir, true) {
+            Ok(()) => info!("[asset:scope] 已放行目录: {}", dir),
+            Err(e) => warn!("[asset:scope] 放行目录失败: {} — {}", dir, e),
         }
     }
 }
@@ -233,38 +281,19 @@ async fn play_movie(state: tauri::State<'_, AppState>, id: i64) -> Result<(), St
 }
 
 #[tauri::command]
-async fn show_in_file_manager(file_path: String) -> Result<(), String> {
+async fn show_in_file_manager(app: tauri::AppHandle, file_path: String) -> Result<(), String> {
     info!("[文件管理器] 在文件管理器中显示: {}", file_path);
 
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        Command::new("open")
-            .arg("-R")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| {
-                error!("[文件管理器] 打开失败: {}", e);
-                format!("Failed to open in Finder: {}", e)
-            })?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        use std::process::Command;
-        Command::new("xdg-open")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| {
-                error!("[文件管理器] 打开失败: {}", e);
-                format!("Failed to open in file manager: {}", e)
-            })?;
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        return Err("Unsupported platform".to_string());
-    }
+    // tauri-plugin-opener reveals the item in the platform file manager on
+    // every desktop platform: macOS NSWorkspace, Linux org.freedesktop.
+    // FileManager1 (with portal fallback), Windows SHOpenFolderAndSelectItems.
+    // The Rust-side call bypasses the ACL, so no capability entry is needed.
+    // Note: it canonicalizes the path first, so a missing file returns an
+    // error instead of silently doing nothing.
+    app.opener().reveal_item_in_dir(&file_path).map_err(|e| {
+        error!("[文件管理器] 打开失败: {}", e);
+        format!("Failed to reveal file in file manager: {}", e)
+    })?;
 
     info!("[文件管理器] 文件管理器打开成功");
 
@@ -346,7 +375,11 @@ async fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, Stri
 }
 
 #[tauri::command]
-async fn update_config(state: tauri::State<'_, AppState>, config: AppConfig) -> Result<(), String> {
+async fn update_config(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    config: AppConfig,
+) -> Result<(), String> {
     info!("[设置] 更新配置: nas_paths={:?}", config.nas_paths);
 
     let config_path = get_config_path();
@@ -375,6 +408,14 @@ async fn update_config(state: tauri::State<'_, AppState>, config: AppConfig) -> 
         .config
         .lock()
         .map_err(|e| format!("Config lock error: {}", e))? = config;
+
+    // The config is persisted above, so immediately extend the plugin-fs
+    // runtime scope with the saved directories: newly added NAS paths and a
+    // new cache dir become readable by the frontend (thumbnails, posters)
+    // without an app restart. Re-allowing unchanged paths just re-appends
+    // their patterns.
+    grant_fs_scope(&app, &cache_dir, &nas_paths);
+    grant_asset_scope(&app, &cache_dir, &nas_paths);
 
     // Keep the watcher in sync with the saved paths so adding or removing a NAS
     // path takes effect immediately, without an app restart.
@@ -840,8 +881,10 @@ async fn get_actors_with_counts(
 }
 
 fn get_config_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
-    format!("{}/.reelfs/config.json", home)
+    format!(
+        "{}/.reelfs/config.json",
+        path_utils::reelfs_base_dir_from_env()
+    )
 }
 
 fn load_config() -> AppConfig {
@@ -1067,7 +1110,7 @@ use log4rs::{
 };
 
 fn init_logger() {
-    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("."));
+    let home = path_utils::reelfs_base_dir_from_env();
     let log_dir = format!("{}/.reelfs/logs", home);
     let log_file = format!("{}/reelfs.log", log_dir);
 
@@ -1161,6 +1204,11 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        // Persists window size/position to disk on exit and restores it on
+        // startup; first launch still uses the 1280x800 default from
+        // tauri.conf.json. Rust-side only, no capability needed.
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .manage(AppState {
             db: Arc::new(Mutex::new(db)),
             config: Arc::new(Mutex::new(config)),
@@ -1174,6 +1222,25 @@ fn main() {
             })),
             stop_scan_flag: Arc::new(AtomicBool::new(false)),
             watcher: Arc::new(Mutex::new(initial_watcher)),
+        })
+        .setup(|app| {
+            // Runs after plugin initialization, so `fs_scope` is available
+            // (it panics if the fs plugin were not registered above). Grant
+            // the configured cache dir and NAS paths on every launch: the
+            // static fs:scope in capabilities/default.json is only a fallback
+            // for the default locations.
+            let (cache_dir, nas_paths) = {
+                let config = app
+                    .state::<AppState>()
+                    .config
+                    .lock()
+                    .map_err(|e| format!("Config lock error: {}", e))?
+                    .clone();
+                (config.cache_dir, config.nas_paths)
+            };
+            grant_fs_scope(app.handle(), &cache_dir, &nas_paths);
+            grant_asset_scope(app.handle(), &cache_dir, &nas_paths);
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_movies,

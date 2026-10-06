@@ -1724,4 +1724,656 @@ mod tests {
             elapsed
         );
     }
+
+    // ---- SQL-construction pure functions ----
+
+    #[test]
+    fn build_fts_query_appends_prefix_wildcards() {
+        assert_eq!(
+            build_fts_query("the matrix").as_deref(),
+            Some("the* matrix*")
+        );
+        assert_eq!(build_fts_query("a.b c").as_deref(), Some("a* b* c*"));
+        // CJK survives: unicode61 treats the run as one token.
+        assert_eq!(build_fts_query("流浪地球").as_deref(), Some("流浪地球*"));
+    }
+
+    #[test]
+    fn build_fts_query_returns_none_without_alphanumerics() {
+        assert_eq!(build_fts_query(""), None);
+        assert_eq!(build_fts_query("!!! --- ???"), None);
+        assert_eq!(build_fts_query("   "), None);
+    }
+
+    #[test]
+    fn normalize_search_query_collapses_whitespace_and_lowercases() {
+        assert_eq!(
+            normalize_search_query("  The   MATRIX ").as_deref(),
+            Some("the matrix")
+        );
+        assert_eq!(normalize_search_query("Matrix").as_deref(), Some("matrix"));
+        assert_eq!(normalize_search_query(""), None);
+        assert_eq!(normalize_search_query("   "), None);
+    }
+
+    #[test]
+    fn escape_like_pattern_escapes_sql_wildcards() {
+        assert_eq!(escape_like_pattern("plain"), "plain");
+        assert_eq!(escape_like_pattern("50%_off\\x"), "50\\%\\_off\\\\x");
+    }
+
+    #[test]
+    fn resolve_sort_clause_maps_columns_and_defaults() {
+        assert_eq!(resolve_sort_clause(None, None), ("m.added_at", "DESC"));
+        assert_eq!(
+            resolve_sort_clause(Some("title"), Some("asc")),
+            ("COALESCE(vg.title, m.title)", "ASC")
+        );
+        assert_eq!(
+            resolve_sort_clause(Some("year"), None),
+            ("COALESCE(vg.year, m.year)", "DESC")
+        );
+        assert_eq!(
+            resolve_sort_clause(Some("rating"), Some("desc")),
+            ("COALESCE(vg.rating, m.rating)", "DESC")
+        );
+        assert_eq!(
+            resolve_sort_clause(Some("duration_seconds"), Some("ASC")),
+            ("COALESCE(vg.total_duration, m.duration_seconds)", "ASC")
+        );
+        assert_eq!(
+            resolve_sort_clause(Some("last_accessed"), None),
+            ("m.last_accessed", "DESC")
+        );
+        assert_eq!(
+            resolve_sort_clause(Some("play_count"), None),
+            ("COALESCE(ph.play_count, 0)", "DESC")
+        );
+        // Unknown values fall back to the defaults instead of erroring.
+        assert_eq!(
+            resolve_sort_clause(Some("hacker_column; DROP"), Some("sideways")),
+            ("m.added_at", "DESC")
+        );
+    }
+
+    #[test]
+    fn nulls_last_and_order_clause_shape() {
+        assert_eq!(nulls_last_suffix(Some("year")), " NULLS LAST");
+        assert_eq!(nulls_last_suffix(Some("last_accessed")), " NULLS LAST");
+        assert_eq!(nulls_last_suffix(Some("rating")), "");
+        assert_eq!(nulls_last_suffix(None), "");
+
+        assert_eq!(
+            build_order_clause(Some("year"), Some("ASC")),
+            "COALESCE(vg.year, m.year) ASC NULLS LAST, m.id DESC"
+        );
+        assert_eq!(build_order_clause(None, None), "m.added_at DESC, m.id DESC");
+        // Rating sort adds the added_at tie-break twice (same direction).
+        assert_eq!(
+            build_order_clause(Some("rating"), Some("ASC")),
+            "COALESCE(vg.rating, m.rating) ASC, m.added_at ASC, m.id DESC"
+        );
+    }
+
+    #[test]
+    fn sanitize_rating_accepts_only_the_documented_range() {
+        assert_eq!(sanitize_rating(Some(3.5)), Some(3.5));
+        assert_eq!(sanitize_rating(Some(0.0)), Some(0.0));
+        assert_eq!(sanitize_rating(Some(5.0)), Some(5.0));
+        assert_eq!(sanitize_rating(Some(-0.1)), None);
+        assert_eq!(sanitize_rating(Some(5.1)), None);
+        assert_eq!(sanitize_rating(Some(f64::NAN)), None);
+        assert_eq!(sanitize_rating(None), None);
+    }
+
+    // ---- data layer: filters / sort / pagination ----
+
+    fn insert_full_movie(
+        conn: &Connection,
+        path: &str,
+        title: &str,
+        year: Option<i32>,
+        rating: Option<f64>,
+        actors: Option<&str>,
+        genres: Option<&str>,
+    ) -> i64 {
+        conn.execute(
+            "INSERT INTO movies (file_path, title, year, rating, actors, genres)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![path, title, year, rating, actors, genres],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    #[test]
+    fn filters_match_year_rating_and_pagination_is_stable() {
+        let path = temp_db_path("filters_year_rating");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        insert_full_movie(
+            conn,
+            "/nas/1.mkv",
+            "Old Low",
+            Some(1990),
+            Some(6.2),
+            None,
+            None,
+        );
+        insert_full_movie(
+            conn,
+            "/nas/2.mkv",
+            "Old High",
+            Some(1995),
+            Some(4.0),
+            None,
+            None,
+        );
+        insert_full_movie(
+            conn,
+            "/nas/3.mkv",
+            "New High",
+            Some(2020),
+            Some(4.5),
+            None,
+            None,
+        );
+        insert_full_movie(conn, "/nas/4.mkv", "No Year", None, Some(4.1), None, None);
+
+        let by_year = db
+            .get_movies_with_filters(
+                0,
+                50,
+                None,
+                Some(1991),
+                Some(2021),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let mut titles: Vec<&str> = by_year.iter().map(|m| m.title.as_str()).collect();
+        titles.sort_unstable();
+        assert_eq!(
+            titles,
+            vec!["New High", "Old High"],
+            "year window must be inclusive"
+        );
+
+        let by_rating = db
+            .get_movies_with_filters(
+                0,
+                50,
+                None,
+                None,
+                None,
+                Some(4.0),
+                Some(5.0),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(by_rating.len(), 3, "6.2 is outside [4.0, 5.0]");
+
+        // Pagination: stable added_at DESC, id DESC order; page through in slices of 2.
+        let page1 = db
+            .get_movies_with_filters(
+                0, 2, None, None, None, None, None, None, None, None, None, None,
+            )
+            .unwrap();
+        let page2 = db
+            .get_movies_with_filters(
+                2, 2, None, None, None, None, None, None, None, None, None, None,
+            )
+            .unwrap();
+        let page3 = db
+            .get_movies_with_filters(
+                4, 2, None, None, None, None, None, None, None, None, None, None,
+            )
+            .unwrap();
+
+        let mut all: Vec<i64> = page1
+            .iter()
+            .chain(&page2)
+            .chain(&page3)
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(all.len(), 4, "pages must tile the library without overlap");
+        all.sort_unstable();
+        all.dedup();
+        assert_eq!(all.len(), 4, "pages must not repeat rows");
+    }
+
+    #[test]
+    fn filters_match_actors_genres_and_watched() {
+        let path = temp_db_path("filters_terms");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        let a = insert_full_movie(
+            conn,
+            "/nas/a.mkv",
+            "Sci-Fi Flick",
+            Some(2000),
+            None,
+            Some("Keanu Reeves, Bob"),
+            Some("Action, Sci-Fi"),
+        );
+        let b = insert_full_movie(
+            conn,
+            "/nas/b.mkv",
+            "Drama Piece",
+            Some(2001),
+            None,
+            Some("Alice"),
+            Some("Drama"),
+        );
+        insert_full_movie(
+            conn,
+            "/nas/c.mkv",
+            "Wildcard % Movie",
+            Some(2002),
+            None,
+            Some("100%_sure"),
+            Some("Comedy"),
+        );
+
+        let keanu = db
+            .get_movies_with_filters(
+                0,
+                50,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("Keanu".into()),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(keanu.len(), 1);
+        assert_eq!(keanu[0].title, "Sci-Fi Flick");
+
+        let drama = db
+            .get_movies_with_filters(
+                0,
+                50,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("Drama".into()),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            drama.len(),
+            1,
+            "'Drama' must not match 'Sci-Fi' via LIKE quirks"
+        );
+        assert_eq!(drama[0].title, "Drama Piece");
+
+        // LIKE metacharacters in filter terms are escaped, not wildcards.
+        let percent = db
+            .get_movies_with_filters(
+                0,
+                50,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("%_".into()),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(percent.len(), 1);
+        assert_eq!(percent[0].title, "Wildcard % Movie");
+
+        db.set_watched_status(a, true).unwrap();
+        let watched = db
+            .get_movies_with_filters(
+                0,
+                50,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(true),
+            )
+            .unwrap();
+        assert_eq!(watched.len(), 1);
+        assert_eq!(watched[0].id, a);
+
+        let unwatched = db
+            .get_movies_with_filters(
+                0,
+                50,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(false),
+            )
+            .unwrap();
+        assert_eq!(unwatched.len(), 2);
+        assert!(unwatched.iter().all(|m| m.id != a));
+        let _ = b;
+    }
+
+    #[test]
+    fn year_sort_ascending_pushes_null_years_last() {
+        let path = temp_db_path("sort_nulls_last");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        insert_full_movie(conn, "/nas/n.mkv", "No Year", None, None, None, None);
+        insert_full_movie(conn, "/nas/old.mkv", "Old", Some(1977), None, None, None);
+        insert_full_movie(conn, "/nas/new.mkv", "New", Some(2019), None, None, None);
+
+        let sorted = db
+            .get_movies_with_filters(
+                0,
+                50,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("year".into()),
+                Some("ASC".into()),
+                None,
+            )
+            .unwrap();
+        let titles: Vec<&str> = sorted.iter().map(|m| m.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            vec!["Old", "New", "No Year"],
+            "ASC must keep NULL years at the bottom"
+        );
+    }
+
+    #[test]
+    fn search_filter_and_fts_agree_with_search_movies() {
+        let path = temp_db_path("filters_search");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        insert_full_movie(conn, "/nas/m1.mkv", "Matrix", Some(1999), None, None, None);
+        insert_full_movie(
+            conn,
+            "/nas/m2.mkv",
+            "Matrix Reloaded",
+            Some(2003),
+            None,
+            None,
+            None,
+        );
+        insert_full_movie(
+            conn,
+            "/nas/m3.mkv",
+            "Notebook",
+            Some(2004),
+            None,
+            None,
+            None,
+        );
+
+        let via_filters = db
+            .get_movies_with_filters(
+                0,
+                50,
+                Some("matrix".into()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let via_search = db.search_movies("matrix", 0, 50).unwrap();
+
+        let mut a: Vec<&str> = via_filters.iter().map(|m| m.title.as_str()).collect();
+        let mut b: Vec<&str> = via_search.iter().map(|m| m.title.as_str()).collect();
+        a.sort_unstable();
+        b.sort_unstable();
+        assert_eq!(a, vec!["Matrix", "Matrix Reloaded"]);
+        assert_eq!(a, b, "both entry points must return the same matches");
+    }
+
+    // ---- data layer: search ranking ----
+
+    #[test]
+    fn search_movies_ranks_exact_title_first() {
+        let path = temp_db_path("search_rank");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        insert_movie(conn, "/nas/reloaded.mkv", "Matrix Reloaded");
+        insert_movie(conn, "/nas/exact.mkv", "Matrix");
+        // Actors set at INSERT time: a NULL->value UPDATE on an FTS-indexed
+        // column trips the movies_au trigger bug (see notes at the top of the
+        // module / watcher tests), so the fixture avoids post-hoc updates.
+        conn.execute(
+            "INSERT INTO movies (file_path, title, actors) VALUES (?1, ?2, ?3)",
+            params!["/nas/other.mkv", "Other Movie", "Keanu Matrix"],
+        )
+        .unwrap();
+
+        let results = db.search_movies("matrix", 0, 50).unwrap();
+        let titles: Vec<&str> = results.iter().map(|m| m.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            vec!["Matrix", "Matrix Reloaded", "Other Movie"],
+            "exact title > title prefix > actor containment"
+        );
+
+        // Prefix queries reach partially-typed words — across title AND actors
+        // ("Keanu Matrix" on the third movie), since FTS indexes both columns.
+        let prefix = db.search_movies("matri", 0, 50).unwrap();
+        assert_eq!(prefix.len(), 3, "prefix 'matri*' must match all three rows");
+    }
+
+    #[test]
+    fn search_movies_pagination_and_cjk() {
+        let path = temp_db_path("search_paging");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        for i in 0..3 {
+            insert_movie(conn, &format!("/nas/{}.mkv", i), &format!("Matrix {}", i));
+        }
+        insert_movie(conn, "/nas/cjk.mkv", "流浪地球");
+
+        let page = db.search_movies("matrix", 1, 2).unwrap();
+        assert_eq!(page.len(), 2, "limit/offset must apply");
+
+        let cjk = db.search_movies("流浪", 0, 50).unwrap();
+        assert_eq!(cjk.len(), 1);
+        assert_eq!(cjk[0].title, "流浪地球");
+    }
+
+    #[test]
+    fn search_movies_empty_or_unmatchable_queries_return_empty() {
+        let path = temp_db_path("search_empty");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+        insert_movie(conn, "/nas/a.mkv", "Matrix");
+
+        assert!(
+            db.search_movies("", 0, 50).unwrap().is_empty(),
+            "blank query short-circuits"
+        );
+        assert!(
+            db.search_movies("!!!", 0, 50).unwrap().is_empty(),
+            "no tokens -> no query"
+        );
+        assert!(db
+            .search_movies("nonexistentword", 0, 50)
+            .unwrap()
+            .is_empty());
+    }
+
+    // ---- data layer: play history ----
+
+    #[test]
+    fn play_history_round_trip_insert_update_and_increment() {
+        let path = temp_db_path("play_history");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+        insert_movie(conn, "/nas/ph.mkv", "PH");
+        let movie_id: i64 = conn
+            .query_row("SELECT id FROM movies WHERE title = 'PH'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+
+        assert!(db.get_play_history(movie_id).unwrap().is_none());
+
+        db.update_play_history(movie_id, 42.0).unwrap();
+        let h = db.get_play_history(movie_id).unwrap().unwrap();
+        assert_eq!(h.last_position, 42.0);
+        assert_eq!(h.play_count, 1, "fresh history starts at 1");
+
+        db.update_play_history(movie_id, 84.5).unwrap();
+        let h = db.get_play_history(movie_id).unwrap().unwrap();
+        assert_eq!(
+            h.last_position, 84.5,
+            "second update overwrites the position"
+        );
+        assert_eq!(h.play_count, 1, "position updates must not bump the count");
+
+        db.increment_play_count(movie_id).unwrap();
+        db.increment_play_count(movie_id).unwrap();
+        let h = db.get_play_history(movie_id).unwrap().unwrap();
+        assert_eq!(h.play_count, 3);
+
+        let last_accessed: Option<String> = conn
+            .query_row(
+                "SELECT last_accessed FROM movies WHERE id = ?1",
+                params![movie_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            last_accessed.is_some(),
+            "increment must stamp movies.last_accessed"
+        );
+    }
+
+    #[test]
+    fn update_file_path_renames_in_place_and_normalizes() {
+        let path = temp_db_path("update_file_path");
+        let nfd: String = "Moviénaf".nfd().collect();
+        let old_path = format!("/nas/{}.mkv", "old");
+        let new_path_nfd = format!("/nas/Café {}/film.mkv", nfd);
+
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+        insert_movie(conn, &old_path, "Keep Me");
+        let id: i64 = conn
+            .query_row("SELECT id FROM movies WHERE title = 'Keep Me'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        conn.execute(
+            "INSERT INTO play_history (movie_id, last_position) VALUES (?1, 5.0)",
+            params![id],
+        )
+        .unwrap();
+
+        db.update_file_path(id, &new_path_nfd).unwrap();
+
+        assert!(
+            db.get_movie_by_path(&old_path).unwrap().is_none(),
+            "old path must be gone"
+        );
+        let moved = db
+            .get_movie_by_path(&new_path_nfd)
+            .unwrap()
+            .expect("row must live under the new path");
+        assert_eq!(moved.id, id, "rename must reuse the row");
+
+        let stored: String = conn
+            .query_row(
+                "SELECT file_path FROM movies WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let new_path_nfc: String = new_path_nfd.nfc().collect();
+        assert_eq!(stored, new_path_nfc, "update_file_path must store NFC");
+
+        let history: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM play_history WHERE movie_id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(history, 1, "play history must survive a rename");
+    }
+
+    #[test]
+    fn delete_invalid_records_removes_only_rows_whose_file_is_gone() {
+        let path = temp_db_path("delete_invalid");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+
+        let real_dir = std::env::temp_dir().join(format!("reelfs_invalid_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&real_dir);
+        std::fs::create_dir_all(&real_dir).unwrap();
+        let real_file = real_dir.join("still_here.mkv");
+        std::fs::write(&real_file, b"data").unwrap();
+
+        insert_movie(conn, &real_file.to_string_lossy(), "Alive");
+        insert_movie(conn, "/nas/vanished/dead.mkv", "Dead");
+
+        let deleted = db.delete_invalid_records().unwrap();
+        assert_eq!(deleted, 1, "only the missing file's row may be deleted");
+        assert!(db
+            .get_movie_by_path(&real_file.to_string_lossy())
+            .unwrap()
+            .is_some());
+        assert!(db
+            .get_movie_by_path("/nas/vanished/dead.mkv")
+            .unwrap()
+            .is_none());
+
+        let _ = std::fs::remove_dir_all(&real_dir);
+    }
 }

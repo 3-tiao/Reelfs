@@ -189,6 +189,33 @@ fn clean_title(title: &str) -> String {
 mod tests {
     use super::*;
 
+    fn movie(id: i64, file_name: &str) -> Movie {
+        Movie {
+            id,
+            file_path: format!("/nas/{}.mkv", file_name),
+            title: file_name.to_string(),
+            year: None,
+            plot: None,
+            rating: None,
+            genres: None,
+            director: None,
+            actors: None,
+            thumbnail_path: None,
+            file_size: None,
+            duration_seconds: None,
+            width: None,
+            height: None,
+            added_at: "".to_string(),
+            updated_at: "".to_string(),
+            last_accessed: None,
+            last_checked_at: None,
+            scan_state: None,
+            is_watched: None,
+            group_id: None,
+            play_count: 0,
+        }
+    }
+
     #[test]
     fn test_detect_groups() {
         let movies = vec![
@@ -246,5 +273,147 @@ mod tests {
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].title, "电影名称");
         assert_eq!(groups[0].movies.len(), 2);
+    }
+
+    #[test]
+    fn parse_part_info_maps_position_words() {
+        assert_eq!(parse_part_info("上"), (1, "上集".to_string()));
+        assert_eq!(parse_part_info("中"), (2, "中集".to_string()));
+        assert_eq!(parse_part_info("下"), (3, "下集".to_string()));
+        // "contains" semantics: 上 embedded in a longer token still maps to 1.
+        assert_eq!(parse_part_info("上集"), (1, "上集".to_string()));
+    }
+
+    #[test]
+    fn parse_part_info_parses_plain_numbers() {
+        assert_eq!(parse_part_info("1"), (1, "第1部分".to_string()));
+        assert_eq!(parse_part_info("12"), (12, "第12部分".to_string()));
+        assert_eq!(parse_part_info(" 3 "), (3, "第3部分".to_string()));
+    }
+
+    #[test]
+    fn parse_part_info_parses_prefixed_numbers() {
+        assert_eq!(parse_part_info("CD2"), (2, "CD2".to_string()));
+        assert_eq!(parse_part_info("CD 2"), (2, "CD2".to_string()));
+        assert_eq!(parse_part_info("Part3"), (3, "Part3".to_string()));
+        assert_eq!(parse_part_info("Disc4"), (4, "Disc4".to_string()));
+    }
+
+    #[test]
+    fn parse_part_info_parses_fraction_denominator_pattern() {
+        // N/M form: numerator becomes the part number.
+        assert_eq!(parse_part_info("1/2"), (1, "第1部分".to_string()));
+        assert_eq!(parse_part_info("2 / 3"), (2, "第2部分".to_string()));
+    }
+
+    #[test]
+    fn parse_part_info_parses_episode_markers() {
+        assert_eq!(parse_part_info("第5集"), (5, "第5集".to_string()));
+        // "第N部" currently normalizes into the 集 wording — pins present behavior.
+        assert_eq!(parse_part_info("第6部"), (6, "第6集".to_string()));
+    }
+
+    #[test]
+    fn parse_part_info_returns_zero_on_unparseable_input() {
+        // part_number == 0 makes detect_video_groups skip the match entirely.
+        assert_eq!(parse_part_info("abc"), (0, "abc".to_string()));
+        assert_eq!(parse_part_info(""), (0, "".to_string()));
+        assert_eq!(parse_part_info("X1Y"), (0, "X1Y".to_string()));
+    }
+
+    #[test]
+    fn clean_title_trims_trailing_separators() {
+        assert_eq!(clean_title("Movie -"), "Movie");
+        assert_eq!(clean_title("Movie_"), "Movie");
+        assert_eq!(clean_title("Movie."), "Movie");
+        assert_eq!(clean_title("Movie "), "Movie");
+        assert_eq!(clean_title("Movie"), "Movie");
+        assert_eq!(clean_title("  Movie  "), "Movie");
+    }
+
+    #[test]
+    fn single_match_is_not_a_group() {
+        let movies = vec![movie(1, "Lonely CD1"), movie(2, "Totally Different")];
+        assert!(
+            detect_video_groups(&movies).is_empty(),
+            "one member matching a pattern must not produce a group"
+        );
+    }
+
+    #[test]
+    fn cd_and_disc_patterns_group() {
+        let movies = vec![
+            movie(1, "Concert CD1"),
+            movie(2, "Concert CD2"),
+            movie(3, "BTS Disc1"),
+            movie(4, "BTS Disc2"),
+        ];
+
+        let groups = detect_video_groups(&movies);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].title, "BTS");
+        assert_eq!(groups[0].movies.len(), 2);
+        assert_eq!(groups[1].title, "Concert");
+        assert_eq!(groups[1].movies.len(), 2);
+    }
+
+    #[test]
+    fn fraction_pattern_needs_a_slash_inside_the_stem() {
+        // detect_video_groups matches against Path::file_stem(), and a Unix
+        // filename can never contain '/'. So the N/M pattern (pattern 13) can
+        // only fire on stems that literally embed a slash, which real macOS /
+        // Linux paths never produce — an integration case is impossible here.
+        // The parse-level behaviour of that pattern is pinned separately in
+        // parse_part_info_parses_fraction_denominator_pattern. This test
+        // documents the reachable reality: "1 of 2" style names do NOT group.
+        let movies = vec![movie(1, "Ep 1 of 2"), movie(2, "Ep 2 of 2")];
+        assert!(detect_video_groups(&movies).is_empty());
+    }
+
+    #[test]
+    fn episode_marker_pattern_groups() {
+        let movies = vec![movie(1, "连续剧 第1集"), movie(2, "连续剧 第2集")];
+
+        let groups = detect_video_groups(&movies);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].title, "连续剧");
+        let parts: Vec<i32> = groups[0].movies.iter().map(|m| m.part_number).collect();
+        assert_eq!(parts, vec![1, 2]);
+    }
+
+    #[test]
+    fn parts_are_sorted_by_part_number_not_input_order() {
+        let movies = vec![movie(1, "电影名称 [下集]"), movie(2, "电影名称 [上集]")];
+
+        let groups = detect_video_groups(&movies);
+        assert_eq!(groups.len(), 1);
+        let parts: Vec<i32> = groups[0].movies.iter().map(|m| m.part_number).collect();
+        assert_eq!(
+            parts,
+            vec![1, 3],
+            "上(1) must sort before 下(3) regardless of input order"
+        );
+        assert_eq!(groups[0].movies[0].part_title, "上集");
+        assert_eq!(groups[0].movies[1].part_title, "下集");
+    }
+
+    #[test]
+    fn groups_are_sorted_by_title() {
+        let movies = vec![
+            movie(1, "Zeta CD1"),
+            movie(2, "Zeta CD2"),
+            movie(3, "Alpha CD1"),
+            movie(4, "Alpha CD2"),
+        ];
+
+        let groups = detect_video_groups(&movies);
+        let titles: Vec<&str> = groups.iter().map(|g| g.title.as_str()).collect();
+        assert_eq!(titles, vec!["Alpha", "Zeta"]);
+    }
+
+    #[test]
+    fn different_base_titles_do_not_merge() {
+        let movies = vec![movie(1, "MovieA CD1"), movie(2, "MovieB CD2")];
+        assert!(detect_video_groups(&movies).is_empty());
     }
 }

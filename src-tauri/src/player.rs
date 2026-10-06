@@ -111,3 +111,27 @@ fn command_exists(command: &str) -> bool {
             .unwrap_or(false)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Smoke test only: play_movie spawns real players (mpv / open / xdg-open),
+    /// which cannot be unit-tested without launching GUI processes. This pins
+    /// the PATH-probing primitive the mpv resume branch depends on.
+    #[test]
+    fn command_exists_probes_path() {
+        #[cfg(unix)]
+        {
+            assert!(command_exists("ls"), "which must find ls on any unix box");
+        }
+        #[cfg(windows)]
+        {
+            assert!(command_exists("cmd"), "where must find cmd on windows");
+        }
+        assert!(
+            !command_exists("reelfs-definitely-not-a-real-command-424242"),
+            "a nonexistent command must not be reported as present"
+        );
+    }
+}
