@@ -206,6 +206,24 @@ describe("loadMore", () => {
     expect(s.isLoadingMore).toBe(false);
   });
 
+  it("drops rows the backend resends across a shifted page boundary", async () => {
+    // The backend re-sorts the whole table per page request, so after a
+    // rating change a row above the boundary can reappear on the next page.
+    // The append must deduplicate by id instead of showing a duplicate card.
+    useMovieStore.setState({
+      movies: [makeMovie({ id: 1 }), makeMovie({ id: 2 })],
+      currentPage: 0,
+      hasMore: true,
+    });
+    mGetMovies.mockResolvedValueOnce([makeMovie({ id: 2 }), makeMovie({ id: 3 })]);
+
+    await state().loadMore();
+    const s = state();
+
+    expect(s.movies.map((m) => m.id)).toEqual([1, 2, 3]);
+    expect(s.currentPage).toBe(1);
+  });
+
   it("keeps hasMore true when a full page of 200 comes back", async () => {
     useMovieStore.setState({ movies: [], currentPage: 0, hasMore: true });
     mGetMovies.mockResolvedValueOnce(fullPage());

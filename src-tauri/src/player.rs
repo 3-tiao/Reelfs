@@ -1,7 +1,14 @@
+use crate::path_utils::resolve_fs_path;
 use log::{debug, error, info, warn};
+use std::path::Path;
 use std::process::Command;
 
 pub fn play_movie(file_path: &str, start_position: Option<f64>) -> Result<(), String> {
+    // DB stores NFC; SMB mounts match bytes exactly, so resolve to the
+    // on-disk spelling (NFD fallback) before handing the path to a player.
+    let resolved = resolve_fs_path(Path::new(file_path));
+    let file_path = resolved.to_string_lossy();
+
     info!("[播放器] 开始播放电影: {}", file_path);
     debug!("[播放器] 播放位置: {:?}", start_position);
 
@@ -16,7 +23,7 @@ pub fn play_movie(file_path: &str, start_position: Option<f64>) -> Result<(), St
 
                 Command::new("mpv")
                     .arg(format!("--start={}", pos))
-                    .arg(file_path)
+                    .arg(file_path.as_ref())
                     .spawn()
                     .map_err(|e| {
                         error!("[播放器] 启动mpv失败: {}", e);
@@ -30,7 +37,7 @@ pub fn play_movie(file_path: &str, start_position: Option<f64>) -> Result<(), St
                     warn!("[播放器] mpv未安装，无法使用断点续播");
                 }
 
-                Command::new("open").arg(file_path).spawn().map_err(|e| {
+                Command::new("open").arg(file_path.as_ref()).spawn().map_err(|e| {
                     error!("[播放器] 启动系统播放器失败: {}", e);
                     format!("Failed to open file: {}", e)
                 })?;
@@ -38,7 +45,7 @@ pub fn play_movie(file_path: &str, start_position: Option<f64>) -> Result<(), St
                 info!("[播放器] 系统播放器启动成功: {}", file_path);
             }
         } else {
-            Command::new("open").arg(file_path).spawn().map_err(|e| {
+            Command::new("open").arg(file_path.as_ref()).spawn().map_err(|e| {
                 error!("[播放器] 启动系统播放器失败: {}", e);
                 format!("Failed to open file: {}", e)
             })?;
@@ -61,7 +68,7 @@ pub fn play_movie(file_path: &str, start_position: Option<f64>) -> Result<(), St
                     cmd.arg(format!("--start={}", pos));
                 }
             }
-            cmd.arg(file_path).spawn().map_err(|e| {
+            cmd.arg(file_path.as_ref()).spawn().map_err(|e| {
                 error!("[播放器] 启动mpv失败: {}", e);
                 format!("Failed to launch mpv: {}", e)
             })?;
@@ -72,7 +79,7 @@ pub fn play_movie(file_path: &str, start_position: Option<f64>) -> Result<(), St
             warn!("[播放器] mpv未安装，使用xdg-open");
 
             Command::new("xdg-open")
-                .arg(file_path)
+                .arg(file_path.as_ref())
                 .spawn()
                 .map_err(|e| {
                     error!("[播放器] 启动xdg-open失败: {}", e);

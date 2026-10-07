@@ -42,7 +42,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await updateConfig(config);
       set({ config, isLoading: false });
     } catch (error) {
+      // Keep the previous config and surface the failure: callers show a
+      // toast and roll back their optimistic edits — swallowing this turned
+      // save failures into silent fake successes.
       set({ error: String(error), isLoading: false });
+      throw error;
     }
   },
 

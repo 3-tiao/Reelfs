@@ -15,6 +15,7 @@ mod watcher;
 use database::Database;
 use log::{debug, error, info, warn};
 use models::{AppConfig, Movie, PlayHistory, ScanStatus, Stats, VideoGroup, VideoGroupWithParts};
+use path_utils::resolve_fs_path;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -284,16 +285,22 @@ async fn play_movie(state: tauri::State<'_, AppState>, id: i64) -> Result<(), St
 async fn show_in_file_manager(app: tauri::AppHandle, file_path: String) -> Result<(), String> {
     info!("[文件管理器] 在文件管理器中显示: {}", file_path);
 
+    // Resolve NFC→NFD first: the DB stores NFC, but SMB mounts match bytes
+    // exactly, so the NFC spelling can fail to exist on disk.
+    let resolved = resolve_fs_path(Path::new(&file_path));
+
     // tauri-plugin-opener reveals the item in the platform file manager on
     // every desktop platform: macOS NSWorkspace, Linux org.freedesktop.
     // FileManager1 (with portal fallback), Windows SHOpenFolderAndSelectItems.
     // The Rust-side call bypasses the ACL, so no capability entry is needed.
     // Note: it canonicalizes the path first, so a missing file returns an
     // error instead of silently doing nothing.
-    app.opener().reveal_item_in_dir(&file_path).map_err(|e| {
-        error!("[文件管理器] 打开失败: {}", e);
-        format!("Failed to reveal file in file manager: {}", e)
-    })?;
+    app.opener()
+        .reveal_item_in_dir(resolved.to_string_lossy().as_ref())
+        .map_err(|e| {
+            error!("[文件管理器] 打开失败: {}", e);
+            format!("Failed to reveal file in file manager: {}", e)
+        })?;
 
     info!("[文件管理器] 文件管理器打开成功");
 

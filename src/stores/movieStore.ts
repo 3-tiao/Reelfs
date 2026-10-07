@@ -220,9 +220,17 @@ export const useMovieStore = create<MovieStore>()(
       },
       onSuccess: (newMovies) => {
         const current = get();
-        logger.info(`[MovieStore] loadMore success: fetched=${newMovies.length}, total_before=${current.movies.length}, next_page=${current.currentPage + 1}`);
+        // The backend re-sorts the whole table on every page request, so a
+        // row can cross the loaded window boundary between pages (e.g. after
+        // a rating change) and come back on the next page. Deduplicate by id
+        // so that shows up as no duplicate cards; the skipped row still
+        // counts toward the page size, so pagination itself is unaffected.
+        const knownIds = new Set(current.movies.map((m) => m.id));
+        const fresh = newMovies.filter((m) => !knownIds.has(m.id));
+        const appended = [...current.movies, ...fresh];
+        logger.info(`[MovieStore] loadMore success: fetched=${newMovies.length}, new=${fresh.length}, total_before=${current.movies.length}, next_page=${current.currentPage + 1}`);
         return {
-          movies: [...current.movies, ...newMovies],
+          movies: appended,
           isLoadingMore: false,
           hasMore: newMovies.length === PAGE_SIZE,
           currentPage: current.currentPage + 1,

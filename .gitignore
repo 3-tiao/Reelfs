@@ -45,3 +45,6 @@ cache
 
 # Tauri v2 generated capability schemas
 /src-tauri/gen/schemas
+
+# Agent test artifacts (sandbox logs/screenshots)
+/usability/

@@ -870,15 +870,14 @@ mod tests {
         let video = dir.join("film.mkv");
         let nfo = dir.join("film.nfo");
         write_file(&video, 1);
-        // NOTE: the NFO deliberately omits <plot>/<actor>: the movies_au trigger
-        // (database.rs) writes to the external-content FTS5 table with a plain
-        // UPDATE, which SQLite reports as "database disk image is malformed"
-        // when an indexed column transitions NULL -> value. Until that trigger
-        // is rewritten to the documented 'delete'+INSERT form, only value->value
-        // metadata refreshes survive. This test pins the refresh dispatch logic.
+        // The NFO carries <plot>/<actor> so the refresh performs a NULL ->
+        // value transition on FTS-indexed columns — the exact shape that
+        // tripped the old movies_au trigger ("database disk image is
+        // malformed"). This test now pins both the refresh dispatch and the
+        // repaired trigger surviving that transition.
         std::fs::write(
             &nfo,
-            "<movie><title>NFO Title</title><year>1999</year></movie>",
+            "<movie><title>NFO Title</title><year>1999</year><plot>Synopsis</plot><actor><name>Keanu Reeves</name></actor></movie>",
         )
         .unwrap();
 
@@ -897,6 +896,12 @@ mod tests {
             "NFO data change must refresh the movie"
         );
         assert_eq!(movie.year, Some(1999));
+        assert_eq!(movie.plot.as_deref(), Some("Synopsis"));
+        assert_eq!(
+            db.search_movies("keanu", 0, 50).unwrap().len(),
+            1,
+            "NULL->value actor refresh must land in the FTS index"
+        );
     }
 
     #[test]

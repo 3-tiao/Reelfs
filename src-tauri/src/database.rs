@@ -182,6 +182,25 @@ impl Database {
         &self.conn
     }
 
+    /// Trigger maintenance for the external-content FTS5 table must use the
+    /// documented 'delete' command form (https://sqlite.org/fts5.html,
+    /// "External Content Tables"). The previous plain UPDATE/DELETE shapes
+    /// corrupted the index: a NULL->value UPDATE failed with "database disk
+    /// image is malformed" (rolling back whole batch transactions), renamed
+    /// tokens stayed searchable forever, and deleted rows kept matching.
+    const FTS_SYNC_TRIGGER_SQL: &str = "
+            CREATE TRIGGER IF NOT EXISTS movies_ad AFTER DELETE ON movies BEGIN
+                INSERT INTO movie_fts(movie_fts, rowid, title, plot, actors, director)
+                VALUES ('delete', old.id, old.title, old.plot, old.actors, old.director);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS movies_au AFTER UPDATE ON movies BEGIN
+                INSERT INTO movie_fts(movie_fts, rowid, title, plot, actors, director)
+                VALUES ('delete', old.id, old.title, old.plot, old.actors, old.director);
+                INSERT INTO movie_fts(rowid, title, plot, actors, director)
+                VALUES (new.id, new.title, new.plot, new.actors, new.director);
+            END;";
+
     fn init_schema(&self) -> Result<()> {
         debug!("[数据库] 初始化数据库表结构");
 
@@ -269,20 +288,10 @@ impl Database {
                 VALUES (new.id, new.title, new.plot, new.actors, new.director);
             END;
 
-            CREATE TRIGGER IF NOT EXISTS movies_ad AFTER DELETE ON movies BEGIN
-                DELETE FROM movie_fts WHERE rowid = old.id;
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS movies_au AFTER UPDATE ON movies BEGIN
-                UPDATE movie_fts SET 
-                    title = new.title,
-                    plot = new.plot,
-                    actors = new.actors,
-                    director = new.director
-                WHERE rowid = new.id;
-            END;
             ",
         )?;
+
+        self.conn.execute_batch(Self::FTS_SYNC_TRIGGER_SQL)?;
 
         debug!("[数据库] 数据库表结构初始化完成");
 
@@ -400,6 +409,28 @@ impl Database {
                 "[数据库] 已从 play_history.last_played 回填 {} 条 last_accessed",
                 backfilled_last_accessed
             );
+        }
+
+        // Repair databases created before the FTS5 trigger fix: if the UPDATE
+        // trigger is still the corrupting plain-UPDATE shape, replace both
+        // sync triggers with the 'delete' command form and rebuild the index
+        // once to flush ghost tokens left by the old shapes. A no-op for
+        // databases already on the fixed triggers.
+        let movies_au_sql: Option<String> = tx
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'movies_au'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(None);
+        if let Some(sql) = movies_au_sql {
+            if !sql.contains("'delete'") {
+                info!("[数据库] 修复 FTS5 同步触发器（'delete' 命令形式）并重建全文索引");
+                tx.execute("DROP TRIGGER IF EXISTS movies_au", [])?;
+                tx.execute("DROP TRIGGER IF EXISTS movies_ad", [])?;
+                tx.execute_batch(Self::FTS_SYNC_TRIGGER_SQL)?;
+                tx.execute("INSERT INTO movie_fts(movie_fts) VALUES('rebuild')", [])?;
+            }
         }
 
         // Always run; the pass is O(N) and a no-op when there are no NFC/NFD
@@ -2185,9 +2216,8 @@ mod tests {
 
         insert_movie(conn, "/nas/reloaded.mkv", "Matrix Reloaded");
         insert_movie(conn, "/nas/exact.mkv", "Matrix");
-        // Actors set at INSERT time: a NULL->value UPDATE on an FTS-indexed
-        // column trips the movies_au trigger bug (see notes at the top of the
-        // module / watcher tests), so the fixture avoids post-hoc updates.
+        // Post-hoc updates on FTS-indexed columns are safe since the sync
+        // triggers moved to the 'delete' command form (see fts_sync tests).
         conn.execute(
             "INSERT INTO movies (file_path, title, actors) VALUES (?1, ?2, ?3)",
             params!["/nas/other.mkv", "Other Movie", "Keanu Matrix"],
@@ -2246,6 +2276,111 @@ mod tests {
             .search_movies("nonexistentword", 0, 50)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn fts_sync_triggers_survive_update_null_transition_and_delete() {
+        let path = temp_db_path("fts_sync_triggers");
+        let db = Database::new(&path).unwrap();
+        let conn = db.get_connection();
+        insert_movie(conn, "/nas/a.mkv", "Old Title");
+
+        // NULL -> value on an indexed column used to fail the whole
+        // statement with "database disk image is malformed".
+        conn.execute(
+            "UPDATE movies SET actors = 'Keanu Reeves' WHERE title = 'Old Title'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            db.search_movies("keanu", 0, 50).unwrap().len(),
+            1,
+            "NULL->value update must be indexed"
+        );
+
+        // value -> value must not leave the old token searchable.
+        conn.execute(
+            "UPDATE movies SET title = 'New Title' WHERE title = 'Old Title'",
+            [],
+        )
+        .unwrap();
+        assert!(
+            db.search_movies("old", 0, 50).unwrap().is_empty(),
+            "old token must be gone after a rename"
+        );
+        assert_eq!(db.search_movies("new", 0, 50).unwrap().len(), 1);
+
+        // Deletes must remove the row from the index.
+        conn.execute("DELETE FROM movies WHERE title = 'New Title'", [])
+            .unwrap();
+        let ghosts: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM movie_fts WHERE movie_fts MATCH 'new'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ghosts, 0, "deleted row must not linger in the index");
+    }
+
+    #[test]
+    fn migration_replaces_legacy_fts_triggers_and_rebuilds_index() {
+        let path = temp_db_path("fts_legacy_migration");
+        {
+            let db = Database::new(&path).unwrap();
+            let conn = db.get_connection();
+            insert_movie(conn, "/nas/ghost.mkv", "Ghost");
+
+            // Recreate the pre-fix trigger shapes and produce the ghost token
+            // the legacy DELETE trigger was known to leave behind.
+            conn.execute_batch(
+                "DROP TRIGGER movies_au;
+                 DROP TRIGGER movies_ad;
+                 CREATE TRIGGER movies_au AFTER UPDATE ON movies BEGIN
+                     UPDATE movie_fts SET
+                         title = new.title,
+                         plot = new.plot,
+                         actors = new.actors,
+                         director = new.director
+                     WHERE rowid = new.id;
+                 END;
+                 CREATE TRIGGER movies_ad AFTER DELETE ON movies BEGIN
+                     DELETE FROM movie_fts WHERE rowid = old.id;
+                 END;",
+            )
+            .unwrap();
+            conn.execute("DELETE FROM movies WHERE title = 'Ghost'", [])
+                .unwrap();
+            let ghosts: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM movie_fts WHERE movie_fts MATCH 'ghost'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(ghosts >= 1, "precondition: legacy triggers leave a ghost");
+        }
+
+        // Reopening the database reruns migrate_database, which must replace
+        // the legacy triggers and rebuild the index.
+        let db = Database::new(&path).unwrap();
+        let ghosts: i64 = db
+            .get_connection()
+            .query_row(
+                "SELECT count(*) FROM movie_fts WHERE movie_fts MATCH 'ghost'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ghosts, 0, "migration must flush ghost tokens");
+
+        // And the repaired triggers keep working afterwards.
+        let conn = db.get_connection();
+        insert_movie(conn, "/nas/b.mkv", "Beta");
+        conn.execute("UPDATE movies SET title = 'Gamma' WHERE title = 'Beta'", [])
+            .unwrap();
+        assert!(db.search_movies("beta", 0, 50).unwrap().is_empty());
+        assert_eq!(db.search_movies("gamma", 0, 50).unwrap().len(), 1);
     }
 
     // ---- data layer: play history ----

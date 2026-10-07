@@ -69,12 +69,14 @@ describe("saveConfig", () => {
     expect(state().error).toBeNull();
   });
 
-  it("keeps the previous config and reports the error on failure", async () => {
+  it("keeps the previous config, reports the error, and rethrows on failure", async () => {
     const existing = makeConfig();
     useSettingsStore.setState({ config: existing });
     mUpdateConfig.mockRejectedValueOnce(new Error("write failed"));
 
-    await state().saveConfig(makeConfig({ theme: "light" }));
+    await expect(state().saveConfig(makeConfig({ theme: "light" }))).rejects.toThrow(
+      "write failed",
+    );
 
     expect(state().config).toEqual(existing);
     expect(state().error).toBe("Error: write failed");
@@ -121,7 +123,7 @@ describe("patchConfig", () => {
   it("surfaces a backend failure from the underlying save", async () => {
     mUpdateConfig.mockRejectedValueOnce(new Error("disk full"));
 
-    await state().patchConfig({ theme: "light" });
+    await expect(state().patchConfig({ theme: "light" })).rejects.toThrow("disk full");
 
     expect(state().error).toBe("Error: disk full");
     expect(state().config).toBeNull();

@@ -104,6 +104,26 @@ export default function Settings() {
     }
   };
 
+  // Failed saves leave the store config untouched; undo the optimistic
+  // setState so the UI reflects what is actually on disk.
+  const revertOptimisticEdits = () => {
+    const current = useSettingsStore.getState().config;
+    if (current) {
+      setNasPaths(current.nas_paths);
+      setCacheDir(current.cache_dir);
+    }
+  };
+
+  const saveWithFeedback = async (updates: Parameters<typeof patchConfig>[0]) => {
+    try {
+      await patchConfig(updates);
+    } catch (error) {
+      revertOptimisticEdits();
+      toast.error(`配置保存失败: ${String(error)}`);
+      logger.error("Failed to save config:", error);
+    }
+  };
+
   const handleAddPath = async () => {
     try {
       const selected = await open({ directory: true, multiple: false });
@@ -111,7 +131,7 @@ export default function Settings() {
         if (!nasPaths.includes(selected)) {
           const updated = [...nasPaths, selected];
           setNasPaths(updated);
-          await patchConfig({ nas_paths: updated });
+          await saveWithFeedback({ nas_paths: updated });
         }
       }
     } catch (error) {
@@ -122,7 +142,7 @@ export default function Settings() {
   const handleRemovePath = async (index: number) => {
     const newPaths = nasPaths.filter((_, i) => i !== index);
     setNasPaths(newPaths);
-    await patchConfig({ nas_paths: newPaths });
+    await saveWithFeedback({ nas_paths: newPaths });
   };
 
   const handleSelectCacheDir = async () => {
@@ -130,7 +150,7 @@ export default function Settings() {
       const selected = await open({ directory: true, multiple: false });
       if (selected && typeof selected === "string") {
         setCacheDir(selected);
-        await patchConfig({ cache_dir: selected });
+        await saveWithFeedback({ cache_dir: selected });
       }
     } catch (error) {
       logger.error("Failed to select cache directory:", error);

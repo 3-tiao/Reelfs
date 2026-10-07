@@ -27,7 +27,7 @@ A lightweight, fast, cross-platform movie browser for your NAS library.
 ### Prerequisites
 
 - Rust (latest stable)
-- Node.js 18+
+- Node.js 20.19+（或 22.12+，Vite 7 的 engines 要求）
 - macOS or Linux
 
 ### Installation

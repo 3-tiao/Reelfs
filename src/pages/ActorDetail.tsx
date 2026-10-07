@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, Film, User } from "lucide-react";
+import { AlertCircle, ArrowLeft, Film, User } from "lucide-react";
 import { Movie, getMoviesFiltered, logger } from "../services/tauri";
 import { findFirstExisting } from "../lib/imageUtils";
 import { thumbnailUrl } from "../lib/thumbnailCache";
@@ -13,6 +13,9 @@ export default function ActorDetail() {
   const location = useLocation();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Distinguishes "this actor has no movies" from "the query failed" —
+  // swallowing the error used to render an empty state for both.
+  const [loadError, setLoadError] = useState<string | null>(null);
   // movie.id → asset:// URL of the folder poster, rendered by this page.
   const [posterUrls, setPosterUrls] = useState<Map<number, string>>(new Map());
   // Guards against re-triggering a poster load while one is in flight.
@@ -70,13 +73,16 @@ export default function ActorDetail() {
   }, [name]);
 
   const loadActorMovies = async (actorName: string) => {
+    setIsLoading(true);
+    setLoadError(null);
     try {
-      setIsLoading(true);
       const actorMovies = await getMoviesFiltered(0, 1000, { actors: actorName });
       setMovies(actorMovies);
       setIsLoading(false);
     } catch (error) {
       logger.error("Failed to load actor movies:", error);
+      setMovies([]);
+      setLoadError(String(error));
       setIsLoading(false);
     }
   };
@@ -103,6 +109,16 @@ export default function ActorDetail() {
       });
   };
 
+  // Kick off poster lookups from an effect, not from the render body —
+  // loadPoster ends in a setState, so calling it per row during render was a
+  // render-phase side effect.
+  useEffect(() => {
+    for (const movie of movies) {
+      loadPoster(movie.id, movie.file_path);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movies]);
+
   const handleMovieClick = (movieId: number) => {
     navigate(`/movie/${movieId}`, { state: getRouteState(location) });
   };
@@ -111,6 +127,37 @@ export default function ActorDetail() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-foreground" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="w-full max-w-md rounded-2xl border border-white/[0.06] bg-card p-8 text-center">
+          <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            该演员的影片列表加载失败。
+          </p>
+          <p className="mt-2 break-all text-xs text-muted-foreground">{loadError}</p>
+          <div className="mt-6 flex items-center justify-center gap-2">
+            <button
+              onClick={() => name && loadActorMovies(decodeURIComponent(name))}
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:border-white/[0.16] hover:bg-white/[0.08]"
+            >
+              重试
+            </button>
+            <button
+              onClick={() => navigate(getBackTarget(location.state, "/"))}
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:border-white/[0.16] hover:bg-white/[0.08]"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              返回上一页
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -147,15 +194,12 @@ export default function ActorDetail() {
           </div>
         ) : (
           <div className="space-y-2">
-            {movies.map((movie) => {
-              loadPoster(movie.id, movie.file_path);
-
-              return (
-                <div
-                  key={movie.id}
-                  onClick={() => handleMovieClick(movie.id)}
-                  className="group flex cursor-pointer gap-4 overflow-hidden rounded-xl border border-white/[0.06] bg-card transition-colors hover:border-white/[0.12]"
-                >
+            {movies.map((movie) => (
+              <div
+                key={movie.id}
+                onClick={() => handleMovieClick(movie.id)}
+                className="group flex cursor-pointer gap-4 overflow-hidden rounded-xl border border-white/[0.06] bg-card transition-colors hover:border-white/[0.12]"
+              >
                   <div className="h-36 w-24 flex-shrink-0 bg-black/40">
                     {posterUrls.get(movie.id) ? (
                       <img
@@ -205,8 +249,7 @@ export default function ActorDetail() {
                     )}
                   </div>
                 </div>
-              );
-            })}
+            ))}
           </div>
         )}
       </div>

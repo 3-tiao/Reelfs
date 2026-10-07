@@ -35,9 +35,9 @@ npm run tauri:dev
 
 ### 系统要求
 
-- **操作系统**: macOS 10.13+ 或 Linux (Ubuntu 18.04+, Arch Linux, NixOS)
+- **操作系统**: macOS 10.15 (Catalina)+（Tauri 2 的最低要求）或 Linux (Ubuntu 18.04+, Arch Linux, NixOS)
 - **Rust**: 1.70 或更高版本
-- **Node.js**: 18 或更高版本
+- **Node.js**: 20.19+ 或 22.12+（以 vite 的 engines 要求为准）
 - **内存**: 至少 4GB RAM
 - **磁盘空间**: 至少 1GB 可用空间
 

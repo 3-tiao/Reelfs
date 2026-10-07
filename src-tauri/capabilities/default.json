@@ -10,7 +10,7 @@
     "fs:allow-exists",
     {
       "identifier": "fs:scope",
-      "allow": ["$HOME/.reelfs/**", "/Volumes/**", "/mnt/**"]
+      "allow": ["$HOME/.reelfs/**"]
     }
   ]
 }

@@ -1,18 +1,23 @@
 use crate::models::MovieMetadata;
-use log::{debug, info};
+use crate::path_utils::resolve_fs_path;
+use log::{debug, info, warn};
 use quick_xml::de::from_str;
 use serde::Deserialize;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
 const VIDEO_EXTENSIONS: [&str; 8] = ["mkv", "mp4", "avi", "mov", "wmv", "flv", "webm", "m4v"];
 
 pub fn get_poster_path(video_path: &Path) -> Option<String> {
-    let parent = video_path.parent()?;
+    let resolved = resolve_fs_path(video_path);
+    let parent = resolved.parent()?;
 
     let poster_names = vec![
         "poster.jpg",
@@ -62,8 +67,9 @@ pub fn is_video_file(path: &Path) -> bool {
 }
 
 pub fn find_nfo_for_video(video_path: &Path) -> Option<PathBuf> {
-    let parent = video_path.parent()?;
-    let stem = video_path.file_stem()?;
+    let resolved = resolve_fs_path(video_path);
+    let parent = resolved.parent()?;
+    let stem = resolved.file_stem()?;
 
     let nfo_path = parent.join(format!("{}.nfo", stem.to_string_lossy()));
     if nfo_path.exists() {
@@ -79,6 +85,8 @@ pub fn find_nfo_for_video(video_path: &Path) -> Option<PathBuf> {
 }
 
 pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
+    let nfo_path = resolve_fs_path(nfo_path);
+    let nfo_path = nfo_path.as_path();
     debug!("[文件解析] 开始解析NFO文件: {:?}", nfo_path);
 
     let content = fs::read_to_string(nfo_path).ok()?;
@@ -165,7 +173,8 @@ pub fn scan_directory_with_stop_flag(
 }
 
 pub fn get_file_size(path: &Path) -> Option<i64> {
-    fs::metadata(path).ok().map(|m| m.len() as i64)
+    let resolved = resolve_fs_path(path);
+    fs::metadata(&resolved).ok().map(|m| m.len() as i64)
 }
 
 pub fn extract_title_from_filename(path: &Path) -> String {
@@ -181,6 +190,9 @@ pub fn extract_title_from_filename(path: &Path) -> String {
 }
 
 pub fn get_video_info(path: &Path) -> Option<(i64, i32, i32)> {
+    let resolved = resolve_fs_path(path);
+    let path = resolved.as_path();
+
     info!("[视频信息] 尝试读取视频信息: {:?}", path);
 
     let extension = path
@@ -244,8 +256,17 @@ fn get_video_info_mp4(path: &Path) -> Option<(i64, i32, i32)> {
     }
 }
 
+/// Hard cap on one ffprobe run: a stalled NAS mount must not pin a rayon
+/// worker forever — the scan stop flag is only checked between files, so a
+/// blocked probe would make "stop scanning" wait on the stuck thread.
+const FFPROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Warn once per process: when ffprobe is missing every probe fails the same
+/// way and a per-file warning would flood the log during a full scan.
+static FFPROBE_SPAWN_WARNED: AtomicBool = AtomicBool::new(false);
+
 fn get_video_info_ffprobe(path: &Path) -> Option<(i64, i32, i32)> {
-    let output = Command::new("ffprobe")
+    let mut child = match Command::new("ffprobe")
         .arg("-v")
         .arg("error")
         .arg("-select_streams")
@@ -255,14 +276,78 @@ fn get_video_info_ffprobe(path: &Path) -> Option<(i64, i32, i32)> {
         .arg("-of")
         .arg("csv=s=x:p=0")
         .arg(path)
-        .output()
-        .ok()?;
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            if !FFPROBE_SPAWN_WARNED.swap(true, Ordering::Relaxed) {
+                warn!(
+                    "[视频信息] ffprobe 启动失败（请确认 ffmpeg/ffprobe 已安装，且从 GUI 启动时能找到它）: {} — 后续同类失败不再逐条记录",
+                    e
+                );
+            }
+            return None;
+        }
+    };
 
-    if !output.status.success() {
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {
+                if start.elapsed() >= FFPROBE_TIMEOUT {
+                    warn!(
+                        "[视频信息] ffprobe 超过 {}s 未退出（疑似网络挂载卡死），已终止: {}",
+                        FFPROBE_TIMEOUT.as_secs(),
+                        path.display()
+                    );
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                warn!(
+                    "[视频信息] 等待 ffprobe 退出失败: {} — {}",
+                    path.display(),
+                    e
+                );
+                let _ = child.kill();
+                break None;
+            }
+        }
+    };
+
+    let status = status?;
+    if !status.success() {
+        // Non-zero exit is normal for non-media files; debug keeps it
+        // diagnosable without flooding info-level logs during scans.
+        debug!(
+            "[视频信息] ffprobe 非零退出（{}）: {}",
+            status,
+            path.display()
+        );
         return None;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    // ffprobe prints a single short CSV line here, well under the pipe
+    // buffer, so reading after exit cannot deadlock.
+    let mut stdout = String::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        if let Err(e) = pipe.read_to_string(&mut stdout) {
+            debug!(
+                "[视频信息] 读取 ffprobe 输出失败: {} — {}",
+                path.display(),
+                e
+            );
+            return None;
+        }
+    }
+
     let parts: Vec<&str> = stdout.trim().split(',').collect();
 
     if parts.len() >= 3 {

@@ -5,7 +5,7 @@
 ### 前置要求
 
 - **Rust**: 1.70+ (推荐使用 rustup)
-- **Node.js**: 18+
+- **Node.js**: 20.19+（或 22.12+，以 vite 的 engines 要求为准）
 - **操作系统**: macOS 或 Linux
 
 ### 安装依赖
