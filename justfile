@@ -1,17 +1,24 @@
 # Reelfs 开发入口。
-# 沙盒机制见 AGENTS.md：run 启动的是隔离实例，config/db/cache 全在 .agentenv/，
-# 不会碰 ~/.reelfs 和真实 NAS 路径。
+# 两个启动方式，区别在**数据目录**：
+#   just dev  → 沙盒实例：config/db/cache 全在 .agentenv/，媒体是生成的样本视频。
+#               agent 只能用这个（见 AGENTS.md）。
+#   just run  → 真实实例：用 ~/.reelfs 和 config 里的真实媒体路径。**只给用户用**。
 # 涉及 Rust 的动作都走 nix dev shell（构建依赖声明在 flake.nix）。
 
 # 列出所有命令
 default:
     @just --list
 
-# 启动 app（隔离沙盒；会先停掉已有实例，避免 1420 端口冲突）
+# 启动真实实例（~/.reelfs + 真实媒体路径，仅用户使用）
 run: stop
+    @echo "▶ 真实配置：使用 ~/.reelfs，会扫描 config.json 里的真实路径"
+    nix develop -c npm run tauri dev
+
+# 启动沙盒实例（隔离环境，agent 用这个）
+dev: stop
     ./scripts/agent-env.sh run
 
-# 停掉 dev 实例（app 进程 + vite dev server）
+# 停掉正在跑的实例（app 进程 + vite dev server）
 stop:
     #!/usr/bin/env bash
     pkill -x reelfs 2>/dev/null || true

@@ -11,15 +11,20 @@
 必须走隔离沙盒：
 
 ```bash
-scripts/agent-env.sh run      # 初始化沙盒并启动应用（REELFS_HOME 已指向沙盒）
+just dev                      # 初始化沙盒并启动应用（等价于旧的 scripts/agent-env.sh run）
 scripts/agent-env.sh status   # 查看沙盒状态
 scripts/agent-env.sh clean    # 测试完清理整个沙盒
 ```
 
+**`just run` 不是沙盒**：它是真实配置（`~/.reelfs` + `config.json` 里的真实媒体
+路径），只能由用户本人执行，agent 一律不得运行。这两个名字的区别就是数据目录，
+弄反了一次就会扫到用户的真实媒体库。
+
 沙盒在 `<repo>/.agentenv/`（gitignored）：应用把 config/db/cache/logs 全部写进
 `.agentenv/home/.reelfs/`，媒体库指向 `.agentenv/media/` 里脚本生成的微型样本
 视频。实现见 `src-tauri/src/path_utils.rs` 的 `reelfs_base_dir`（`REELFS_HOME`
-环境变量覆盖 `HOME`）。
+环境变量覆盖 `HOME`）。脚本还会把 `XDG_CONFIG_HOME` 等四个 XDG 目录一并指向
+沙盒，否则 Tauri 的窗口状态、WebKit 的 localstorage 会落到真实家目录。
 
 不要绕过脚本直接 `npm run tauri dev` / `cargo run`——那样应用会落到真实的
 `~/.reelfs` 上（包括启动时的日志写入）。
