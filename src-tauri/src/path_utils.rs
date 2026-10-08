@@ -129,10 +129,8 @@ mod tests {
 
     #[test]
     fn resolve_existing_path_returns_itself() {
-        let dir = std::env::temp_dir().join(format!(
-            "reelfs_path_utils_{}_resolve",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("reelfs_path_utils_{}_resolve", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("plain.mkv");
@@ -158,10 +156,8 @@ mod tests {
     /// contract holds.
     #[test]
     fn resolve_nfc_path_finds_nfd_file() {
-        let dir = std::env::temp_dir().join(format!(
-            "reelfs_path_utils_{}_nfd",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("reelfs_path_utils_{}_nfd", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 

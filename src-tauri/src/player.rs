@@ -37,18 +37,24 @@ pub fn play_movie(file_path: &str, start_position: Option<f64>) -> Result<(), St
                     warn!("[播放器] mpv未安装，无法使用断点续播");
                 }
 
-                Command::new("open").arg(file_path.as_ref()).spawn().map_err(|e| {
-                    error!("[播放器] 启动系统播放器失败: {}", e);
-                    format!("Failed to open file: {}", e)
-                })?;
+                Command::new("open")
+                    .arg(file_path.as_ref())
+                    .spawn()
+                    .map_err(|e| {
+                        error!("[播放器] 启动系统播放器失败: {}", e);
+                        format!("Failed to open file: {}", e)
+                    })?;
 
                 info!("[播放器] 系统播放器启动成功: {}", file_path);
             }
         } else {
-            Command::new("open").arg(file_path.as_ref()).spawn().map_err(|e| {
-                error!("[播放器] 启动系统播放器失败: {}", e);
-                format!("Failed to open file: {}", e)
-            })?;
+            Command::new("open")
+                .arg(file_path.as_ref())
+                .spawn()
+                .map_err(|e| {
+                    error!("[播放器] 启动系统播放器失败: {}", e);
+                    format!("Failed to open file: {}", e)
+                })?;
 
             info!("[播放器] 系统播放器启动成功: {}", file_path);
         }
