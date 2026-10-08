@@ -17,7 +17,6 @@ const makeConfig = (overrides: Partial<AppConfig> = {}): AppConfig => ({
   nas_paths: ["/volume1/movies"],
   cache_dir: "/volume1/.cache/reelfs",
   db_path: "/volume1/.local/share/reelfs/reelfs.db",
-  scan_on_startup: true,
   auto_generate_thumbnails: true,
   theme: "dark",
   default_player: "mpv",
@@ -94,7 +93,6 @@ describe("patchConfig", () => {
       nas_paths: [],
       cache_dir: "",
       db_path: "",
-      scan_on_startup: false,
       auto_generate_thumbnails: false,
       theme: "light",
       default_player: "system",
@@ -107,14 +105,13 @@ describe("patchConfig", () => {
     useSettingsStore.setState({ config: makeConfig() });
     mUpdateConfig.mockResolvedValueOnce(undefined);
 
-    await state().patchConfig({ scan_on_startup: false, theme: "light" });
+    await state().patchConfig({ auto_generate_thumbnails: false, theme: "light" });
 
     expect(mUpdateConfig).toHaveBeenCalledWith({
       nas_paths: ["/volume1/movies"],
       cache_dir: "/volume1/.cache/reelfs",
       db_path: "/volume1/.local/share/reelfs/reelfs.db",
-      scan_on_startup: false, // overridden by the patch
-      auto_generate_thumbnails: true, // preserved from the loaded config
+      auto_generate_thumbnails: false, // overridden by the patch
       theme: "light", // overridden by the patch
       default_player: "mpv", // preserved from the loaded config
     });

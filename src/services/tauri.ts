@@ -74,7 +74,6 @@ export interface AppConfig {
   nas_paths: string[];
   cache_dir: string;
   db_path: string;
-  scan_on_startup: boolean;
   auto_generate_thumbnails: boolean;
   theme: string;
   default_player: string;

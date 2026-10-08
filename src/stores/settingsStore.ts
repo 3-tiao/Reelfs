@@ -5,7 +5,6 @@ const DEFAULT_CONFIG: AppConfig = {
   nas_paths: [],
   cache_dir: "",
   db_path: "",
-  scan_on_startup: false,
   auto_generate_thumbnails: false,
   theme: "dark",
   default_player: "system",
