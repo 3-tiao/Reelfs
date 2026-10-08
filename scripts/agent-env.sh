@@ -178,10 +178,22 @@ MD
 # ---------------------------------------------------------------------------
 # run / shell / status / clean
 # ---------------------------------------------------------------------------
-cmd_shell() {
+# 沙盒环境变量。REELFS_HOME 只盖住 reelfs 自己的 config/db/cache；
+# Tauri（窗口状态）和 WebKit（localstorage 等）还会按 XDG 规范写到
+# $XDG_CONFIG_HOME / $XDG_DATA_HOME —— 不一起改就会落到真实家目录，
+# 那就不是沙盒了。
+sandbox_env() {
   cat <<ENV
-export REELFS_HOME="$SANDBOX_HOME"
+REELFS_HOME=$SANDBOX_HOME
+XDG_CONFIG_HOME=$SANDBOX_HOME/.config
+XDG_DATA_HOME=$SANDBOX_HOME/.local/share
+XDG_CACHE_HOME=$SANDBOX_HOME/.cache
+XDG_STATE_HOME=$SANDBOX_HOME/.local/state
 ENV
+}
+
+cmd_shell() {
+  sandbox_env | sed 's/^/export /'
 }
 
 cmd_run() {
@@ -198,7 +210,8 @@ cmd_run() {
     log "警告：GSETTINGS_SCHEMA_DIR 未设置，GTK/WebKitGTK 可能算错视口尺寸"
   fi
   log "启动 Reelfs（REELFS_HOME=${SANDBOX_HOME}）…"
-  (cd "$REPO_ROOT" && REELFS_HOME="$SANDBOX_HOME" npm run tauri dev)
+  # shellcheck disable=SC2046
+  (cd "$REPO_ROOT" && env $(sandbox_env | tr '\n' ' ') npm run tauri dev)
 }
 
 cmd_status() {
