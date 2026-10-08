@@ -32,12 +32,18 @@ scripts/agent-env.sh clean    # 测试完清理整个沙盒
 
 ## 常用门禁命令
 
+涉及 Rust 的门禁需要 flake.nix 里声明的构建依赖（gtk/webkit dev 包等）。
+裸 shell 里用 `nix develop -c` 包一层：
+
 ```bash
-npm run typecheck     # 前端 TS
-npm run build         # 前端构建
-npm run test          # 前端 vitest
-npm run test:rust     # cargo test（src-tauri）
-npm run lint:rust     # cargo clippy
+npm run typecheck     # 前端 TS（不需要 dev shell）
+npm run build         # 前端构建（不需要 dev shell）
+npm run test          # 前端 vitest（不需要 dev shell）
+nix develop -c npm run test:rust   # cargo test（src-tauri）
+nix develop -c npm run lint:rust   # cargo clippy + fmt
 ```
+
+（已经在 `nix develop` 里就不用再包。）`scripts/agent-env.sh run`
+会自己进 dev shell，不用手动处理。
 
 提交纪律：改动留给用户审阅，未经用户明确要求不要 commit/push。

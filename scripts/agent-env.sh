@@ -64,15 +64,36 @@ PY
 # ---------------------------------------------------------------------------
 # init：目录 + 样本媒体 + 沙盒 config.json
 # ---------------------------------------------------------------------------
+# 找 ffmpeg：优先 PATH；NixOS 上开发 shell 不一定带 ffmpeg，回退到 nixpkgs。
+# 找不到就返回空，调用方跳过样本生成。
+find_ffmpeg() {
+  local ff
+  ff="$(command -v ffmpeg 2>/dev/null || true)"
+  [[ -n "$ff" ]] && { echo "$ff"; return 0; }
+
+  command -v nix >/dev/null 2>&1 || return 0
+  # nix build 会为每个 output 打一行（bin / man / ...），逐个找带 bin/ffmpeg 的
+  local out
+  while read -r out; do
+    if [[ -x "$out/bin/ffmpeg" ]]; then
+      echo "$out/bin/ffmpeg"
+      return 0
+    fi
+  done < <(nix build --no-link --print-out-paths nixpkgs#ffmpeg 2>/dev/null)
+  return 0
+}
+
 seed_media() {
   local ff
-  ff="$(command -v ffmpeg || true)"
+  ff="$(find_ffmpeg)"
   [[ -n "$ff" ]] || {
-    log "未找到 ffmpeg，跳过样本媒体生成（应用仍可启动，库里会是空/占位文件）"
+    log "未找到 ffmpeg（PATH 和 nixpkgs 都没有），跳过样本媒体生成（应用仍可启动，库里会是空/占位文件）"
     mkdir -p "$MEDIA_DIR"
     touch "$MEDIA_DIR/placeholder-sample.mp4"
     return 0
   }
+  # 之前没 ffmpeg 时留下的 0 字节占位文件会让索引器报错，有真样本后删掉
+  rm -f "$MEDIA_DIR/placeholder-sample.mp4"
 
   mkdir -p "$MEDIA_DIR/系列/流浪地球三部曲" "$MEDIA_DIR/Collections/Sci-Fi"
 
@@ -116,7 +137,6 @@ write_config() {
   "nas_paths": ["$MEDIA_DIR"],
   "cache_dir": "$SANDBOX_HOME/.reelfs/cache",
   "db_path": "$SANDBOX_HOME/.reelfs/movies.db",
-  "scan_on_startup": true,
   "auto_generate_thumbnails": true,
   "theme": "dark",
   "default_player": "system"
@@ -165,7 +185,18 @@ ENV
 }
 
 cmd_run() {
+  # cargo 需要 flake.nix 里声明的 GTK/webkit dev 依赖；不在 nix shell 里就先进去
+  # （IN_NIX_SHELL 由 nix develop/nix-shell 设置，可防递归）。
+  # dev shell 同时提供 GSETTINGS_SCHEMA_DIR（见 flake.nix）：没有它 GTK 读不到
+  # 字体缩放，WebKitGTK 会把 device scale factor 算成负数，webview 视口整个崩。
+  if [[ -z "${IN_NIX_SHELL:-}" && -f "$REPO_ROOT/flake.nix" ]] && command -v nix >/dev/null 2>&1; then
+    log "进入 nix dev shell（flake.nix 声明的构建依赖）后再启动"
+    exec nix develop "$REPO_ROOT" -c bash "$0" run
+  fi
   cmd_init
+  if [[ -z "${GSETTINGS_SCHEMA_DIR:-}" ]]; then
+    log "警告：GSETTINGS_SCHEMA_DIR 未设置，GTK/WebKitGTK 可能算错视口尺寸"
+  fi
   log "启动 Reelfs（REELFS_HOME=${SANDBOX_HOME}）…"
   (cd "$REPO_ROOT" && REELFS_HOME="$SANDBOX_HOME" npm run tauri dev)
 }
