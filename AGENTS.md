@@ -31,8 +31,14 @@ scripts/agent-env.sh clean    # 测试完清理整个沙盒
 
 ## 测试数据
 
-- 需要媒体文件时，用 `scripts/agent-env.sh init` 生成的样本，或往
-  `.agentenv/media/` 放自建的微型文件；不要复制用户真实影片。
+- 标准测试数据集在 `testdata/manifest.json` 声明，`scripts/gen-testdata.py`
+  物化（schema 与覆盖面见 `testdata/README.md`）：
+  `python3 scripts/gen-testdata.py --out <dir>` 或 `just testdata`。有
+  ffmpeg 生成真实可播放视频，没有则回退内置微型样本（`--mode fast/real`
+  可强制）。Rust 管线测试（`src-tauri/src/fixture_tests.rs`，跑在
+  `cargo test` 里，需要 python3——dev shell 已带）与 agent 沙盒共用这份数据。
+- 需要媒体文件时，用上面生成的样本，或往 `.agentenv/media/` 放自建的微型
+  文件；不要复制用户真实影片。
 - 单元测试一律用 temp 目录，不落 `~`。
 
 ## 常用门禁命令

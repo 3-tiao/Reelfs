@@ -1,0 +1,476 @@
+{
+  "name": "reelfs-default",
+  "description": "Reelfs 默认测试媒体库：覆盖目录扫描、标题提取、NFO 元数据、海报优先级、系列识别、全部视频扩展名与边界情况。由 scripts/gen-testdata.py 物化成真实目录；expect 字段是 src-tauri/src/fixture_tests.rs 的断言依据。schema 说明见 testdata/README.md。",
+  "defaults": {
+    "duration_seconds": 4,
+    "resolution": [
+      320,
+      180
+    ]
+  },
+  "files": [
+    {
+      "_doc": "—— Kodi 式单片：每部影片一个文件夹，movie.nfo + poster.jpg ——"
+    },
+    {
+      "path": "Kodi 式单片/Inception (2010)/Inception (2010).mp4",
+      "kind": "video",
+      "duration_seconds": 6,
+      "resolution": [
+        640,
+        360
+      ],
+      "nfo": {
+        "as": "movie",
+        "title": "Inception",
+        "year": 2010,
+        "rating": 8.8,
+        "plot": "A thief who steals corporate secrets through dream-sharing technology.",
+        "genres": [
+          "Sci-Fi",
+          "Action"
+        ],
+        "director": "Christopher Nolan",
+        "actors": [
+          "Leonardo DiCaprio",
+          "Elliot Page"
+        ]
+      },
+      "posters": [
+        "poster.jpg",
+        "fanart.jpg"
+      ],
+      "expect": {
+        "title": "Inception (2010)",
+        "nfo_title": "Inception",
+        "poster": "poster.jpg"
+      }
+    },
+    {
+      "path": "Kodi 式单片/Interstellar (2014)/Interstellar (2014).mkv",
+      "kind": "video",
+      "nfo": {
+        "as": "movie",
+        "title": "Interstellar",
+        "year": 2014
+      },
+      "expect": {
+        "title": "Interstellar (2014)",
+        "nfo_title": "Interstellar"
+      }
+    },
+    {
+      "path": "Kodi 式单片/盗梦空间 (2010)/盗梦空间 (2010).mp4",
+      "kind": "video",
+      "nfo": {
+        "as": "movie",
+        "title": "盗梦空间",
+        "year": 2010,
+        "rating": 8.9,
+        "plot": "一个通过潜入梦境窃取机密的贼。",
+        "genres": [
+          "科幻",
+          "悬疑"
+        ],
+        "director": "克里斯托弗·诺兰",
+        "actors": [
+          "莱昂纳多·迪卡普里奥",
+          "渡边谦"
+        ]
+      },
+      "posters": [
+        "poster.png"
+      ],
+      "expect": {
+        "title": "盗梦空间 (2010)",
+        "nfo_title": "盗梦空间",
+        "poster": "poster.png"
+      }
+    },
+    {
+      "path": "Kodi 式单片/海报全家福 (1998)/海报全家福 (1998).avi",
+      "kind": "video",
+      "posters": [
+        "poster.jpg",
+        "poster.png",
+        "folder.jpg",
+        "cover.jpg",
+        "fanart.jpg",
+        "fanart.png"
+      ],
+      "expect": {
+        "title": "海报全家福 (1998)",
+        "poster": "poster.jpg"
+      }
+    },
+    {
+      "path": "Kodi 式单片/双重NFO (2001)/双重NFO (2001).mkv",
+      "kind": "video",
+      "nfo": {
+        "as": "stem",
+        "title": "同名 NFO 的标题",
+        "year": 2001
+      },
+      "expect": {
+        "title": "双重NFO (2001)",
+        "nfo_title": "同名 NFO 的标题"
+      }
+    },
+    {
+      "path": "Kodi 式单片/双重NFO (2001)/movie.nfo",
+      "kind": "file",
+      "nfo": {
+        "as": "movie",
+        "title": "movie.nfo 的标题（不应胜出）"
+      }
+    },
+    {
+      "path": "Kodi 式单片/无元数据单片 (2005)/无元数据单片 (2005).mp4",
+      "kind": "video",
+      "expect": {
+        "title": "无元数据单片 (2005)"
+      }
+    },
+    {
+      "_doc": "—— 平铺电影：NAS 上最常见的散装命名 ——"
+    },
+    {
+      "path": "平铺电影/The.Matrix.1999.mkv",
+      "kind": "video",
+      "duration_seconds": 6,
+      "resolution": [
+        640,
+        360
+      ],
+      "nfo": {
+        "as": "stem",
+        "title": "The Matrix",
+        "year": 1999,
+        "rating": 8.7,
+        "plot": "A computer hacker learns about the true nature of his reality.",
+        "genres": [
+          "Action",
+          "Sci-Fi"
+        ],
+        "actors": [
+          "Keanu Reeves",
+          "Laurence Fishburne"
+        ]
+      },
+      "expect": {
+        "title": "The Matrix 1999",
+        "nfo_title": "The Matrix"
+      }
+    },
+    {
+      "path": "平铺电影/The Dark Knight 2008.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "The Dark Knight 2008"
+      }
+    },
+    {
+      "path": "平铺电影/some_movie_name.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "some movie name"
+      }
+    },
+    {
+      "path": "平铺电影/MOVIE_UPPER.MKV",
+      "kind": "video",
+      "expect": {
+        "title": "MOVIE UPPER"
+      }
+    },
+    {
+      "path": "平铺电影/keeps-dash-2020.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "keeps-dash-2020"
+      }
+    },
+    {
+      "path": "平铺电影/示例影片 [中字].mkv",
+      "kind": "video",
+      "expect": {
+        "title": "示例影片 [中字]"
+      }
+    },
+    {
+      "path": "平铺电影/流浪地球1 (2019).mp4",
+      "kind": "video",
+      "expect": {
+        "title": "流浪地球1 (2019)"
+      }
+    },
+    {
+      "path": "平铺电影/webm 样本.webm",
+      "kind": "video",
+      "expect": {
+        "title": "webm 样本"
+      }
+    },
+    {
+      "path": "平铺电影/mov 样本.mov",
+      "kind": "video",
+      "expect": {
+        "title": "mov 样本"
+      }
+    },
+    {
+      "path": "平铺电影/wmv 样本.wmv",
+      "kind": "video",
+      "expect": {
+        "title": "wmv 样本"
+      }
+    },
+    {
+      "path": "平铺电影/flv 样本.flv",
+      "kind": "video",
+      "expect": {
+        "title": "flv 样本"
+      }
+    },
+    {
+      "path": "平铺电影/m4v 样本.m4v",
+      "kind": "video",
+      "expect": {
+        "title": "m4v 样本"
+      }
+    },
+    {
+      "path": "平铺电影/avi 样本.avi",
+      "kind": "video",
+      "expect": {
+        "title": "avi 样本"
+      }
+    },
+    {
+      "path": "平铺电影/损坏文件.mp4",
+      "kind": "video",
+      "corrupt": true,
+      "expect": {
+        "title": "损坏文件",
+        "probe_ok": false
+      }
+    },
+    {
+      "path": "平铺电影/空文件.mp4",
+      "kind": "video",
+      "empty": true,
+      "expect": {
+        "title": "空文件",
+        "probe_ok": false
+      }
+    },
+    {
+      "_doc": "—— 系列：video_group_detector 的全部命名模式 ——"
+    },
+    {
+      "path": "系列/流浪地球三部曲/流浪地球 上集.mp4",
+      "kind": "video",
+      "nfo": {
+        "as": "stem",
+        "title": "流浪地球（上）",
+        "year": 2019,
+        "genres": [
+          "科幻"
+        ],
+        "actors": [
+          "屈楚萧",
+          "吴京"
+        ]
+      },
+      "posters": [
+        "poster.jpg"
+      ],
+      "expect": {
+        "title": "流浪地球 上集",
+        "group": "流浪地球",
+        "part": 1
+      }
+    },
+    {
+      "path": "系列/流浪地球三部曲/流浪地球 中集.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "流浪地球 中集",
+        "group": "流浪地球",
+        "part": 2
+      }
+    },
+    {
+      "path": "系列/流浪地球三部曲/流浪地球 下集.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "流浪地球 下集",
+        "group": "流浪地球",
+        "part": 3
+      }
+    },
+    {
+      "path": "系列/演唱会/Live Concert CD1.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "Live Concert CD1",
+        "group": "Live Concert",
+        "part": 1
+      }
+    },
+    {
+      "path": "系列/演唱会/Live Concert CD2.mkv",
+      "kind": "video",
+      "expect": {
+        "title": "Live Concert CD2",
+        "group": "Live Concert",
+        "part": 2
+      }
+    },
+    {
+      "path": "系列/纪录片/Deep Sea Part 1.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "Deep Sea Part 1",
+        "group": "Deep Sea",
+        "part": 1
+      }
+    },
+    {
+      "path": "系列/纪录片/Deep Sea Part 2.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "Deep Sea Part 2",
+        "group": "Deep Sea",
+        "part": 2
+      }
+    },
+    {
+      "path": "系列/动画/Anime Series EP01.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "Anime Series EP01",
+        "group": "Anime Series",
+        "part": 1
+      }
+    },
+    {
+      "path": "系列/动画/Anime Series EP02.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "Anime Series EP02",
+        "group": "Anime Series",
+        "part": 2
+      }
+    },
+    {
+      "path": "系列/动画/Anime Series E03.mkv",
+      "kind": "video",
+      "expect": {
+        "title": "Anime Series E03",
+        "group": "Anime Series",
+        "part": 3
+      }
+    },
+    {
+      "path": "系列/综艺/Running Man 第1集.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "Running Man 第1集",
+        "group": "Running Man",
+        "part": 1
+      }
+    },
+    {
+      "path": "系列/综艺/Running Man 第2集.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "Running Man 第2集",
+        "group": "Running Man",
+        "part": 2
+      }
+    },
+    {
+      "path": "系列/花絮/BTS Making Disc1.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "BTS Making Disc1",
+        "group": "BTS Making",
+        "part": 1
+      }
+    },
+    {
+      "path": "系列/花絮/BTS Making Disc2.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "BTS Making Disc2",
+        "group": "BTS Making",
+        "part": 2
+      }
+    },
+    {
+      "path": "系列/孤独的单部 CD1.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "孤独的单部 CD1",
+        "no_group": true
+      }
+    },
+    {
+      "_doc": "—— 深嵌套：递归扫描 ——"
+    },
+    {
+      "path": "深嵌套/a/b/c/deep movie.mp4",
+      "kind": "video",
+      "expect": {
+        "title": "deep movie"
+      }
+    },
+    {
+      "_doc": "—— 干扰文件：扫描器必须忽略（非视频扩展名 / 无扩展名）——"
+    },
+    {
+      "path": "readme.txt",
+      "kind": "file",
+      "content": "not a video\n"
+    },
+    {
+      "path": "说明.md",
+      "kind": "file",
+      "content": "测试媒体库，由 gen-testdata.py 生成。\n"
+    },
+    {
+      "path": "平铺电影/The.Matrix.1999.srt",
+      "kind": "file",
+      "content": "1\n00:00:01,000 --> 00:00:02,000\nsubtitle line\n"
+    },
+    {
+      "path": "平铺电影/The.Matrix.1999.ass",
+      "kind": "file",
+      "content": "[Script Info]\nTitle: test\n"
+    },
+    {
+      "path": "孤立.nfo",
+      "kind": "file",
+      "nfo": {
+        "as": "stem",
+        "title": "孤立 NFO（没有对应视频）"
+      }
+    },
+    {
+      "path": "壁纸.jpg",
+      "kind": "file",
+      "content": "fake jpg bytes, scanner must skip\n"
+    },
+    {
+      "path": "无扩展名文件",
+      "kind": "file",
+      "content": "no extension here\n"
+    },
+    {
+      "path": "系列/流浪地球三部曲/封面截图.png",
+      "kind": "file",
+      "content": "fake png bytes, scanner must skip\n"
+    }
+  ]
+}

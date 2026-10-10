@@ -64,70 +64,20 @@ PY
 # ---------------------------------------------------------------------------
 # init：目录 + 样本媒体 + 沙盒 config.json
 # ---------------------------------------------------------------------------
-# 找 ffmpeg：优先 PATH；NixOS 上开发 shell 不一定带 ffmpeg，回退到 nixpkgs。
-# 找不到就返回空，调用方跳过样本生成。
-find_ffmpeg() {
-  local ff
-  ff="$(command -v ffmpeg 2>/dev/null || true)"
-  [[ -n "$ff" ]] && { echo "$ff"; return 0; }
-
-  command -v nix >/dev/null 2>&1 || return 0
-  # nix build 会为每个 output 打一行（bin / man / ...），逐个找带 bin/ffmpeg 的
-  local out
-  while read -r out; do
-    if [[ -x "$out/bin/ffmpeg" ]]; then
-      echo "$out/bin/ffmpeg"
-      return 0
-    fi
-  done < <(nix build --no-link --print-out-paths nixpkgs#ffmpeg 2>/dev/null)
-  return 0
-}
-
+# 样本媒体来自共享测试数据集（testdata/manifest.json），由
+# scripts/gen-testdata.py 物化：沙盒里找得到 ffmpeg（dev shell 自带）就生成
+# 真实可播放视频，否则回退到仓库内置的微型样本。ffmpeg 的查找逻辑（PATH
+# → nix develop 回退）在生成器里。
 seed_media() {
-  local ff
-  ff="$(find_ffmpeg)"
-  [[ -n "$ff" ]] || {
-    log "未找到 ffmpeg（PATH 和 nixpkgs 都没有），跳过样本媒体生成（应用仍可启动，库里会是空/占位文件）"
+  if ! command -v python3 >/dev/null 2>&1; then
+    log "未找到 python3，跳过样本媒体生成（应用仍可启动，库里会是空/占位文件）"
     mkdir -p "$MEDIA_DIR"
     touch "$MEDIA_DIR/placeholder-sample.mp4"
     return 0
-  }
+  fi
   # 之前没 ffmpeg 时留下的 0 字节占位文件会让索引器报错，有真样本后删掉
   rm -f "$MEDIA_DIR/placeholder-sample.mp4"
-
-  mkdir -p "$MEDIA_DIR/系列/流浪地球三部曲" "$MEDIA_DIR/Collections/Sci-Fi"
-
-  # 6 秒测试画面 + 静音音轨，足够索引、出缩略图、可播放，又几乎不占空间
-  gen() { # gen <相对路径>
-    local out="$MEDIA_DIR/$1"
-    # 已有同名文件且体积正常才复用：上次失败的 0 字节/截断残留要重新生成
-    if [[ -f "$out" ]] && (( $(wc -c < "$out") >= 10240 )); then
-      return 0
-    fi
-    rm -f "$out"
-    # 容器差异：webm 只收 vp8/vp9 + vorbis/opus，其余用 h264/aac
-    local codecs=(-c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac)
-    if [[ "$out" == *.webm ]]; then
-      codecs=(-c:v libvpx -b:v 512k -c:a libvorbis)
-    fi
-    "$ff" -loglevel error -y \
-      -f lavfi -i "testsrc=duration=6:size=640x360:rate=24" \
-      -f lavfi -i "sine=frequency=440:duration=6" \
-      "${codecs[@]}" -shortest "$out"
-    log "  已生成 $1"
-  }
-
-  gen "Agent 测试影片 A.mp4"
-  gen "Agent 测试影片 B.mp4"
-  gen "sample-movie-c.mp4"
-  gen "sample-movie-d.mkv"
-  gen "系列/流浪地球三部曲/流浪地球 1.mp4"
-  gen "系列/流浪地球三部曲/流浪地球 2.mp4"
-  gen "Collections/Sci-Fi/sample-movie-e.mp4"
-  gen "Collections/Sci-Fi/sample-movie-f.webm"
-
-  # 非视频干扰文件：验证索引器不会误收
-  echo "not a video" > "$MEDIA_DIR/readme.txt"
+  python3 "$REPO_ROOT/scripts/gen-testdata.py" --out "$MEDIA_DIR"
 }
 
 write_config() {
@@ -197,16 +147,18 @@ cmd_shell() {
 }
 
 cmd_run() {
-  # cargo 需要 flake.nix 里声明的 GTK/webkit dev 依赖；不在 nix shell 里就先进去
-  # （IN_NIX_SHELL 由 nix develop/nix-shell 设置，可防递归）。
-  # dev shell 同时提供 GSETTINGS_SCHEMA_DIR（见 flake.nix）：没有它 GTK 读不到
-  # 字体缩放，WebKitGTK 会把 device scale factor 算成负数，webview 视口整个崩。
+  # cargo 需要的构建工具链/依赖在 flake.nix 里声明（Linux 是 GTK/webkit dev
+  # 依赖 + GSETTINGS_SCHEMA_DIR；macOS 只需 rust 工具链，webview 用系统
+  # WKWebView）；不在 nix shell 里就先进去（IN_NIX_SHELL 由 nix develop/
+  # nix-shell 设置，可防递归）。
   if [[ -z "${IN_NIX_SHELL:-}" && -f "$REPO_ROOT/flake.nix" ]] && command -v nix >/dev/null 2>&1; then
     log "进入 nix dev shell（flake.nix 声明的构建依赖）后再启动"
     exec nix develop "$REPO_ROOT" -c bash "$0" run
   fi
   cmd_init
-  if [[ -z "${GSETTINGS_SCHEMA_DIR:-}" ]]; then
+  # GSETTINGS_SCHEMA_DIR 只在 Linux 上需要（见 flake.nix）：没有它 GTK 读不到
+  # 字体缩放，WebKitGTK 会把 device scale factor 算成负数，webview 视口整个崩。
+  if [[ "$(uname -s)" == "Linux" && -z "${GSETTINGS_SCHEMA_DIR:-}" ]]; then
     log "警告：GSETTINGS_SCHEMA_DIR 未设置，GTK/WebKitGTK 可能算错视口尺寸"
   fi
   log "启动 Reelfs（REELFS_HOME=${SANDBOX_HOME}）…"
@@ -225,7 +177,7 @@ cmd_status() {
   else
     log "config.json: 不存在（尚未 init）"
   fi
-  log "样本媒体: $(find "$MEDIA_DIR" -type f \( -name '*.mp4' -o -name '*.mkv' -o -name '*.webm' \) 2>/dev/null | wc -l | tr -d ' ') 个视频文件"
+  log "样本媒体: $(find "$MEDIA_DIR" -type f \( -name '*.mp4' -o -name '*.mkv' -o -name '*.webm' -o -name '*.avi' -o -name '*.mov' -o -name '*.wmv' -o -name '*.flv' -o -name '*.m4v' \) 2>/dev/null | wc -l | tr -d ' ') 个视频文件"
   [[ -d "$REPO_ROOT/.reelfs" ]] && log "仓库根存在 .reelfs 目录（历史遗留），与沙盒无关"
   return 0
 }

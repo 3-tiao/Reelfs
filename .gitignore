@@ -48,3 +48,6 @@ cache
 
 # Agent test artifacts (sandbox logs/screenshots)
 /usability/
+
+# Python bytecode（gen-testdata / e2e-check 等脚本运行产物）
+__pycache__/

@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod database;
+#[cfg(test)]
+mod fixture_tests;
 mod import_manager;
 mod indexer;
 mod models;

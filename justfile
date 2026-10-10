@@ -39,6 +39,12 @@ check:
     npm run build
     npm run test
 
+# 生成共享测试媒体数据集到指定目录（默认 .agentenv/testdata；auto 模式
+# 有 ffmpeg 就生成真实视频，没有则用仓库内置微型样本）。额外参数原样透传，
+# 例如 just testdata .agentenv/media --prune
+testdata out=".agentenv/testdata" *args:
+    python3 scripts/gen-testdata.py --out "{{out}}" {{args}}
+
 # 前端单测
 test:
     npm run test

@@ -84,6 +84,22 @@ pub fn find_nfo_for_video(video_path: &Path) -> Option<PathBuf> {
     None
 }
 
+/// NFO 的 rating 是 Kodi 惯例的 10 分制，而应用全链路（UI 星级、评分过滤、
+/// DB 层 sanitize_rating 的 0.0..=5.0 窗口）是 5 分制。在 NFO 解析边界统一换算：
+/// - (5.0, 10.0]：÷2 后四舍五入到 0.1（8.8→4.4、8.9→4.5、7.5→3.8）
+/// - 0.0..=5.0：视为已是 5 分制，原样保留（兼容现状）
+/// - NaN / 负数 / >10.0：无法解释的值一律丢弃
+pub fn normalize_nfo_rating(rating: Option<f64>) -> Option<f64> {
+    let value = rating?;
+    if value > 5.0 && value <= 10.0 {
+        Some(((value / 2.0) * 10.0).round() / 10.0)
+    } else if (0.0..=5.0).contains(&value) {
+        Some(value)
+    } else {
+        None
+    }
+}
+
 pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
     let nfo_path = resolve_fs_path(nfo_path);
     let nfo_path = nfo_path.as_path();
@@ -112,7 +128,7 @@ pub fn parse_nfo_file(nfo_path: &Path) -> Option<MovieMetadata> {
         title: nfo.title.unwrap_or_else(|| "Unknown".to_string()),
         year: nfo.year,
         plot: nfo.plot,
-        rating: nfo.rating,
+        rating: normalize_nfo_rating(nfo.rating),
         genres,
         director: nfo.director,
         actors,
@@ -273,8 +289,11 @@ fn get_video_info_ffprobe(path: &Path) -> Option<(i64, i32, i32)> {
         .arg("v:0")
         .arg("-show_entries")
         .arg("stream=duration,width,height")
+        // default writer 输出 key=value 行。之前用 csv=s=x 再按逗号切分，
+        // 但 csv 的字段顺序随 ffprobe 版本/容器变化，且 s=x 的输出根本不含
+        // 逗号——解析永远失败，ffprobe 路径形同虚设。
         .arg("-of")
-        .arg("csv=s=x:p=0")
+        .arg("default=noprint_wrappers=1")
         .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -348,13 +367,43 @@ fn get_video_info_ffprobe(path: &Path) -> Option<(i64, i32, i32)> {
         }
     }
 
-    let parts: Vec<&str> = stdout.trim().split(',').collect();
+    // 输出形如（顺序不定，个别字段可能缺失或为 N/A）：
+    //   width=320
+    //   height=180
+    //   duration=4.000000
+    let mut duration: Option<i64> = None;
+    let mut width = 0i32;
+    let mut height = 0i32;
+    for line in stdout.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "duration" => {
+                if let Ok(secs) = value.trim().parse::<f64>() {
+                    duration = Some(secs as i64);
+                }
+            }
+            "width" => {
+                if let Ok(w) = value.trim().parse() {
+                    width = w;
+                }
+            }
+            "height" => {
+                if let Ok(h) = value.trim().parse() {
+                    height = h;
+                }
+            }
+            _ => {}
+        }
+    }
 
-    if parts.len() >= 3 {
-        let duration = parts[0].parse::<f64>().ok().map(|d| d as i64)?;
-        let width = parts[1].parse::<i32>().ok()?;
-        let height = parts[2].parse::<i32>().ok()?;
+    // 与 mp4 crate 路径同一套缺省语义：时长有效才算探针成功，宽高缺失记 0。
+    let duration = duration.unwrap_or(0);
+    if duration > 0 && width > 0 && height > 0 {
         Some((duration, width, height))
+    } else if duration > 0 {
+        Some((duration, 0, 0))
     } else {
         None
     }
@@ -435,9 +484,28 @@ mod tests {
         let meta = parse_nfo_file(&nfo).expect("well-formed NFO must parse");
         assert_eq!(meta.title, "The Film");
         assert_eq!(meta.year, Some(1999));
-        assert_eq!(meta.rating, Some(7.5));
+        // 10 分制 7.5 在解析边界换算为 5 分制 3.8
+        assert_eq!(meta.rating, Some(3.8));
         assert_eq!(meta.genres.as_deref(), Some("Action, Sci-Fi"));
         assert_eq!(meta.actors.as_deref(), Some("Named Actor, Other Actor"));
+    }
+
+    #[test]
+    fn normalize_nfo_rating_converts_10_point_scale_and_drops_unreadable() {
+        // (5.0, 10.0]：÷2 后四舍五入到 0.1
+        assert_eq!(normalize_nfo_rating(Some(8.8)), Some(4.4));
+        assert_eq!(normalize_nfo_rating(Some(8.9)), Some(4.5));
+        assert_eq!(normalize_nfo_rating(Some(7.5)), Some(3.8));
+        assert_eq!(normalize_nfo_rating(Some(10.0)), Some(5.0));
+        // 0.0..=5.0：视为已是 5 分制，原样保留
+        assert_eq!(normalize_nfo_rating(Some(5.0)), Some(5.0));
+        assert_eq!(normalize_nfo_rating(Some(3.7)), Some(3.7));
+        assert_eq!(normalize_nfo_rating(Some(0.0)), Some(0.0));
+        // NaN / 负数 / >10.0 / 缺失：无法解释，丢弃
+        assert_eq!(normalize_nfo_rating(Some(f64::NAN)), None);
+        assert_eq!(normalize_nfo_rating(Some(-1.0)), None);
+        assert_eq!(normalize_nfo_rating(Some(10.1)), None);
+        assert_eq!(normalize_nfo_rating(None), None);
     }
 
     #[test]
