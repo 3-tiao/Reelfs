@@ -477,6 +477,17 @@ async fn generate_thumbnail(
     }
     if Path::new(&thumbnail_path).exists() {
         debug!("[缩略图生成] 缩略图文件已存在: {}", thumbnail_path);
+        // DB 可能仍是 NULL 或指向已失效的路径（如 FTS5 坏触发器时期回写
+        // 失败的历史行）：趁早返回把规范路径补进库，否则前端每次进入都会
+        // 重复触发生成请求。DB 已一致时跳过，避免白白刷新 updated_at。
+        if existing_thumbnail.as_deref() != Some(thumbnail_path.as_str()) {
+            let db = state
+                .db
+                .lock()
+                .map_err(|e| format!("Database lock error: {}", e))?;
+            db.update_thumbnail_path(movie_id, &thumbnail_path)
+                .map_err(|e| format!("Failed to update thumbnail path: {}", e))?;
+        }
         return Ok(thumbnail_path);
     }
 
