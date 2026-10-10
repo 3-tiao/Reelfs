@@ -10,70 +10,66 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 所有门禁与打包都走本仓库 flake（flake.lock 锁定），保证 CI 与本地
+# （mac / NixOS）的 rustc / node / 系统库完全同源，消灭版本漂移：
+# 之前 setup-node@22 + dtolnay stable 与本地 node 24 / rustc 1.98 不一致。
 jobs:
-  frontend:
-    name: Frontend (typecheck + test + build)
+  gate:
+    name: Gate（flake 环境：前端 + Rust 门禁）
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Restore /nix/store cache
+        uses: actions/cache/v4
         with:
-          node-version: 22
-          cache: npm
+          path: /nix/store
+          key: nix-store-x86_64-linux-${{ hashFiles('flake.lock') }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            nix-store-x86_64-linux-${{ hashFiles('flake.lock') }}-
+            nix-store-x86_64-linux-
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Restore cargo target
+        uses: actions/cache/v4
+        with:
+          path: src-tauri/target
+          key: cargo-target-x86_64-linux-${{ hashFiles('src-tauri/Cargo.lock') }}
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Restore npm cache
+        uses: actions/cache/v4
+        with:
+          path: ~/.npm
+          key: npm-x86_64-linux-${{ hashFiles('package-lock.json') }}
 
-      - name: Tests
-        run: npm test
+      - name: 前端（npm ci + typecheck + test + build）
+        run: nix develop -c bash -c 'npm ci && npm run typecheck && npm run test && npm run build'
 
-      - name: Build
-        run: npm run build
+      - name: Rust（fmt + clippy + test）
+        run: nix develop -c bash -c 'cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test'
 
-  rust:
-    name: Rust (fmt + clippy + test)
-    # Tauri v2 links against webkit2gtk-4.1 (libsoup 3), which Ubuntu 24.04
-    # (ubuntu-latest) ships. The former ubuntu-22.04 pin was only needed by
-    # Tauri 1.x and its webkit2gtk-4.0 dependency.
+  package:
+    name: Package（nix build .#reelfs）
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            build-essential \
-            curl \
-            file \
-            libssl-dev \
-            pkg-config
+      - uses: DeterminateSystems/nix-installer-action@v16
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Restore /nix/store cache
+        uses: actions/cache/v4
         with:
-          components: rustfmt, clippy
+          path: /nix/store
+          key: nix-store-x86_64-linux-${{ hashFiles('flake.lock') }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            nix-store-x86_64-linux-${{ hashFiles('flake.lock') }}-
+            nix-store-x86_64-linux-
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
+      - name: Build Reelfs（x86_64-linux，前端 dist + Tauri 打包）
+        run: nix build -L .#reelfs
 
-      - name: Format
-        run: cargo fmt --check
-        working-directory: src-tauri
-
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
-        working-directory: src-tauri
-
-      - name: Tests
-        run: cargo test
-        working-directory: src-tauri
+      - name: Flake check（全部系统求值）
+        run: nix flake check --no-build --all-systems

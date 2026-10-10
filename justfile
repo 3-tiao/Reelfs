@@ -22,7 +22,14 @@ dev: stop
 stop:
     #!/usr/bin/env bash
     pkill -x reelfs 2>/dev/null || true
-    pid="$(ss -tlnp 2>/dev/null | grep ':1420' | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
+    pid=""
+    if command -v ss >/dev/null 2>&1; then
+        # Linux（iproute2）；grep -P 是 GNU grep，只有这条 Linux 分支用
+        pid="$(ss -tlnp 2>/dev/null | grep ':1420' | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
+    elif command -v lsof >/dev/null 2>&1; then
+        # macOS
+        pid="$(lsof -ti tcp:1420 -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+    fi
     if [ -n "${pid:-}" ]; then kill "$pid" 2>/dev/null || true; fi
 
 # 沙盒状态（路径检查 + 样本媒体数量）
