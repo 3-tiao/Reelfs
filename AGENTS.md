@@ -41,6 +41,30 @@ scripts/agent-env.sh clean    # 测试完清理整个沙盒
   文件；不要复制用户真实影片。
 - 单元测试一律用 temp 目录，不落 `~`。
 
+## 端到端测试（e2e）
+
+无头端到端：启动沙盒应用 → 全量导入数据集 → 对 SQLite/缓存/日志断言 14
+条用例。脚本三件套：
+
+```bash
+bash scripts/e2e-launch.sh                     # 重建 .agentenv/e2e 沙盒并启动（前台等待就绪后退出）
+python3 scripts/e2e-check.py <结果.json>       # 只读断言，结果写 JSON；脚手架级错误才 exit 非 0
+bash scripts/e2e-stop.sh                       # 只按 pidfile/进程组杀自己启动的实例
+```
+
+- 隔离沙盒固定在 `<repo>/.agentenv/e2e`（e2e-launch 内部已设
+  `REELFS_AGENT_ROOT`），与 `just dev` 的 `.agentenv/home` 互不影响；
+  数据入库靠 `REELFS_E2E_AUTOSCAN=1`（启动即自动全量导入，仅测试 hook，
+  定义在 `src-tauri/src/main.rs`，默认关闭）。
+- `REELFS_E2E_HEADLESS=1`（launch 已设）：主窗口创建后立即隐藏，不弹屏。
+- 纪律：杀进程**只**用 e2e-stop.sh（按 pidfile 精确到自己的进程组），
+  禁止 `pkill -x reelfs`、禁止杀 1420 已有监听——用户可能有自己的实例。
+  e2e-launch 每次运行都会 `rm -rf .agentenv/e2e` 重建，里面没有需要保留
+  的数据。cargo 构建与 e2e 共享 `src-tauri/target` 目录锁，并行跑会互相
+  等待（就绪超时 `E2E_READY_TIMEOUT` 秒，默认 600）。
+- 用例清单与期望值：`scripts/e2e-check.py`（断言依据 =
+  `testdata/manifest.json`）；两轮历史报告在 `usability/e2e-round{1,2}-report.md`。
+
 ## 常用门禁命令
 
 涉及 Rust 的门禁需要 flake.nix 里声明的构建依赖（gtk/webkit dev 包等）。
