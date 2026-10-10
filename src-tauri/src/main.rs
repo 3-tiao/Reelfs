@@ -1164,6 +1164,49 @@ fn init_logger() {
     let _ = log4rs::init_config(config);
 }
 
+/// e2e env 门控：变量恰为 "1" 才生效。测试专用 hook（REELFS_E2E_HEADLESS /
+/// REELFS_E2E_AUTOSCAN）默认关闭，正常启动路径不受影响。
+fn env_flag_enabled(name: &str) -> bool {
+    std::env::var(name).map(|v| v == "1").unwrap_or(false)
+}
+
+/// 仅测试用（REELFS_E2E_AUTOSCAN=1）：在 setup() 里启动一次与
+/// start_initial_scan 命令完全相同的导入（NFO 解析 → 视频探针 → 缩略图 →
+/// 自动建组）。无头 e2e 进程外无法 invoke Tauri command，而 watcher 的
+/// 单文件增量路径既不探测 duration/width/height 也不建组，这是唯一能让
+/// 扫描管线在 e2e 下运行的入口。start_import 内部自起后台线程，不会阻塞
+/// 事件循环。
+fn run_e2e_autoscan(app: &tauri::App) {
+    let window = match app.get_webview_window("main") {
+        Some(w) => w,
+        None => {
+            error!("[e2e] REELFS_E2E_AUTOSCAN=1 但找不到主窗口 (label \"main\")，跳过自动扫描");
+            return;
+        }
+    };
+    let state = app.state::<AppState>();
+    let config = match state.config.lock() {
+        Ok(c) => c.clone(),
+        Err(e) => {
+            error!("[e2e] 自动扫描读取配置失败: {}", e);
+            return;
+        }
+    };
+    info!("[e2e] REELFS_E2E_AUTOSCAN=1：启动即自动导入（仅测试沙盒）");
+    let manager = import_manager::ImportManager::new(
+        Arc::clone(&state.db),
+        config,
+        Arc::clone(&state.scan_status),
+        Arc::clone(&state.stop_scan_flag),
+        window,
+        "incremental".to_string(),
+        false,
+    );
+    if let Err(e) = manager.start_import() {
+        error!("[e2e] 自动扫描启动失败: {}", e);
+    }
+}
+
 fn main() {
     let start_time = std::time::Instant::now();
 
@@ -1249,6 +1292,23 @@ fn main() {
             };
             grant_fs_scope(app.handle(), &cache_dir, &nas_paths);
             grant_asset_scope(app.handle(), &cache_dir, &nas_paths);
+
+            // e2e 测试专用 env 门控（默认关闭；不设变量时与正常启动行为完全
+            // 一致）。只有 scripts/e2e-launch.sh 的隔离沙盒会设置它们，
+            // 见 testdata/README.md。
+            if env_flag_enabled("REELFS_E2E_HEADLESS") {
+                // 仅测试用：主窗口创建后立即隐藏，避免每轮 e2e 在用户屏幕上
+                // 弹出 1280x800 窗口。注意这只消除用户侧干扰；无 WindowServer
+                // 的 Linux CI 仍需虚拟显示（xvfb）才能跑 WKWebView。
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+            if env_flag_enabled("REELFS_E2E_AUTOSCAN") {
+                // 仅测试用：启动即自动跑一次导入，让无头 e2e 也能覆盖扫描
+                // 管线（视频探针 / 自动建组只在扫描里发生）。
+                run_e2e_autoscan(app);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
